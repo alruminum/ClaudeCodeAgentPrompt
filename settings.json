@@ -32,8 +32,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ~/.claude/hooks/harness-router.py auto 2>/dev/null || true",
-            "timeout": 5
+            "command": "python3 /Users/dc.kim/.claude/hooks/harness-router.py auto 2>/dev/null; exit 0",
+            "timeout": 10
           }
         ]
       }
