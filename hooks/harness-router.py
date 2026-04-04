@@ -145,9 +145,9 @@ def _main_inner():
                 is_bug = True
             cat = llm_cat
 
-    # QUESTION이고 진행 중인 워크플로우 없으면 아무것도 주입 안 함 (버그 감지 시 예외)
-    if cat == "QUESTION" and not any_active and not is_bug:
-        log(prefix, f"PASS(question/no-active) prompt={prompt[:60]!r}")
+    # QUESTION/AMBIGUOUS이고 진행 중인 워크플로우 없으면 아무것도 주입 안 함 (버그 감지 시 예외)
+    if cat in ("QUESTION", "AMBIGUOUS") and not any_active and not is_bug:
+        log(prefix, f"PASS({cat.lower()}/no-active) prompt={prompt[:60]!r}")
         sys.exit(0)
 
     flag_lines = "\n".join(
