@@ -114,7 +114,7 @@ CLAUDE.md 를 열어 [채우기] 표시된 항목을 이 프로젝트에 맞게 
 3. architect Mode D → 에픽 → backlog.md + stories.md 분해
 
 4. architect Mode B → validator Mode A → engineer 루프
-   (또는 harness-executor로 자동화)
+   (또는 bash .claude/harness-executor.sh로 자동화)
 ```
 
 ---
@@ -136,7 +136,7 @@ CLAUDE.md 를 열어 [채우기] 표시된 항목을 이 프로젝트에 맞게 
   .claude/agents/pr-reviewer.md
   .claude/agents/orchestrator.md      ← repo pre-filled: <REPO>
   .claude/agents/qa.md                ← repo pre-filled: <REPO>
-  .claude/agents/harness-executor.md
+  .claude/harness-executor.sh
   CLAUDE.md                    — 베이스 템플릿 복사
 
 GitHub 마일스톤 (<REPO>):

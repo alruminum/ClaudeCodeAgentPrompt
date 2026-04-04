@@ -2,13 +2,14 @@
 """
 Harness Router — UserPromptSubmit hook
 Usage: python3 harness-router.py <PREFIX>
-  PREFIX: project-specific flag prefix (e.g. "mb" → /tmp/mb_validator_a_passed)
+  PREFIX: project-specific flag prefix (e.g. "mb" → /tmp/mb_plan_validation_passed)
 """
 import sys
 import json
 import os
 import re
 import time
+import subprocess
 from datetime import datetime
 
 LOG_FILE = "/tmp/harness-router.log"
@@ -17,6 +18,39 @@ def log(prefix, msg):
     ts = datetime.now().strftime("%H:%M:%S")
     with open(LOG_FILE, "a") as f:
         f.write(f"[{ts}] [{prefix}] {msg}\n")
+
+def classify_intent_llm(prompt, prefix):
+    """LLM 보조 의도 분류 — AMBIGUOUS/불확실 시에만 호출. curl → Anthropic API."""
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+    if not api_key:
+        return None
+    try:
+        payload = json.dumps({
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 20,
+            "messages": [{"role": "user", "content":
+                "사용자 프롬프트 의도를 분류. 다음 중 하나만 출력:\n"
+                "IMPLEMENTATION QUESTION BUG GREETING GENERIC\n\n"
+                f"\"{prompt[:200]}\""}]
+        })
+        result = subprocess.run(
+            ['curl', '-s', '-m', '5',
+             'https://api.anthropic.com/v1/messages',
+             '-H', f'x-api-key: {api_key}',
+             '-H', 'anthropic-version: 2023-06-01',
+             '-H', 'content-type: application/json',
+             '-d', payload],
+            capture_output=True, text=True, timeout=7
+        )
+        data = json.loads(result.stdout)
+        text = data.get('content', [{}])[0].get('text', '')
+        for cat in ["IMPLEMENTATION", "BUG", "QUESTION", "GREETING", "GENERIC"]:
+            if cat in text.upper():
+                log(prefix, f"LLM_CLASSIFY result={cat}")
+                return cat
+    except Exception as e:
+        log(prefix, f"LLM_CLASSIFY_FAIL: {e}")
+    return None
 
 def main():
     raw_prefix = sys.argv[1] if len(sys.argv) > 1 else "auto"
@@ -55,7 +89,7 @@ def main():
 
     # 현재 플래그 상태
     flags = {
-        "validator_a_passed":   os.path.exists(f"/tmp/{prefix}_validator_a_passed"),
+        "plan_validation_passed": os.path.exists(f"/tmp/{prefix}_plan_validation_passed"),
         "designer_ran":         os.path.exists(f"/tmp/{prefix}_designer_ran"),
         "design_critic_passed": os.path.exists(f"/tmp/{prefix}_design_critic_passed"),
         "test_engineer_passed": os.path.exists(f"/tmp/{prefix}_test_engineer_passed"),
@@ -87,6 +121,15 @@ def main():
     else:
         cat = "GENERIC"
 
+    # LLM 보조 분류: regex가 불확실(AMBIGUOUS/GENERIC)할 때만 호출
+    if cat in ("AMBIGUOUS", "GENERIC") and len(prompt.split()) >= 3:
+        llm_cat = classify_intent_llm(prompt, prefix)
+        if llm_cat:
+            log(prefix, f"LLM_OVERRIDE {cat}→{llm_cat}")
+            if llm_cat == "BUG":
+                is_bug = True
+            cat = llm_cat
+
     # QUESTION이고 진행 중인 워크플로우 없으면 아무것도 주입 안 함 (버그 감지 시 예외)
     if cat == "QUESTION" and not any_active and not is_bug:
         log(prefix, f"PASS(question/no-active) prompt={prompt[:60]!r}")
@@ -113,7 +156,7 @@ def main():
         stored_issue = open(issue_file).read().strip() if os.path.exists(issue_file) else None
         if current_issue and stored_issue != current_issue:
             all_flag_keys = [
-                "validator_a_passed", "designer_ran", "design_critic_passed",
+                "plan_validation_passed", "designer_ran", "design_critic_passed",
                 "test_engineer_passed", "validator_b_passed", "pr_reviewer_lgtm"
             ]
             cleared = []
@@ -152,17 +195,21 @@ def main():
                 except Exception:
                     pass
 
-        # harness-executor 라우팅 지시 (설계 스펙: isActionable → runHarnessLoop)
-        if flags["validator_a_passed"]:
+        # harness-executor.sh 라우팅 지시 (설계 스펙: isActionable → runHarnessLoop)
+        if flags["plan_validation_passed"]:
+            impl_path_file = f"/tmp/{prefix}_impl_path"
+            impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else "[IMPL_PATH]"
+            issue_ref = current_issue or "N"
             harness_directive = (
-                "\n\n🔁 [HARNESS ROUTER] validator_a_passed OK → harness-executor를 호출하라.\n"
-                "engineer 직접 호출 금지. 반드시 harness-executor에 impl 파일 경로 + 이슈 번호를 전달하라.\n"
-                "harness-executor가 engineer→test-engineer→validator Mode B→pr-reviewer 루프를 자율 완주한다."
+                f"\n\n🔁 [HARNESS ROUTER] plan_validation_passed OK → 아래 Bash 명령을 즉시 실행하라:\n"
+                f"bash .claude/harness-executor.sh impl2 --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
+                "engineer 직접 호출 금지. 위 스크립트가 루프를 완주한다."
             )
         else:
             harness_directive = (
                 "\n\n⚠️ src/** 직접 Edit/Write 금지. engineer 에이전트 직접 호출 금지.\n"
-                "올바른 순서: architect Mode B → validator Mode A → harness-executor 호출."
+                f"올바른 순서: Bash로 harness-executor.sh 호출.\n"
+                f"예: bash .claude/harness-executor.sh impl --impl [IMPL_PATH] --issue {current_issue or 'N'} --prefix {prefix}"
             )
 
         ctx = (

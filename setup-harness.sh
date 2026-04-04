@@ -112,12 +112,12 @@ hooks = {
                 # 2. architect 호출 시 Mode A/B/C/D/E 명시 필수
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,re; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type'); prompt=t.get('prompt',''); r=re.search(r'Mode [A-E]',prompt,re.IGNORECASE); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ architect 호출 시 Mode A/B/C/D/E를 프롬프트에 명시하세요.'}}}})) if a=='architect' and not r else None\" 2>/dev/null || true"},
-                # 3. engineer 전 validator Mode A PASS 필요
+                # 3. engineer 전 Plan Validation PASS 필요
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ engineer 전 validator Mode A PASS 필요. /tmp/{p}_validator_a_passed 없음.'}}}})) if a=='engineer' and not os.path.exists('/tmp/{p}_validator_a_passed') else None\" 2>/dev/null || true"},
-                # 3b. engineer는 harness-executor 경유 필수 (직접 호출 차단)
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ engineer 전 Plan Validation PASS 필요. /tmp/{p}_plan_validation_passed 없음.'}}}})) if a=='engineer' and not os.path.exists('/tmp/{p}_plan_validation_passed') else None\" 2>/dev/null || true"},
+                # 3b. engineer는 harness-executor.sh 경유 필수 (직접 호출 차단)
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); ha=os.path.exists('/tmp/{p}_harness_active'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ engineer는 harness-executor를 통해서만 호출 가능. /tmp/{p}_harness_active 없음. 메인 Claude에서 직접 engineer 호출 금지 — harness-executor에 impl 파일 경로 + 이슈 번호를 전달하라.'}}}})) if a=='engineer' and not ha else None\" 2>/dev/null || true"},
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); ha=os.path.exists('/tmp/{p}_harness_active'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ engineer는 harness-executor.sh를 통해서만 호출 가능. /tmp/{p}_harness_active 없음. 메인 Claude에서 직접 engineer 호출 금지 — bash .claude/harness-executor.sh impl2로 호출하라.'}}}})) if a=='engineer' and not ha else None\" 2>/dev/null || true"},
                 # 4. designer 실행 후 design-critic PICK 전까지 engineer 차단
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); dr=os.path.exists('/tmp/{p}_designer_ran'); cp=os.path.exists('/tmp/{p}_design_critic_passed'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ designer 실행 후 engineer 바로 불가. 올바른 순서: design-critic PICK → 유저 승인 → architect impl 계획 → validator Mode A PASS → engineer'}}}})) if a=='engineer' and dr and not cp else None\" 2>/dev/null || true"},
@@ -148,33 +148,37 @@ hooks = {
         {
             "matcher": "Agent",
             "hooks": [
-                # validator PASS → Mode A/B 플래그 생성
+                # validator PASS → Mode C(Plan Validation)/B 플래그 생성
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); prompt=inp.get('prompt',''); [open('/tmp/{p}_validator_a_passed','w').close() if re.search(r'Mode A',prompt,re.IGNORECASE) else None, open('/tmp/{p}_validator_b_passed','w').close() if re.search(r'Mode B',prompt,re.IGNORECASE) else None] if inp.get('subagent_type')=='validator' and 'PASS' in resp else None\" 2>/dev/null || true"},
+                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); prompt=inp.get('prompt',''); [open('/tmp/{p}_plan_validation_passed','w').close() if re.search(r'Mode C|Plan Validation',prompt,re.IGNORECASE) else None, open('/tmp/{p}_validator_b_passed','w').close() if re.search(r'Mode B',prompt,re.IGNORECASE) else None] if inp.get('subagent_type')=='validator' and 'PASS' in resp else None\" 2>/dev/null || true"},
                 # test-engineer TESTS_PASS → 플래그 생성
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_test_engineer_passed','w').close() if inp.get('subagent_type')=='test-engineer' and 'TESTS_PASS' in resp else None\" 2>/dev/null || true"},
                 # pr-reviewer LGTM → 플래그 생성
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_pr_reviewer_lgtm','w').close() if inp.get('subagent_type')=='pr-reviewer' and 'LGTM' in resp and 'CHANGES_REQUESTED' not in resp else None\" 2>/dev/null || true"},
+                # security-reviewer SECURE → 플래그 생성
+                {"type": "command", "timeout": 5,
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_security_review_passed','w').close() if inp.get('subagent_type')=='security-reviewer' and 'SECURE' in resp and 'VULNERABILITIES_FOUND' not in resp else None\" 2>/dev/null || true"},
                 # architect Mode B 완료 → 전체 플래그 초기화 (새 구현 사이클 시작)
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); a=inp.get('subagent_type'); prompt=inp.get('prompt',''); mode_b=bool(re.search(r'Mode B',prompt,re.IGNORECASE)); [os.remove(f) for f in ['/tmp/{p}_validator_a_passed','/tmp/{p}_validator_b_passed','/tmp/{p}_test_engineer_passed','/tmp/{p}_pr_reviewer_lgtm','/tmp/{p}_designer_ran','/tmp/{p}_design_critic_passed'] if os.path.exists(f)] if a=='architect' and mode_b else None\" 2>/dev/null || true"},
+                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); a=inp.get('subagent_type'); prompt=inp.get('prompt',''); mode_b=bool(re.search(r'Mode B',prompt,re.IGNORECASE)); [os.remove(f) for f in ['/tmp/{p}_plan_validation_passed','/tmp/{p}_validator_b_passed','/tmp/{p}_test_engineer_passed','/tmp/{p}_pr_reviewer_lgtm','/tmp/{p}_security_review_passed','/tmp/{p}_designer_ran','/tmp/{p}_design_critic_passed'] if os.path.exists(f)] if a=='architect' and mode_b else None\" 2>/dev/null || true"},
                 # engineer 완료 → test/validator_b/pr 플래그 삭제 (재검증 강제)
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove(f) for f in ['/tmp/{p}_test_engineer_passed','/tmp/{p}_pr_reviewer_lgtm','/tmp/{p}_validator_b_passed'] if os.path.exists(f)] if a=='engineer' else None\" 2>/dev/null || true"},
-                # harness-executor 완료 → harness_active 플래그 삭제
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove(f) for f in ['/tmp/{p}_test_engineer_passed','/tmp/{p}_pr_reviewer_lgtm','/tmp/{p}_security_review_passed','/tmp/{p}_validator_b_passed'] if os.path.exists(f)] if a=='engineer' else None\" 2>/dev/null || true"},
+                # harness-loop.sh 완료 시 harness_active는 trap EXIT으로 자동 정리됨 (셸 스크립트 방식)
+                # 에이전트 경유 시 하위 호환: harness_active 플래그 삭제
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove('/tmp/{p}_harness_active') for _ in [1] if os.path.exists('/tmp/{p}_harness_active')] if a=='harness-executor' else None\" 2>/dev/null || true"},
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove('/tmp/{p}_harness_active') for _ in [1] if os.path.exists('/tmp/{p}_harness_active')] if a in ['harness-executor'] else None\" 2>/dev/null || true"},
                 # architect 완료 → architect_active 플래그 삭제
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove('/tmp/{p}_architect_active') for _ in [1] if os.path.exists('/tmp/{p}_architect_active')] if a=='architect' else None\" 2>/dev/null || true"},
                 # architect 완료 후 문서 신선도 경고 (trd.md / docs/test-plan.md / docs/{doc_name}.md)
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os,time,re; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); a=inp.get('subagent_type'); prompt=inp.get('prompt',''); base=os.getcwd(); mode_ac=bool(re.search(r'Mode [AC]',prompt,re.IGNORECASE)); mode_b=bool(re.search(r'Mode B',prompt,re.IGNORECASE)); mode_c=bool(re.search(r'Mode C',prompt,re.IGNORECASE)); warns=[]; trd=os.path.join(base,'trd.md'); tp=os.path.join(base,'docs','test-plan.md'); dd=os.path.join(base,'docs','{doc_name}.md'); trd_age=int(time.time()-os.path.getmtime(trd)) if os.path.exists(trd) else None; tp_age=int(time.time()-os.path.getmtime(tp)) if os.path.exists(tp) else None; dd_age=int(time.time()-os.path.getmtime(dd)) if os.path.exists(dd) else None; warns.append('trd.md 미업데이트('+str(trd_age)+'초 전)') if mode_ac and trd_age and trd_age>120 else None; warns.append('docs/test-plan.md 미업데이트('+str(tp_age)+'초 전)') if mode_b and tp_age and tp_age>120 else None; warns.append('docs/{doc_name}.md 미업데이트('+str(dd_age)+'초 전) — 설계 문서 동기화 필요') if mode_c and dd_age and dd_age>120 else None; print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PostToolUse','additionalContext':'⚠️ [HARNESS] architect 완료 후 문서 미업데이트: '+', '.join(warns)+'. 현행화 규칙 확인.'}}}})) if a=='architect' and warns else None\" 2>/dev/null || true"},
-                # designer 완료 → designer_ran 설정 + 이전 검증 플래그 초기화
+                # designer 완료 → designer_ran 설정 + 이전 검�� 플래그 초기화
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [open('/tmp/{p}_designer_ran','w').close(), [os.remove('/tmp/{p}_design_critic_passed') for _ in [1] if os.path.exists('/tmp/{p}_design_critic_passed')], [os.remove('/tmp/{p}_validator_a_passed') for _ in [1] if os.path.exists('/tmp/{p}_validator_a_passed')]] if a=='designer' else None\" 2>/dev/null || true"},
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [open('/tmp/{p}_designer_ran','w').close(), [os.remove('/tmp/{p}_design_critic_passed') for _ in [1] if os.path.exists('/tmp/{p}_design_critic_passed')], [os.remove('/tmp/{p}_plan_validation_passed') for _ in [1] if os.path.exists('/tmp/{p}_plan_validation_passed')]] if a=='designer' else None\" 2>/dev/null || true"},
                 # design-critic PICK → 플래그 생성
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_design_critic_passed','w').close() if inp.get('subagent_type')=='design-critic' and 'PICK' in resp and 'ITERATE' not in resp and 'ESCALATE' not in resp else None\" 2>/dev/null || true"},
@@ -211,30 +215,15 @@ else
   echo "⚠️  ~/.claude/harness-loop.sh 없음 — 복사 스킵 (수동으로 추가 필요)"
 fi
 
-# harness-executor 프로젝트 에이전트 생성 (base 읽는 1줄짜리)
-HE_BASE="$HOME/.claude/agents/harness-executor.md"
-HE_LOCAL=".claude/agents/harness-executor.md"
-if [ -f "$HE_BASE" ] && [ ! -f "$HE_LOCAL" ]; then
-  cat > "$HE_LOCAL" <<HEEOF
----
-name: harness-executor
-model: opus
-description: >
-  5가지 mode(impl/impl2/design/bugfix/plan)로 전체 워크플로우를 자율 실행하는 에이전트.
-tools: Read, Write, Glob, Grep, Bash
----
-
-## Base 지침 (항상 먼저 읽기)
-
-작업 시작 전 \`~/.claude/agents/harness-executor.md\`를 Read 툴로 읽고 그 지침을 모두 따른다.
-아래는 이 프로젝트에만 적용되는 추가 지침이다.
-
-## 프로젝트 특화
-
-- prefix: \`${PREFIX}\` (\`.claude/harness.config.json\` 기준)
-- impl 경로 패턴: \`docs/milestones/*/epics/epic-NN-*/impl/NN-*.md\`
-HEEOF
-  echo "  harness-executor.md 생성 완료 (prefix: ${PREFIX})"
+# harness-executor.sh 프로젝트 스크립트 복사
+HE_SRC="$HOME/.claude/harness-executor.sh"
+HE_LOCAL=".claude/harness-executor.sh"
+if [ -f "$HE_SRC" ]; then
+  cp "$HE_SRC" "$HE_LOCAL"
+  chmod +x "$HE_LOCAL"
+  echo "  harness-executor.sh 복사 완료"
+else
+  echo "⚠️  ~/.claude/harness-executor.sh 없음 — 복사 스킵 (수동으로 추가 필요)"
 fi
 
 echo ""

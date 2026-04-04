@@ -48,8 +48,11 @@ CONSTRAINTS=""
 [[ -f "$MEM_GLOBAL" ]] && CONSTRAINTS=$(tail -20 "$MEM_GLOBAL")
 [[ -f "$MEM_LOCAL"  ]] && CONSTRAINTS="${CONSTRAINTS}
 $(tail -20 "$MEM_LOCAL")"
-[[ -f "CLAUDE.md"   ]] && CONSTRAINTS="${CONSTRAINTS}
-$(cat CLAUDE.md)"
+# CLAUDE.md: 관련 섹션만 추출 (전체 cat 대신 토큰 절약)
+if [[ -f "CLAUDE.md" ]]; then
+  CONSTRAINTS="${CONSTRAINTS}
+$(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/,/^---/p' CLAUDE.md | head -c 10000)"
+fi
 
 # ── 헬퍼 함수 ──────────────────────────────────────────────────────────
 
@@ -74,6 +77,43 @@ append_success() {
 extract_files_from_error() {
   # errorTrace에서 "src/..." 패턴 역추적
   echo "$1" | grep -oE 'src/[^ :()]+\.(ts|tsx|js|jsx)' | sort -u | head -5
+}
+
+build_smart_context() {
+  # 스마트 컨텍스트 구성 — 파일 통째가 아닌 관련 청크만
+  local impl="$1" attempt_n="$2" err_trace="$3"
+  local ctx=""
+
+  if [[ $attempt_n -eq 0 ]]; then
+    # impl 파일 자체
+    ctx=$(cat "$impl")
+    # impl에서 언급된 소스 파일 내용 추가
+    local mentioned
+    mentioned=$(grep -oE 'src/[^ `"'"'"']+\.(ts|tsx)' "$impl" 2>/dev/null | sort -u | head -5)
+    for f in $mentioned; do
+      if [[ -f "$f" ]]; then
+        ctx="${ctx}
+=== ${f} ===
+$(cat "$f")"
+      fi
+    done
+  else
+    # 재시도: error trace에서 관련 파일만
+    local failed_files
+    failed_files=$(extract_files_from_error "$err_trace")
+    if [[ -n "$failed_files" ]]; then
+      for f in $failed_files; do
+        [[ -f "$f" ]] && ctx="${ctx}
+=== ${f} ===
+$(cat "$f")"
+      done
+    else
+      ctx=$(cat "$impl")
+    fi
+  fi
+
+  # 50KB 캡 (토큰 폭발 방지)
+  echo "$ctx" | head -c 50000
 }
 
 generate_commit_msg() {
@@ -105,7 +145,7 @@ trap cleanup EXIT
 if [[ "$MODE" == "impl2" ]]; then
 
   touch "/tmp/${PREFIX}_harness_active"
-  [[ ! -f "/tmp/${PREFIX}_validator_a_passed" ]] && touch "/tmp/${PREFIX}_validator_a_passed"
+  [[ ! -f "/tmp/${PREFIX}_plan_validation_passed" ]] && touch "/tmp/${PREFIX}_plan_validation_passed"
 
   attempt=0
   MAX=3
@@ -113,17 +153,11 @@ if [[ "$MODE" == "impl2" ]]; then
 
   while [[ $attempt -lt $MAX ]]; do
 
-    # ── Context GC: 매 attempt마다 재계산 ──────────────────────────
+    # ── Context GC: 스마트 컨텍스트 (관련 청크만 로드) ──────────────
+    context=$(build_smart_context "$IMPL_FILE" "$attempt" "$error_trace")
     if [[ $attempt -eq 0 ]]; then
-      context=$(cat "$IMPL_FILE")
       task="impl 파일의 구현 명세 전체 이행"
     else
-      failed_files=$(extract_files_from_error "$error_trace")
-      if [[ -n "$failed_files" ]]; then
-        context=$(cat $failed_files 2>/dev/null || echo "(파일 읽기 실패)")
-      else
-        context=$(cat "$IMPL_FILE")
-      fi
       error_1line=$(echo "$error_trace" | head -1 | cut -c1-200)
       task="이전 시도(${attempt}회) 에러: ${error_1line}. 해당 부분만 수정."
     fi
@@ -200,6 +234,28 @@ $diff_out" > "/tmp/${PREFIX}_pr_out.txt" 2>&1 || true
     fi
     touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
     echo "[HARNESS] LGTM"
+
+    # ── 워커 5: security-reviewer ─────────────────────────────────
+    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
+    changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
+    claude --agent security-reviewer --print \
+      -p "보안 리뷰 대상 파일:
+$changed_src
+
+변경 diff:
+$(git diff HEAD 2>&1 | head -500)" > "/tmp/${PREFIX}_sec_out.txt" 2>&1 || true
+    sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
+    sec_result=$(echo "$sec_out" | grep -oE 'SECURE|VULNERABILITIES_FOUND' | head -1 || echo "UNKNOWN")
+    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
+    if [[ "$sec_result" == "VULNERABILITIES_FOUND" ]]; then
+      # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 여기 도달 안 함
+      error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10)
+      append_failure "security_fail" "$error_trace"
+      attempt=$((attempt+1))
+      continue
+    fi
+    touch "/tmp/${PREFIX}_security_review_passed"
+    echo "[HARNESS] SECURE"
 
     # ── git commit ────────────────────────────────────────────────
     # test-engineer가 테스트 파일 추가했을 수 있으므로 commit 직전 재계산

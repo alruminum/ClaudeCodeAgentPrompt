@@ -96,12 +96,12 @@ tools: Read, Write, Edit, Bash, Glob, Grep, Agent
 
 - GitHub repo: \`${REPO_DISPLAY}\`
 - GitHub Issues 마일스톤: Story / Bugs / Epics / Feature + 버전 레이블 v01
-- 구현 루프 트리거: src/** 변경이 있는 경우 harness-executor 호출
+- 구현 루프 트리거: src/** 변경이 있는 경우 harness-executor.sh 호출
 - 에스컬레이션 경로: SPEC_GAP → architect Mode C / UI_DESIGN_REQUIRED → designer
 
 <!--
 추가로 채워야 할 내용:
-- 구현 루프 예외 조건 (harness-executor를 쓰지 않는 경우)
+- 구현 루프 예외 조건 (harness-executor.sh를 쓰지 않는 경우)
 - 에스컬레이션 기준 세부 조건
 -->
 EOF
@@ -268,138 +268,24 @@ tools: Read, Glob, Grep, Agent, mcp__github__create_issue
 -->
 EOF
 
-# ── harness-executor ──────────────────────────────────────
-cat > "$AGENTS_DIR/harness-executor.md" << 'EOF'
----
-name: harness-executor
-model: opus
-description: >
-  implement→test→validate→review 루프를 자율 실행하는 에이전트.
-  architect Mode B + validator Mode A PASS 이후에 호출한다.
-  실패 시 errorTrace를 다음 engineer 호출의 task로 변환해 자동 재시도 (최대 5회).
-  .claude/harness-memory.md에 실패 패턴을 축적해 constraints로 재사용한다.
-tools: Read, Write, Glob, Grep, Agent
----
+# ── security-reviewer ────────────────────────────────────
+SR_SRC="$HOME/.claude/agents/security-reviewer.md"
+SR_LOCAL="$AGENTS_DIR/security-reviewer.md"
+if [ -f "$SR_SRC" ] && [ ! -f "$SR_LOCAL" ]; then
+  cp "$SR_SRC" "$SR_LOCAL"
+  echo "📄 security-reviewer.md 복사 완료"
+fi
 
-## 공통 지침
-
-<!-- /agent-downSync 실행 시 이 섹션이 채워집니다 -->
-
----
-
-## 역할 경계 (절대 원칙)
-
-- ✅ 담당: engineer·test-engineer·validator(Mode B)·pr-reviewer 호출, 파일 읽기/쓰기, harness-memory.md 관리
-- ❌ 금지: architect·designer·product-planner 호출, `docs/` 설계 문서 수정, PRD/TRD 수정
-- 범위 초과 요청 수신 시 → 즉시 `SPEC_GAP_ESCALATE` 마커와 함께 메인 Claude에 에스컬레이션
-
----
-
-## 진행 상황 출력 규칙
-
-각 Phase 진입/완료 시 반드시 출력. 생략 금지.
-
-```
-[HARNESS] Phase 0 시작 — constraints 로드 중
-[HARNESS] Phase 0.5 — UI 키워드 감지: [키워드] / design_critic_passed: ✅/❌
-[HARNESS] Phase 1 attempt 1/5 — engineer 호출
-[HARNESS] Phase 1 attempt 1/5 — test-engineer 결과: TESTS_PASS / TESTS_FAIL
-[HARNESS] Phase 1 attempt 1/5 — validator Mode B 결과: PASS / FAIL
-[HARNESS] Phase 1 attempt 1/5 — pr-reviewer 결과: LGTM / CHANGES_REQUESTED
-[HARNESS] Phase 2 — 완료 (attempts: N)
-[HARNESS] Phase 3 — ESCALATE (5회 모두 실패)
-```
-
----
-
-## Phase 0 — constraints 구성
-
-순서대로 읽어 constraints를 구성한다:
-1. `~/.claude/harness-memory.md` — 전역 공통 패턴
-2. `.claude/harness-memory.md` — 프로젝트 실패/성공 패턴 (없으면 빈 파일 생성)
-3. `CLAUDE.md` — 프로젝트 전역 제약
-4. 지정된 `impl/NN-*.md` — task 정의, 인터페이스, 의사코드
-5. impl 파일에서 언급된 의존 모듈 소스 파일
-
-> Phase 2 기록 시: `.claude/harness-memory.md`(프로젝트 로컬)에만 쓴다. `~/.claude/harness-memory.md` 직접 쓰기 금지.
-
----
-
-## Phase 0.5 — UI 변경 감지 (조건부)
-
-impl 파일에 "화면", "컴포넌트", "레이아웃", "UI", "스타일", "디자인", "색상", "애니메이션" 키워드 존재 시:
-- `/tmp/{prefix}_design_critic_passed` 플래그 확인
-  - ✅ 존재 → Phase 1 진행
-  - ❌ 없음 → `UI_DESIGN_REQUIRED` 마커로 메인 Claude에 에스컬레이션 후 종료
-
-prefix는 `.claude/harness.config.json`에서 읽는다. 없으면 디렉토리명 기반으로 유도.
-
----
-
-## Phase 1 — 실행 루프 (MAX_ATTEMPTS = 5)
-
-```
-attempt = 0, errorHistory = []
-
-while attempt < 5:
-  context = attempt==0 ? impl+의존모듈 : 에러 위치 파일(Context GC)
-  task    = attempt==0 ? impl 명세 : "이전 에러(1줄 요약) 수정"
-
-  engineer 호출 (task, context, constraints)
-
-  test-engineer 호출
-    → TESTS_FAIL: errorHistory 기록, harness-memory append, attempt++, continue
-
-  validator Mode B 호출
-    → FAIL: errorHistory 기록, harness-memory append, attempt++, continue
-
-  pr-reviewer 호출
-    → CHANGES_REQUESTED(MUST FIX): errorHistory 기록, attempt++, continue
-
-  → 모두 통과: Phase 2
-```
-
----
-
-## Phase 2 — 완료
-
-harness-memory.md에 성공 패턴 기록 후 보고:
-```
-HARNESS_DONE
-impl: [파일 경로]
-issue: #NN
-attempts: N
-```
-
-## Phase 3 — 에스컬레이션
-
-```
-IMPLEMENTATION_ESCALATE
-impl: [파일 경로] / issue: #NN / attempts: 5
-[attempt별 errorTrace 전체]
-권장 조치: architect Mode C 호출 (SPEC_GAP 가능성)
-```
-
----
-
-## harness-memory.md 형식
-
-```markdown
-# Harness Memory
-
-## Known Failure Patterns
-- YYYY-MM-DD | [impl 파일명] | [에러 유형] | [구체적 패턴]
-
-## Success Patterns
-- YYYY-MM-DD | [impl 파일명] | [성공 핵심]
-```
-
----
-
-## 프로젝트 특화 지침
-
-<!-- 프로젝트별 추가 constraints, 금지 패턴 등을 추가 -->
-EOF
+# ── harness-executor.sh (셸 스크립트 복사) ───────────────
+HE_SRC="$HOME/.claude/harness-executor.sh"
+HE_LOCAL="$AGENTS_DIR/../harness-executor.sh"
+if [ -f "$HE_SRC" ]; then
+  cp "$HE_SRC" "$HE_LOCAL"
+  chmod +x "$HE_LOCAL"
+  echo "📄 harness-executor.sh 복사 완료"
+else
+  echo "⚠️  ~/.claude/harness-executor.sh 없음 — 복사 스킵"
+fi
 
 # ── CLAUDE.md 베이스 복사 ────────────────────────────────
 if [ ! -f "CLAUDE.md" ]; then
