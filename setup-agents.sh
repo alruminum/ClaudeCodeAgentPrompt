@@ -1,0 +1,474 @@
+#!/bin/bash
+# ~/.claude/setup-agents.sh
+# 신규 프로젝트 루트에서 실행: bash ~/.claude/setup-agents.sh
+# .claude/agents/ 아래 9개 에이전트 파일을 생성한다.
+
+set -e
+
+# 선택적 인수
+# --repo <owner/repo> : GitHub repo — architect/qa/orchestrator 에이전트에 pre-fill, 마일스톤 자동 생성에 사용
+REPO=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repo) REPO="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+REPO_DISPLAY="${REPO:-[채우기: owner/repo-name]}"
+
+AGENTS_DIR=".claude/agents"
+mkdir -p "$AGENTS_DIR"
+
+echo "🔧 에이전트 파일 생성 중..."
+
+# ── test-engineer ─────────────────────────────────────────
+cat > "$AGENTS_DIR/test-engineer.md" << 'EOF'
+---
+name: test-engineer
+model: sonnet
+description: impl 파일과 구현 코드를 기반으로 테스트 코드를 작성하고 실행하는 에이전트. engineer 완료 후 validator 전에 호출한다.
+tools: Read, Write, Bash, Glob, Grep
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 `~/.claude/agents/test-engineer-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+<!--
+채워야 할 내용:
+- 테스트 실행 명령어 (예: npm test, npx vitest)
+- mock 사용 금지 여부 (DB/외부 API mock 여부)
+- 우선 테스트 대상 (핵심 비즈니스 로직, 상태 변화 등)
+- 테스트 파일 위치 (예: src/__tests__/)
+-->
+EOF
+
+# ── pr-reviewer ───────────────────────────────────────────
+cat > "$AGENTS_DIR/pr-reviewer.md" << 'EOF'
+---
+name: pr-reviewer
+model: opus
+description: validator PASS 이후 코드 품질을 리뷰하는 에이전트. 패턴·컨벤션·가독성·기술부채 검토. LGTM / CHANGES_REQUESTED 판정. 파일을 수정하지 않는다.
+tools: Read, Glob, Grep
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 `~/.claude/agents/pr-reviewer-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+<!--
+채워야 할 내용:
+- 프로젝트 컨벤션 (예: 인라인 style 금지, CSS 변수 사용 필수)
+- 금지 패턴 (예: any 타입 사용 금지, console.log 잔류 금지)
+- 외부 라이브러리 직접 import 금지 목록 (래퍼 함수 사용 강제)
+- 샌드박스/개발환경 분기 확인 항목
+-->
+EOF
+
+# ── orchestrator ──────────────────────────────────────────
+cat > "$AGENTS_DIR/orchestrator.md" << EOF
+---
+name: orchestrator
+model: opus
+description: >
+  소프트웨어 프로젝트를 단계별로 오케스트레이션하는 에이전트.
+  아키텍처 승인 → 구현/리뷰 루프 → 완료까지 전 과정을 조율한다.
+  각 단계 완료 후 반드시 유저 확인을 받고 다음 단계로 진행한다.
+tools: Read, Write, Edit, Bash, Glob, Grep, Agent
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 \`~/.claude/agents/orchestrator-base.md\`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+- GitHub repo: \`${REPO_DISPLAY}\`
+- GitHub Issues 마일스톤: Story / Bugs / Epics / Feature + 버전 레이블 v01
+- 구현 루프 트리거: src/** 변경이 있는 경우 harness-executor 호출
+- 에스컬레이션 경로: SPEC_GAP → architect Mode C / UI_DESIGN_REQUIRED → designer
+
+<!--
+추가로 채워야 할 내용:
+- 구현 루프 예외 조건 (harness-executor를 쓰지 않는 경우)
+- 에스컬레이션 기준 세부 조건
+-->
+EOF
+
+# ── architect ─────────────────────────────────────────────
+cat > "$AGENTS_DIR/architect.md" << EOF
+---
+name: architect
+model: sonnet
+description: 새 모듈 구현 계획 파일을 작성하는 설계 에이전트. 기존 설계 문서를 읽고 프로젝트 패턴에 맞는 impl 파일을 생성한다.
+tools: Read, Glob, Grep, Write, Edit, mcp__github__create_issue, mcp__github__list_issues, mcp__github__get_issue, mcp__github__update_issue, Bash
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 \`~/.claude/agents/architect-base.md\`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+- GitHub repo: \`${REPO_DISPLAY}\`
+- 현재 버전 레이블: \`v01\`
+- 컨텍스트 파악 순서: CLAUDE.md → backlog.md → stories.md → impl/
+- impl 파일 경로 패턴: \`docs/milestones/vNN/epics/epic-NN-*/impl/NN-*.md\`
+
+<!--
+추가로 채워야 할 내용:
+- 외부 SDK MCP 확인 강제 여부 (.d.ts 우선 확인 여부)
+- 프로젝트 특화 설계 문서 이름 (예: game-logic, domain-logic, api-spec)
+-->
+EOF
+
+# ── engineer ──────────────────────────────────────────────
+cat > "$AGENTS_DIR/engineer.md" << 'EOF'
+---
+name: engineer
+model: sonnet
+description: 지정된 모듈의 impl 계획 파일을 읽고 실제 코드를 구현하는 에이전트.
+tools: Read, Write, Edit, Bash, Glob, Grep
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 `~/.claude/agents/engineer-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+<!--
+채워야 할 내용:
+- GitHub Issues 조회 명령어 (예: gh issue view #NN --repo owner/repo)
+- 외부 SDK 래퍼 강제 패턴 (예: SDK 직접 import 금지, src/lib/sdk.ts 래퍼 사용)
+- 샌드박스 분기 방법 (예: IS_SANDBOX=import.meta.env.DEV)
+- 의존성 규칙 (예: src/store → src/engine 직접 import 금지, store 경유 강제)
+- 커밋 전 테스트 명령어 (예: npm run typecheck && npm test)
+-->
+EOF
+
+# ── validator ─────────────────────────────────────────────
+cat > "$AGENTS_DIR/validator.md" << 'EOF'
+---
+name: validator
+model: sonnet
+description: 구현된 코드가 impl 설계 의도에 맞게 구현되었는지 검증하는 에이전트. PASS/FAIL을 판정한다. 파일을 수정하지 않는다.
+tools: Read, Glob, Grep
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 `~/.claude/agents/validator-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+<!--
+채워야 할 내용:
+- 의존성 규칙 (예: src/components → src/store 직접 import 금지)
+- 금지 패턴 (예: any 타입, barrel import 사이클, 전역 변수)
+- impl 파일 경로 패턴 (예: docs/milestones/vNN/epics/epic-NN-*/impl/)
+- 특수 체크 항목 (예: IS_SANDBOX 분기 누락 여부, SDK 직접 import 여부)
+-->
+EOF
+
+# ── designer ──────────────────────────────────────────────
+cat > "$AGENTS_DIR/designer.md" << 'EOF'
+---
+name: designer
+model: sonnet
+description: UI 디자인 에이전트. 현재 소스를 읽고 서로 다른 미적 방향의 3가지 variant를 ASCII 와이어프레임 + React 구현체로 생성한다.
+tools: Read, Glob, Grep, Write
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 `~/.claude/agents/designer-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+<!--
+채워야 할 내용:
+- 브랜드 컬러/폰트 제약 (예: 토스 색상 팔레트, TDS 면제 여부)
+- 플랫폼 제약 (예: 모바일 WebView 전용 — 데스크톱 레이아웃 불필요)
+- PRD에서 지정된 UI 키워드 (예: "4개 색깔 버튼", "시퀀스 표시 영역")
+- 디자인 출력 파일 경로 (예: design-preview-{issue}.html 저장 위치)
+-->
+EOF
+
+# ── design-critic ─────────────────────────────────────────
+cat > "$AGENTS_DIR/design-critic.md" << 'EOF'
+---
+name: design-critic
+model: opus
+description: 디자인 심사 에이전트. designer가 생성한 3개 variant를 4개 기준으로 점수화하고 PICK/ITERATE/ESCALATE를 판정한다. 파일을 수정하지 않는다.
+tools: Read, Glob, Grep, Bash, mcp__playwright__browser_navigate, mcp__playwright__browser_screenshot, mcp__playwright__browser_resize_window, mcp__playwright__browser_close
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 `~/.claude/agents/design-critic-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+<!--
+채워야 할 내용:
+- 심사 기준 (예: PRD 원칙 준수 여부, 접근성 점수 기준 ≥ 70)
+- PICK 판정 시 architect Mode B 자동 트리거 여부
+- ITERATE vs ESCALATE 기준 (예: 3회 이상 ITERATE → ESCALATE)
+- Playwright localhost URL (예: http://localhost:5173)
+-->
+EOF
+
+# ── qa ────────────────────────────────────────────────────
+cat > "$AGENTS_DIR/qa.md" << EOF
+---
+name: qa
+model: sonnet
+description: 이슈를 접수해 원인을 분석하고 오케스트레이터에게 라우팅 추천을 전달하는 QA 에이전트. 코드를 직접 수정하지 않는다.
+tools: Read, Glob, Grep, Agent, mcp__github__create_issue
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 \`~/.claude/agents/qa-base.md\`를 Read 툴로 읽고 그 지침을 모두 따른다.
+아래는 이 프로젝트에만 적용되는 추가 지침이다.
+
+---
+
+## 프로젝트 특화 지침
+
+- GitHub repo: \`${REPO_DISPLAY}\`
+- 마일스톤 구조: Story / Bugs / Epics / Feature + 버전 레이블 v01
+- 버그 이슈 등록: 레이블 \`bug\` + 버전 레이블, 마일스톤 \`Bugs\`
+
+<!--
+추가로 채워야 할 내용:
+- CRITICAL 버그 기준 (예: 게임 진행 불가, 데이터 소실, 인증 실패)
+- 라우팅 결정 기준 (예: 재현 불가 → 추가 정보 요청, 설계 문제 → architect)
+-->
+EOF
+
+# ── harness-executor ──────────────────────────────────────
+cat > "$AGENTS_DIR/harness-executor.md" << 'EOF'
+---
+name: harness-executor
+model: opus
+description: >
+  implement→test→validate→review 루프를 자율 실행하는 에이전트.
+  architect Mode B + validator Mode A PASS 이후에 호출한다.
+  실패 시 errorTrace를 다음 engineer 호출의 task로 변환해 자동 재시도 (최대 5회).
+  .claude/harness-memory.md에 실패 패턴을 축적해 constraints로 재사용한다.
+tools: Read, Write, Glob, Grep, Agent
+---
+
+## Base 지침 (항상 먼저 읽기)
+
+작업 시작 전 `~/.claude/agents/harness-executor-base.md`가 있으면 읽는다.
+없으면 아래 지침을 그대로 따른다.
+
+---
+
+## 역할 경계 (절대 원칙)
+
+- ✅ 담당: engineer·test-engineer·validator(Mode B)·pr-reviewer 호출, 파일 읽기/쓰기, harness-memory.md 관리
+- ❌ 금지: architect·designer·product-planner 호출, `docs/` 설계 문서 수정, PRD/TRD 수정
+- 범위 초과 요청 수신 시 → 즉시 `SPEC_GAP_ESCALATE` 마커와 함께 메인 Claude에 에스컬레이션
+
+---
+
+## 진행 상황 출력 규칙
+
+각 Phase 진입/완료 시 반드시 출력. 생략 금지.
+
+```
+[HARNESS] Phase 0 시작 — constraints 로드 중
+[HARNESS] Phase 0.5 — UI 키워드 감지: [키워드] / design_critic_passed: ✅/❌
+[HARNESS] Phase 1 attempt 1/5 — engineer 호출
+[HARNESS] Phase 1 attempt 1/5 — test-engineer 결과: TESTS_PASS / TESTS_FAIL
+[HARNESS] Phase 1 attempt 1/5 — validator Mode B 결과: PASS / FAIL
+[HARNESS] Phase 1 attempt 1/5 — pr-reviewer 결과: LGTM / CHANGES_REQUESTED
+[HARNESS] Phase 2 — 완료 (attempts: N)
+[HARNESS] Phase 3 — ESCALATE (5회 모두 실패)
+```
+
+---
+
+## Phase 0 — constraints 구성
+
+순서대로 읽어 constraints를 구성한다:
+1. `~/.claude/harness-memory.md` — 전역 공통 패턴
+2. `.claude/harness-memory.md` — 프로젝트 실패/성공 패턴 (없으면 빈 파일 생성)
+3. `CLAUDE.md` — 프로젝트 전역 제약
+4. 지정된 `impl/NN-*.md` — task 정의, 인터페이스, 의사코드
+5. impl 파일에서 언급된 의존 모듈 소스 파일
+
+> Phase 2 기록 시: `.claude/harness-memory.md`(프로젝트 로컬)에만 쓴다. `~/.claude/harness-memory.md` 직접 쓰기 금지.
+
+---
+
+## Phase 0.5 — UI 변경 감지 (조건부)
+
+impl 파일에 "화면", "컴포넌트", "레이아웃", "UI", "스타일", "디자인", "색상", "애니메이션" 키워드 존재 시:
+- `/tmp/{prefix}_design_critic_passed` 플래그 확인
+  - ✅ 존재 → Phase 1 진행
+  - ❌ 없음 → `UI_DESIGN_REQUIRED` 마커로 메인 Claude에 에스컬레이션 후 종료
+
+prefix는 `.claude/harness.config.json`에서 읽는다. 없으면 디렉토리명 기반으로 유도.
+
+---
+
+## Phase 1 — 실행 루프 (MAX_ATTEMPTS = 5)
+
+```
+attempt = 0, errorHistory = []
+
+while attempt < 5:
+  context = attempt==0 ? impl+의존모듈 : 에러 위치 파일(Context GC)
+  task    = attempt==0 ? impl 명세 : "이전 에러(1줄 요약) 수정"
+
+  engineer 호출 (task, context, constraints)
+
+  test-engineer 호출
+    → TESTS_FAIL: errorHistory 기록, harness-memory append, attempt++, continue
+
+  validator Mode B 호출
+    → FAIL: errorHistory 기록, harness-memory append, attempt++, continue
+
+  pr-reviewer 호출
+    → CHANGES_REQUESTED(MUST FIX): errorHistory 기록, attempt++, continue
+
+  → 모두 통과: Phase 2
+```
+
+---
+
+## Phase 2 — 완료
+
+harness-memory.md에 성공 패턴 기록 후 보고:
+```
+HARNESS_DONE
+impl: [파일 경로]
+issue: #NN
+attempts: N
+```
+
+## Phase 3 — 에스컬레이션
+
+```
+IMPLEMENTATION_ESCALATE
+impl: [파일 경로] / issue: #NN / attempts: 5
+[attempt별 errorTrace 전체]
+권장 조치: architect Mode C 호출 (SPEC_GAP 가능성)
+```
+
+---
+
+## harness-memory.md 형식
+
+```markdown
+# Harness Memory
+
+## Known Failure Patterns
+- YYYY-MM-DD | [impl 파일명] | [에러 유형] | [구체적 패턴]
+
+## Success Patterns
+- YYYY-MM-DD | [impl 파일명] | [성공 핵심]
+```
+
+---
+
+## 프로젝트 특화 지침
+
+<!-- 프로젝트별 추가 constraints, 금지 패턴 등을 추가 -->
+EOF
+
+# ── CLAUDE.md 베이스 복사 ────────────────────────────────
+if [ ! -f "CLAUDE.md" ]; then
+  cp ~/.claude/templates/CLAUDE-base.md CLAUDE.md
+  # repo가 제공된 경우 CLAUDE.md의 git remote 섹션 pre-fill
+  if [ -n "$REPO" ]; then
+    sed -i '' "s|\[채우기: owner/repo\]|${REPO}|g" CLAUDE.md 2>/dev/null || true
+  fi
+  echo "📄 CLAUDE.md 생성 (베이스 템플릿에서 복사)"
+else
+  echo "📄 CLAUDE.md 이미 존재 — 건너뜀"
+fi
+
+# ── GitHub 마일스톤 자동 생성 ─────────────────────────────
+if [ -n "$REPO" ]; then
+  echo ""
+  echo "🏷️  GitHub 마일스톤 생성 중 (${REPO})..."
+  MILESTONE_CREATED=0
+  MILESTONE_SKIPPED=0
+  for M in "Story" "Bugs" "Epics" "Feature"; do
+    RESULT=$(gh api "repos/${REPO}/milestones" -f title="$M" -f state="open" 2>&1)
+    if echo "$RESULT" | grep -q '"number"'; then
+      echo "  ✅ $M"
+      MILESTONE_CREATED=$((MILESTONE_CREATED + 1))
+    elif echo "$RESULT" | grep -q 'already_exists\|Validation Failed'; then
+      echo "  ⚠️  $M (이미 존재)"
+      MILESTONE_SKIPPED=$((MILESTONE_SKIPPED + 1))
+    else
+      echo "  ❌ $M 실패 — gh auth login 확인 필요"
+    fi
+  done
+
+  echo ""
+  echo "🏷️  GitHub 레이블 생성 중..."
+  for LABEL_INFO in "v01:0075ca" "bug:d73a4a" "feat:a2eeef"; do
+    LABEL_NAME="${LABEL_INFO%%:*}"
+    LABEL_COLOR="${LABEL_INFO##*:}"
+    RESULT=$(gh api "repos/${REPO}/labels" -f name="$LABEL_NAME" -f color="$LABEL_COLOR" 2>&1)
+    if echo "$RESULT" | grep -q '"name"'; then
+      echo "  ✅ $LABEL_NAME"
+    elif echo "$RESULT" | grep -q 'already_exists\|Validation Failed'; then
+      echo "  ⚠️  $LABEL_NAME (이미 존재)"
+    else
+      echo "  ❌ $LABEL_NAME 실패"
+    fi
+  done
+fi
+
+echo ""
+echo "✅ 생성 완료: $AGENTS_DIR/"
+ls "$AGENTS_DIR/"
+echo ""
+echo "다음 단계:"
+echo "  1. CLAUDE.md 에서 [채우기] 항목을 프로젝트에 맞게 채우세요."
+echo "  2. 각 에이전트 파일의 '프로젝트 특화 지침' 섹션에 프로젝트별 내용을 추가하세요."
+echo "     - test-engineer.md: 테스트 명령어, mock 패턴, 우선 테스트 대상"
+echo "     - pr-reviewer.md: 프로젝트 컨벤션, 금지 패턴"
+echo "     - engineer.md: SDK 래퍼 패턴, 샌드박스 분기, 의존성 규칙"
+echo "     - validator.md: 금지 패턴, impl 경로 패턴"
+echo "     - designer.md: 브랜드/플랫폼 제약, PRD UI 키워드"
+echo "     - design-critic.md: Playwright localhost URL"
+echo "  3. product-planner 에이전트와 대화해서 PRD/TRD를 작성하세요."

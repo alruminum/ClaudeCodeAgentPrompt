@@ -1,0 +1,17 @@
+projects/
+plugins/
+file-history/
+paste-cache/
+plans/
+history.jsonl
+backups/
+session-env/
+sessions/
+shell-snapshots/
+cache/
+telemetry/
+downloads/
+ide/
+stats-cache.json
+mcp-needs-auth-cache.json
+*.jsonl
