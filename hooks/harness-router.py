@@ -53,6 +53,17 @@ def classify_intent_llm(prompt, prefix):
     return None
 
 def main():
+    try:
+        _main_inner()
+    except Exception as e:
+        # 어떤 예외든 graceful exit — hook error 방지
+        try:
+            log("?", f"UNCAUGHT: {e}")
+        except Exception:
+            pass
+        sys.exit(0)
+
+def _main_inner():
     raw_prefix = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if raw_prefix == "auto":
         config_path = os.path.join(os.getcwd(), ".claude", "harness.config.json")
@@ -77,6 +88,10 @@ def main():
         d.get("tool_input", {}).get("prompt", "")
         or d.get("prompt", "")
     )
+
+    # 빈 prompt → 즉시 통과
+    if not prompt or not prompt.strip():
+        sys.exit(0)
 
     # mtime 기반 스태일 designer_ran 감지 (any_active 계산 전)
     dr_path = f"/tmp/{prefix}_designer_ran"
