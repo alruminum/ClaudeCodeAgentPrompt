@@ -83,6 +83,9 @@ hooks = {
                 # src/** 소스 차단 (engineer 소유), src/__tests__/ 제외, /tmp/{p}_harness_active 시 통과
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); fp=d.get('tool_input',{{}}).get('file_path',''); is_src=bool(re.search(r'(^|/)src/',fp)); is_test=bool(re.search(r'(^|/)src/__tests__/',fp)); harness_active=os.path.exists('/tmp/{p}_harness_active'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ src/** 는 engineer 에이전트 소유. 직접 수정 금지 → architect Mode B → validator Mode A PASS → engineer 순서로 진행.'}}}})) if is_src and not is_test and not harness_active else None\" 2>/dev/null || true"},
+                # 에이전트별 허용 경로 매트릭스 (agent-boundary.py)
+                {"type": "command", "timeout": 5,
+                    "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
             ]
         },
         # ── Write: Edit와 동일 보호 ───────────────────────────────────────
@@ -93,6 +96,9 @@ hooks = {
                     "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); fp=d.get('tool_input',{{}}).get('file_path',''); pattern=r'(docs/(architecture|game-logic|db-schema|sdk|ui-spec|domain-logic|reference)[^/]*[.]md|(^|/)prd[.]md|(^|/)trd[.]md)'; print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':f'❌ {{fp}} 는 에이전트 소유 파일. 직접 수정 금지 → architect/designer/product-planner 에이전트 호출.'}}}})) if re.search(pattern, fp) and not os.path.exists('/tmp/{p}_architect_active') else None\" 2>/dev/null || true"},
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); fp=d.get('tool_input',{{}}).get('file_path',''); is_src=bool(re.search(r'(^|/)src/',fp)); is_test=bool(re.search(r'(^|/)src/__tests__/',fp)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ src/** 는 engineer 에이전트 소유. 직접 수정 금지 → architect Mode B → validator Mode A PASS → engineer 순서로 진행.'}}}})) if is_src and not is_test else None\" 2>/dev/null || true"},
+                # 에이전트별 허용 경로 매트릭스 (agent-boundary.py)
+                {"type": "command", "timeout": 5,
+                    "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
             ]
         },
         # ── Bash: git commit 전 LGTM 확인 ────────────────────────────────
@@ -133,6 +139,9 @@ hooks = {
                 # 8. 에이전트 호출 로그 (caller → subagent_type | prompt 앞 80자)
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os; from datetime import datetime; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type','?'); pr=t.get('prompt','')[:80].replace('\\\\n',' '); caller='harness-executor' if os.path.exists('/tmp/{p}_harness_active') else 'main-claude'; ts=datetime.now().strftime('%H:%M:%S'); line=f'[{{ts}}] {{caller}} → {{a}} | {{pr}}\\\\n'; open('/tmp/{p}-agent-calls.log','a').write(line)\" 2>/dev/null || true"},
+                # 9. 에이전트 활성 플래그 설정 (agent-boundary.py 연동)
+                {"type": "command", "timeout": 5,
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type',''); open(f'/tmp/{p}_{{a}}_active','w').close() if a else None\" 2>/dev/null || true"},
             ]
         }
     ],
@@ -170,9 +179,9 @@ hooks = {
                 # 에이전트 경유 시 하위 호환: harness_active 플래그 삭제
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove('/tmp/{p}_harness_active') for _ in [1] if os.path.exists('/tmp/{p}_harness_active')] if a in ['harness-executor'] else None\" 2>/dev/null || true"},
-                # architect 완료 → architect_active 플래그 삭제
+                # 에이전트 완료 → {agent}_active 플래그 삭제 (agent-boundary.py 연동)
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove('/tmp/{p}_architect_active') for _ in [1] if os.path.exists('/tmp/{p}_architect_active')] if a=='architect' else None\" 2>/dev/null || true"},
+                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type',''); f='/tmp/{p}_'+a+'_active'; os.remove(f) if a and os.path.exists(f) else None\" 2>/dev/null || true"},
                 # architect 완료 후 문서 신선도 경고 (trd.md / docs/test-plan.md / docs/{doc_name}.md)
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os,time,re; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); a=inp.get('subagent_type'); prompt=inp.get('prompt',''); base=os.getcwd(); mode_ac=bool(re.search(r'Mode [AC]',prompt,re.IGNORECASE)); mode_b=bool(re.search(r'Mode B',prompt,re.IGNORECASE)); mode_c=bool(re.search(r'Mode C',prompt,re.IGNORECASE)); warns=[]; trd=os.path.join(base,'trd.md'); tp=os.path.join(base,'docs','test-plan.md'); dd=os.path.join(base,'docs','{doc_name}.md'); trd_age=int(time.time()-os.path.getmtime(trd)) if os.path.exists(trd) else None; tp_age=int(time.time()-os.path.getmtime(tp)) if os.path.exists(tp) else None; dd_age=int(time.time()-os.path.getmtime(dd)) if os.path.exists(dd) else None; warns.append('trd.md 미업데이트('+str(trd_age)+'초 전)') if mode_ac and trd_age and trd_age>120 else None; warns.append('docs/test-plan.md 미업데이트('+str(tp_age)+'초 전)') if mode_b and tp_age and tp_age>120 else None; warns.append('docs/{doc_name}.md 미업데이트('+str(dd_age)+'초 전) — 설계 문서 동기화 필요') if mode_c and dd_age and dd_age>120 else None; print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PostToolUse','additionalContext':'⚠️ [HARNESS] architect 완료 후 문서 미업데이트: '+', '.join(warns)+'. 현행화 규칙 확인.'}}}})) if a=='architect' and warns else None\" 2>/dev/null || true"},

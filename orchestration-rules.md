@@ -169,6 +169,17 @@ src/** 변경 있음?
   이후 버그 발견 시 → 유저가 루프 D 트리거
 ```
 
+### 루프 C — 실패 유형별 수정 전략
+
+FAIL 시 모든 유형을 동일하게 처리하지 않는다. `fail_type`에 따라 engineer에게 다른 컨텍스트와 지시를 전달한다.
+
+| fail_type | 컨텍스트 (engineer에게 전달) | 지시 |
+|---|---|---|
+| `test_fail` | vitest 출력 전체 + 실패 테스트 파일 소스 | "테스트 실패. 구현 코드를 수정. 테스트 자체 수정 금지." |
+| `validator_fail` | validator 리포트 + impl 파일 | "스펙 불일치. impl의 해당 항목 재확인 후 누락 구현." |
+| `pr_fail` | MUST FIX 항목 목록 | "코드 품질 이슈. MUST FIX 항목만 수정. 기능 변경 금지." |
+| `security_fail` | 취약점 리포트 (HIGH/MEDIUM 행) | "보안 취약점. 수정 방안 컬럼대로 적용." |
+
 ---
 
 ## 루프 D — 버그픽스 루프
@@ -305,6 +316,12 @@ DESIGN_REVIEW_ESCALATE        │
 3. 스크립트를 먼저 수정하고 이 파일을 나중에 수정하는 것은 **절대 금지**.
 위반 시 PreToolUse 훅이 차단한다 (`orch_rules_first` 게이트).
 
+**7. 실패 패턴 자동 프로모션**
+`harness-memory.md`에 같은 파일+유형 조합의 실패가 3회 이상 누적되면:
+1. 해당 패턴을 `## Auto-Promoted Rules` 섹션으로 이동
+2. 이후 CONSTRAINTS 로드 시 Auto-Promoted Rules를 최우선 포함
+3. 프로모션된 규칙은 수동 삭제 전까지 영구 적용
+
 ---
 
 ## 에이전트 역할 경계
@@ -321,6 +338,20 @@ DESIGN_REVIEW_ESCALATE        │
 | test-engineer | 테스트 코드 작성 | 소스 수정 |
 | pr-reviewer | 코드 품질 리뷰 | 파일 수정 |
 | security-reviewer | OWASP+WebView 보안 감사 | 파일 수정 |
+
+### 에이전트별 Write/Edit 허용 경로 매트릭스 (물리적 강제)
+
+PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차단한다.
+`{agent}_active` 플래그가 활성화된 상태에서 허용 경로 외 파일을 Write/Edit하면 deny.
+
+| 에이전트 | 허용 경로 | 비고 |
+|----------|-----------|------|
+| engineer | `src/**` | 테스트 포함 |
+| architect | `docs/**`, `backlog.md` | impl 파일 포함 |
+| designer | `design-preview-*.html`, `docs/ui-spec*` | architecture 계열 금지 |
+| test-engineer | `src/__tests__/**` | src 본체 수정 금지 |
+| product-planner | `prd.md`, `trd.md` | 설계 문서 금지 |
+| validator, design-critic, pr-reviewer, qa, security-reviewer | *(없음 — ReadOnly)* | 모든 Write/Edit deny |
 
 ---
 
