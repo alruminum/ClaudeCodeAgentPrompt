@@ -45,7 +45,17 @@ MEM_LOCAL=".claude/harness-memory.md"
 [[ ! -f "$MEM_LOCAL" ]] && mkdir -p .claude && printf "# Harness Memory\n\n## Known Failure Patterns\n\n## Success Patterns\n" > "$MEM_LOCAL"
 
 CONSTRAINTS=""
-[[ -f "$MEM_GLOBAL" ]] && CONSTRAINTS=$(tail -20 "$MEM_GLOBAL")
+# Auto-Promoted Rules 우선 로드 (자동 프로모션된 규칙이 최우선)
+for mf in "$MEM_GLOBAL" "$MEM_LOCAL"; do
+  if [[ -f "$mf" ]]; then
+    promoted=$(sed -n '/^## Auto-Promoted Rules/,/^##/p' "$mf" 2>/dev/null | grep "^- PROMOTED:" | head -10)
+    [[ -n "$promoted" ]] && CONSTRAINTS="${CONSTRAINTS}
+[AUTO-PROMOTED RULES — 반복 실패 패턴, 반드시 회피]:
+${promoted}"
+  fi
+done
+[[ -f "$MEM_GLOBAL" ]] && CONSTRAINTS="${CONSTRAINTS}
+$(tail -20 "$MEM_GLOBAL")"
 [[ -f "$MEM_LOCAL"  ]] && CONSTRAINTS="${CONSTRAINTS}
 $(tail -20 "$MEM_LOCAL")"
 # CLAUDE.md: 관련 섹션만 추출 (전체 cat 대신 토큰 절약)
@@ -60,9 +70,27 @@ append_failure() {
   local type="$1" err="$2"
   local date_str; date_str=$(date +%Y-%m-%d)
   local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
+  local err_1line; err_1line=$(echo "$err" | head -1 | cut -c1-100)
   printf -- "- %s | %s | %s | %s\n" \
-    "$date_str" "$impl_name" "$type" "$(echo "$err" | head -1 | cut -c1-100)" \
+    "$date_str" "$impl_name" "$type" "$err_1line" \
     >> "$MEM_LOCAL"
+
+  # ── B2: 실패 패턴 자동 프로모션 (같은 impl+type 3회 → Auto-Promoted Rules) ──
+  local pattern_key="${impl_name}|${type}"
+  local count; count=$(grep -c "$pattern_key" "$MEM_LOCAL" 2>/dev/null || echo 0)
+  if [[ $count -ge 3 ]]; then
+    # Auto-Promoted Rules 섹션이 없으면 생성
+    if ! grep -q "## Auto-Promoted Rules" "$MEM_LOCAL" 2>/dev/null; then
+      printf "\n## Auto-Promoted Rules\n\n" >> "$MEM_LOCAL"
+    fi
+    # 중복 프로모션 방지: 이미 프로모션된 패턴인지 확인
+    if ! grep -q "PROMOTED: $pattern_key" "$MEM_LOCAL" 2>/dev/null; then
+      printf -- "- PROMOTED: %s | %s회 반복 | %s | MUST NOT: %s\n" \
+        "$pattern_key" "$count" "$date_str" "$err_1line" \
+        >> "$MEM_LOCAL"
+      echo "[HARNESS] ⚠️ 실패 패턴 자동 프로모션: $pattern_key ($count회)"
+    fi
+  fi
 }
 
 append_success() {
@@ -150,6 +178,7 @@ if [[ "$MODE" == "impl2" ]]; then
   attempt=0
   MAX=3
   error_trace=""
+  fail_type=""
 
   while [[ $attempt -lt $MAX ]]; do
 
@@ -158,8 +187,33 @@ if [[ "$MODE" == "impl2" ]]; then
     if [[ $attempt -eq 0 ]]; then
       task="impl 파일의 구현 명세 전체 이행"
     else
+      # ── C1: 실패 유형별 수정 전략 ────────────────────────────────
       error_1line=$(echo "$error_trace" | head -1 | cut -c1-200)
-      task="이전 시도(${attempt}회) 에러: ${error_1line}. 해당 부분만 수정."
+      case "$fail_type" in
+        test_fail)
+          task="[테스트 실패] 시도 ${attempt}회. 테스트 출력:
+${error_1line}
+구현 코드를 수정하라. 테스트 코드 자체는 수정 금지."
+          ;;
+        validator_fail)
+          task="[스펙 불일치] 시도 ${attempt}회. validator 리포트:
+${error_1line}
+impl 파일의 해당 항목을 다시 확인하고 누락된 부분을 구현하라."
+          ;;
+        pr_fail)
+          task="[코드 품질] 시도 ${attempt}회. MUST FIX:
+${error_1line}
+위 MUST FIX 항목만 수정하라. 기능 변경 금지."
+          ;;
+        security_fail)
+          task="[보안 취약점] 시도 ${attempt}회. 취약점:
+${error_1line}
+위 취약점의 수정 방안대로 적용하라."
+          ;;
+        *)
+          task="이전 시도(${attempt}회) 에러: ${error_1line}. 해당 부분만 수정."
+          ;;
+      esac
     fi
 
     # ── 워커 1: engineer ──────────────────────────────────────────
@@ -195,6 +249,7 @@ $changed_files
     if [[ $test_exit -ne 0 ]]; then
       echo "[HARNESS] TESTS_FAIL"
       error_trace=$(cat "/tmp/${PREFIX}_test_out.txt")
+      fail_type="test_fail"
       append_failure "test_fail" "$error_trace"
       attempt=$((attempt+1))
       continue
@@ -211,6 +266,7 @@ $changed_files
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 결과: $val_result"
     if [[ "$val_result" == "FAIL" ]]; then
       error_trace=$(echo "$val_out" | grep -A5 "FAIL" | head -6)
+      fail_type="validator_fail"
       append_failure "validator_fail" "$error_trace"
       attempt=$((attempt+1))
       continue
@@ -228,6 +284,7 @@ $diff_out" > "/tmp/${PREFIX}_pr_out.txt" 2>&1 || true
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
     if [[ "$pr_result" == "CHANGES_REQUESTED" ]]; then
       error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10)
+      fail_type="pr_fail"
       append_failure "pr_fail" "$error_trace"
       attempt=$((attempt+1))
       continue
@@ -250,6 +307,7 @@ $(git diff HEAD 2>&1 | head -500)" > "/tmp/${PREFIX}_sec_out.txt" 2>&1 || true
     if [[ "$sec_result" == "VULNERABILITIES_FOUND" ]]; then
       # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 여기 도달 안 함
       error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10)
+      fail_type="security_fail"
       append_failure "security_fail" "$error_trace"
       attempt=$((attempt+1))
       continue
