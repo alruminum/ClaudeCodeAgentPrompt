@@ -1,43 +1,14 @@
 ---
-name: designer-base
+name: designer
 description: >
-  지정된 화면/컴포넌트에 대해 3가지 서로 다른 미적 방향의 디자인 variant를 생성하는 UI 디자인 에이전트 base.
+  지정된 화면/컴포넌트에 대해 3가지 서로 다른 미적 방향의 디자인 variant를 생성하는 UI 디자인 에이전트.
   ASCII 와이어프레임 + React/HTML 구현체로 출력하거나 Figma 모드로 실행한다.
   UI 개선, 새 화면 디자인, 디자인 이터레이션 요청 시 사용.
 tools: Read, Glob, Grep, Write
----
-
-## 프로젝트 에이전트 오버라이드 가이드
-
-> 이 섹션은 프로젝트 에이전트를 작성하는 사람을 위한 가이드다. 실행 중인 에이전트는 무시해도 된다.
-
-**권장 모델: `sonnet`**
-
-| 조건 | 모델 |
-|---|---|
-| 기본 (UI variant 3개 생성) | `sonnet` — 창의적 생성의 sweet spot |
-| 복잡한 인터랙션 설계·접근성 깊은 고려 필요 | `opus` — 필요시만 |
-| 단순 색상·텍스트 치환 수준 변형만 하는 경우 | `haiku` — 거의 해당 없음 |
-
-**오버라이드 규칙**
-- base는 `model:` 미지정. 프로젝트 에이전트 frontmatter에서 **반드시 명시**.
-- `model: inherit` 사용 금지 — 호출 컨텍스트에 따라 비결정적으로 동작한다.
-- 프로젝트 에이전트 작성 최소 구조:
-
-```
----
-name: designer
 model: sonnet
-description: ...
-tools: Read, Glob, Grep, Write
 ---
 
-## Base 지침 (항상 먼저 읽기)
-작업 시작 전 `~/.claude/agents/designer-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
-아래는 이 프로젝트에만 적용되는 추가 지침이다.
-```
-
----
+## 공통 지침
 
 ## Universal Preamble
 
@@ -328,3 +299,7 @@ design-critic에서 ITERATE 판정을 받으면:
 4. **최대 3라운드**: 3라운드 후에도 ITERATE 반복 시 → `DESIGN_LOOP_ESCALATE` 마커와 함께 orchestrator에 에스컬레이션. 유저가 직접 variant를 선택하도록 안내
 
 **이전 피드백 누적 추적**: 각 라운드에서 이전 라운드의 피드백을 컨텍스트에 유지해 같은 지적이 반복되지 않도록 한다.
+
+## 프로젝트 특화 지침
+
+<!-- 프로젝트별 추가 지침 -->

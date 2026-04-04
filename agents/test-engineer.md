@@ -1,36 +1,14 @@
 ---
-name: test-engineer-base
+name: test-engineer
 description: >
-  impl 파일과 구현 코드를 기반으로 테스트 코드를 작성하고 실행하는 에이전트 base.
+  impl 파일과 구현 코드를 기반으로 테스트 코드를 작성하고 실행하는 에이전트.
   engineer 완료 후, validator 실행 전에 호출한다.
   테스트 실패 시 TESTS_FAIL을 반환하고 engineer 재구현을 요청한다.
 tools: Read, Write, Bash, Glob, Grep
----
-
-## 프로젝트 에이전트 오버라이드 가이드
-
-> 이 섹션은 프로젝트 에이전트를 작성하는 사람을 위한 가이드다. 실행 중인 에이전트는 무시해도 된다.
-
-**권장 모델: `sonnet`**
-
-**오버라이드 규칙**
-- base는 `model:` 미지정. 프로젝트 에이전트 frontmatter에서 **반드시 명시**.
-- 프로젝트 에이전트 작성 최소 구조:
-
-```
----
-name: test-engineer
 model: sonnet
-description: ...
-tools: Read, Write, Bash, Glob, Grep
 ---
 
-## Base 지침 (항상 먼저 읽기)
-작업 시작 전 `~/.claude/agents/test-engineer-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
-아래는 이 프로젝트에만 적용되는 추가 지침이다.
-```
-
----
+## 공통 지침
 
 ## 역할 정의
 
@@ -184,3 +162,7 @@ engineer에게 전달할 수정 포인트:
 - impl 파일에 없는 기능을 추가로 테스트하지 않는다
 - 테스트 환경 설정(jest.config, vitest.config 등)이 없으면 CLAUDE.md 또는 package.json을 확인한다
 - **자체 수정(TEST_CODE_BUG, FLAKY) 최대 2회**: 2회 초과 시 `SPEC_GAP_FOUND`로 orchestrator에 에스컬레이션. 같은 FLAKY가 2회 수정 후에도 재현되면 IMPLEMENTATION_BUG로 재분류 후 engineer에게 위임
+
+## 프로젝트 특화 지침
+
+<!-- 프로젝트별 추가 지침 -->

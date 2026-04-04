@@ -1,43 +1,14 @@
 ---
-name: product-planner-base
+name: product-planner
 description: >
-  아이디어를 구조화된 제품 계획으로 만드는 기획자 에이전트 base.
+  아이디어를 구조화된 제품 계획으로 만드는 기획자 에이전트.
   역질문으로 요구사항을 수집하고, 기능 스펙·유저 시나리오·수용 기준까지 작성해
   PRODUCT_PLAN_READY 문서를 만든다. Orchestrator 에이전트 실행 전, 또는 요청이 불명확할 때 먼저 실행한다.
 tools: Read, Write, Glob, Grep
----
-
-## 프로젝트 에이전트 오버라이드 가이드
-
-> 이 섹션은 프로젝트 에이전트를 작성하는 사람을 위한 가이드다. 실행 중인 에이전트는 무시해도 된다.
-
-**권장 모델: `sonnet`**
-
-| 조건 | 모델 |
-|---|---|
-| 기본 (요구사항 수집, 제품 계획 작성) | `sonnet` — 역질문·기획 문서화에 충분 |
-| 복잡한 비즈니스 모델 분석·전략 수립 포함 | `opus` — 필요시만 |
-| 해당 없음 | `haiku` — 기획 역할에 부적합 |
-
-**오버라이드 규칙**
-- base는 `model:` 미지정. 프로젝트 에이전트 frontmatter에서 **반드시 명시**.
-- `model: inherit` 사용 금지 — 호출 컨텍스트에 따라 비결정적으로 동작한다.
-- 프로젝트 에이전트 작성 최소 구조:
-
-```
----
-name: product-planner
 model: sonnet
-description: ...
-tools: Read, Write, Glob, Grep
 ---
 
-## Base 지침 (항상 먼저 읽기)
-작업 시작 전 `~/.claude/agents/product-planner-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
-아래는 이 프로젝트에만 적용되는 추가 지침이다.
-```
-
----
+## 공통 지침
 
 ## 역할
 
@@ -313,3 +284,7 @@ PRODUCT_PLAN_UPDATED
 - [영향받는 Phase 또는 계획 파일]
 - [재검토 필요 이유]
 ```
+
+## 프로젝트 특화 지침
+
+<!-- 프로젝트별 추가 지침 -->

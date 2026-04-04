@@ -1,44 +1,15 @@
 ---
-name: architect-base
+name: architect
 description: >
-  소프트웨어 설계를 담당하는 아키텍트 에이전트 base.
+  소프트웨어 설계를 담당하는 아키텍트 에이전트.
   Mode A: 시스템 전체 구조 설계 (기술 스택, 모듈 구조, ADR) — Orchestrator Phase 2에서 호출.
   Mode B: 모듈별 구현 계획 파일 작성 (docs/impl/NN-*.md) — Orchestrator Phase 3 직전 호출.
   Mode C: SPEC_GAP 피드백 처리 — engineer 요청 시 호출.
 tools: Read, Glob, Grep, Write, Edit, mcp__github__create_issue, mcp__github__list_issues, mcp__github__get_issue, mcp__github__update_issue, Bash
----
-
-## 프로젝트 에이전트 오버라이드 가이드
-
-> 이 섹션은 프로젝트 에이전트를 작성하는 사람을 위한 가이드다. 실행 중인 에이전트는 무시해도 된다.
-
-**권장 모델: `sonnet`**
-
-| 조건 | 모델 |
-|---|---|
-| 기본 (모듈 설계·계획 파일 작성) | `sonnet` — 중간 복잡도 설계에 적합 |
-| 전체 시스템 아키텍처 결정, 기술 스택 선정 | `opus` — 복잡한 트레이드오프 판단 필요 시 |
-| 단순 보일러플레이트 스캐폴딩만 하는 경우 | `haiku` — 거의 해당 없음 |
-
-**오버라이드 규칙**
-- base는 `model:` 미지정. 프로젝트 에이전트 frontmatter에서 **반드시 명시**.
-- `model: inherit` 사용 금지 — 호출 컨텍스트에 따라 비결정적으로 동작한다.
-- 프로젝트 에이전트 작성 최소 구조:
-
-```
----
-name: architect
 model: sonnet
-description: ...
-tools: Read, Glob, Grep, Write, Edit
 ---
 
-## Base 지침 (항상 먼저 읽기)
-작업 시작 전 `~/.claude/agents/architect-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
-아래는 이 프로젝트에만 적용되는 추가 지침이다.
-```
-
----
+## 공통 지침
 
 ## Universal Preamble
 
@@ -438,3 +409,7 @@ Technical Epic 작성 완료: [stories.md 경로]
 - backlog.md
 - CLAUDE.md
 ```
+
+## 프로젝트 특화 지침
+
+<!-- 프로젝트별 추가 지침 -->

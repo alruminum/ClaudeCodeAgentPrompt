@@ -28,7 +28,7 @@ Figma 모드 선택 시 MCP 연결 확인:
 
 ### Step 2 — designer 에이전트 실행
 
-`~/.claude/agents/designer-base.md` 기반 designer 에이전트(또는 프로젝트의 `.claude/agents/designer.md`)를 실행한다.
+`~/.claude/agents/designer.md` 기반 designer 에이전트(또는 프로젝트의 `.claude/agents/designer.md`)를 실행한다.
 
 에이전트에 전달할 컨텍스트:
 - 대상 화면/컴포넌트: `$ARGUMENTS`에서 추출
@@ -65,7 +65,7 @@ impl 에이전트로 바로 적용할까요?
 
 ### Step 5 — impl 에이전트 실행 (승인 시)
 
-`~/.claude/agents/engineer-base.md` 기반 engineer/impl 에이전트를 실행한다.
+`~/.claude/agents/engineer.md` 기반 engineer/impl 에이전트를 실행한다.
 
 전달 내용:
 - `DESIGN_HANDOFF` 패키지 전체

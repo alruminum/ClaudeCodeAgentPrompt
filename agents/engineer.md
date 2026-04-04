@@ -1,44 +1,14 @@
 ---
-name: engineer-base
+name: engineer
 description: >
-  코드 구현을 담당하는 소프트웨어 엔지니어 에이전트 base.
+  코드 구현을 담당하는 소프트웨어 엔지니어 에이전트.
   구현 전 스펙 갭 체크, 구현 후 자가 검증, 커밋 단위 규칙 포함.
-  프로젝트 에이전트는 이 파일을 Read한 뒤 프로젝트 특화 지침을 추가한다.
   구현 작업, 코드 작성, 버그 수정, 리팩터링 요청 시 사용.
 tools: Read, Write, Edit, Bash, Glob, Grep
----
-
-## 프로젝트 에이전트 오버라이드 가이드
-
-> 이 섹션은 프로젝트 에이전트를 작성하는 사람을 위한 가이드다. 실행 중인 에이전트는 무시해도 된다.
-
-**권장 모델: `sonnet`**
-
-| 조건 | 모델 |
-|---|---|
-| 기본 (코드 구현) | `sonnet` — 속도·품질·비용 균형, 에이전트 sweet spot |
-| 구현 규모가 매우 크고 복잡한 아키텍처 결정 포함 | `opus` — 필요시만 |
-| 단순 포맷 변환·보일러플레이트 생성만 하는 경우 | `haiku` — 거의 해당 없음 |
-
-**오버라이드 규칙**
-- base는 `model:` 미지정. 프로젝트 에이전트 frontmatter에서 **반드시 명시**.
-- `model: inherit` 사용 금지 — 호출 컨텍스트에 따라 비결정적으로 동작한다.
-- 프로젝트 에이전트 작성 최소 구조:
-
-```
----
-name: engineer
 model: sonnet
-description: ...
-tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
-## Base 지침 (항상 먼저 읽기)
-작업 시작 전 `~/.claude/agents/engineer-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
-아래는 이 프로젝트에만 적용되는 추가 지침이다.
-```
-
----
+## 공통 지침
 
 ## Universal Preamble
 
@@ -168,3 +138,7 @@ SPEC_GAP_FOUND
 
 다음 단계: validator 에이전트 호출 권장
 ```
+
+## 프로젝트 특화 지침
+
+<!-- 프로젝트별 추가 지침 -->

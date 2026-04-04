@@ -1,43 +1,14 @@
 ---
-name: design-critic-base
+name: design-critic
 description: >
-  designer 에이전트가 생성한 variant들을 4개 기준으로 점수화하고 PICK/ITERATE/ESCALATE를 판정하는 디자인 심사 에이전트 base.
+  designer 에이전트가 생성한 variant들을 4개 기준으로 점수화하고 PICK/ITERATE/ESCALATE를 판정하는 디자인 심사 에이전트.
   파일을 수정하지 않는다.
   designer 에이전트 완료 직후 호출.
 tools: Read, Glob, Grep
----
-
-## 프로젝트 에이전트 오버라이드 가이드
-
-> 이 섹션은 프로젝트 에이전트를 작성하는 사람을 위한 가이드다. 실행 중인 에이전트는 무시해도 된다.
-
-**권장 모델: `opus`**
-
-| 조건 | 모델 |
-|---|---|
-| 기본 (PICK/ITERATE/ESCALATE 판정) | `opus` — 최종 판단의 일관성·신뢰도가 중요 |
-| 비용 절감이 우선이고 판정 품질 타협 가능 | `sonnet` — 트레이드오프 있음 |
-| 해당 없음 | `haiku` — 판단 역할에 부적합 |
-
-**오버라이드 규칙**
-- base는 `model:` 미지정. 프로젝트 에이전트 frontmatter에서 **반드시 명시**.
-- `model: inherit` 사용 금지 — 호출 컨텍스트에 따라 비결정적으로 동작한다.
-- 프로젝트 에이전트 작성 최소 구조:
-
-```
----
-name: design-critic
 model: opus
-description: ...
-tools: Read, Glob, Grep
 ---
 
-## Base 지침 (항상 먼저 읽기)
-작업 시작 전 `~/.claude/agents/design-critic-base.md`를 Read 툴로 읽고 그 지침을 모두 따른다.
-아래는 이 프로젝트에만 적용되는 추가 지침이다.
-```
-
----
+## 공통 지침
 
 ## UX 개편 심사 모드 (5개 → 3개 선별)
 
@@ -212,3 +183,7 @@ ESCALATE를 2회 연속 반환 시, 3번째 심사는 "가장 낮은 리스크" 
 ### ESCALATE 이유 (ESCALATE 시)
 [유저가 직접 선택해야 하는 이유]
 ```
+
+## 프로젝트 특화 지침
+
+<!-- 프로젝트별 추가 지침 -->
