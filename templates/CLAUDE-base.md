@@ -212,20 +212,20 @@ Closes/Related to #NNN
 ## 에이전트 호출 규칙
 
 - **서브에이전트 base 우회 금지**: 에이전트 호출 시 base 워크플로우를 우회하는 방식 금지
-- **architect 호출 시 반드시 Mode 명시**: 프롬프트 첫 줄 형식 필수 → `Mode X — [용도 한 줄 설명]`
+- **architect 호출 시 반드시 Mode 명시**: 프롬프트 첫 줄 형식 필수 → `[Mode명] — [용도 한 줄 설명]`
 - **서브에이전트 포어그라운드 호출**: 백그라운드 에이전트 금지
 
 ### architect Mode 상세
 
 | Mode | 용도 | 산출물 |
 |---|---|---|
-| **Mode A** | 시스템 전체 구조 설계 | `docs/architecture.md` 등 설계 문서 |
-| **Mode B** | 모듈별 구현 계획 파일 작성 | `docs/impl/NN-*.md` ← 기본값 |
-| **Mode C** | SPEC_GAP 피드백 처리 | impl 파일 수정 |
-| **Mode D** | 큰 에픽 → stories/태스크 분해 | stories.md 업데이트 |
-| **Mode E** | 기술 에픽 설계 (성능·보안·리팩) | `docs/` 설계 문서 |
+| **System Design(Mode A)** | 시스템 전체 구조 설계 | `docs/architecture.md` 등 설계 문서 |
+| **Module Plan(Mode B)** | 모듈별 구현 계획 파일 작성 | `docs/impl/NN-*.md` ← 기본값 |
+| **SPEC_GAP(Mode C)** | SPEC_GAP 피드백 처리 | impl 파일 수정 |
+| **Task Decompose(Mode D)** | Epic stories → 기술 태스크 분해 + impl batch 작성 | stories 업데이트 + impl 파일들 |
+| **Technical Epic(Mode E)** | 기술 에픽 설계 (성능·보안·리팩) | `docs/` 설계 문서 |
 
-> Mode를 명시하지 않으면 architect가 거부함 (PreToolUse 훅). **구현 전 계획이면 Mode B가 기본.**
+> Mode를 명시하지 않으면 architect가 거부함 (PreToolUse 훅). **구현 전 계획이면 Module Plan(Mode B)가 기본.**
 > **버그픽스 시**: 프롬프트 첫 줄에 `버그픽스 —` 명시 필수 (architect가 Epic/Story 이슈 생성 스킵)
 
 ### designer 루프 트리거 기준
@@ -239,7 +239,7 @@ Closes/Related to #NNN
 | 애니메이션·트랜지션 추가 | ✅ 필요 |
 | 버그 픽스 (화면 변화 없음) | ❌ 불필요 |
 | 로직 리팩토링 (UI 변화 없음) | ❌ 불필요 |
-| 텍스트/문구 변경 | ❌ 불필요 → architect Mode B 직행 |
+| 텍스트/문구 변경 | ❌ 불필요 → architect Module Plan(Mode B) 직행 |
 
 ### 문서 소유권
 

@@ -2,9 +2,11 @@
 name: architect
 description: >
   소프트웨어 설계를 담당하는 아키텍트 에이전트.
-  Mode A: 시스템 전체 구조 설계 (기술 스택, 모듈 구조, ADR) — Orchestrator Phase 2에서 호출.
-  Mode B: 모듈별 구현 계획 파일 작성 (docs/impl/NN-*.md) — Orchestrator Phase 3 직전 호출.
-  Mode C: SPEC_GAP 피드백 처리 — engineer 요청 시 호출.
+  System Design(Mode A): 시스템 전체 구조 설계 — 새 프로젝트/큰 구조 변경 시.
+  Module Plan(Mode B): 모듈별 구현 계획 파일 작성 — 단일 모듈 impl 1개.
+  SPEC_GAP(Mode C): SPEC_GAP 피드백 처리 — engineer 요청 시.
+  Task Decompose(Mode D): Epic stories → 기술 태스크 분해 + impl batch 작성.
+  Technical Epic(Mode E): 기술부채/인프라 에픽 설계.
 tools: Read, Glob, Grep, Write, Edit, mcp__github__create_issue, mcp__github__list_issues, mcp__github__get_issue, mcp__github__update_issue, Bash
 model: sonnet
 ---
@@ -49,9 +51,11 @@ model: sonnet
 
 | 모드 | 호출 시점 | 입력 | 출력 마커 |
 |---|---|---|---|
-| **Mode A** — System Design | Orchestrator Phase 2 (옵션 선택 직후) | PRODUCT_PLAN_READY + 선택 옵션 | `SYSTEM_DESIGN_READY` |
-| **Mode B** — Module Plan | Orchestrator Phase 3 직전 (모듈별) | SYSTEM_DESIGN_READY + 모듈명 | `READY_FOR_IMPL` |
-| **Mode C** — SPEC_GAP 처리 | engineer의 SPEC_GAP_FOUND 수신 시 | 갭 목록 | 보강된 계획 파일 |
+| **System Design(Mode A)** | 새 프로젝트/큰 구조 변경 — PRODUCT_PLAN_READY 후 | PRODUCT_PLAN_READY + 선택 옵션 | `SYSTEM_DESIGN_READY` |
+| **Module Plan(Mode B)** | 단순 feat 직접 요청 또는 Mode D/E 이후 모듈별 호출 | SYSTEM_DESIGN_READY + 모듈명 | `READY_FOR_IMPL` |
+| **SPEC_GAP(Mode C)** | engineer의 SPEC_GAP_FOUND 수신 시 | 갭 목록 | 보강된 계획 파일 |
+| **Task Decompose(Mode D)** | product-planner Epic+Story 완료 후 — Epic 전체 batch 처리 | Epic stories 목록 | `READY_FOR_IMPL` ×N |
+| **Technical Epic(Mode E)** | 기술부채/인프라 개선 필요 시 | 개선 목표 | Epic+Story 이슈 + impl 파일 |
 
 모드 미지정 시 입력 내용으로 판단한다.
 
@@ -329,14 +333,14 @@ C. 임시 우회 구현 → 기술 부채 명시 후 진행
 ## 권고: [A/B/C 중 하나 + 이유]
 ```
 
-3. orchestrator(또는 메인 Claude)가 product-planner 에스컬레이션 여부 결정
+3. 메인 Claude가 product-planner 에스컬레이션 여부 결정
 4. architect가 직접 PRD 수정하거나 "일단 하겠다"로 진행 금지
 
 ---
 
 ## Mode D — Epic 태스크 분해
 
-orchestrator로부터 "epic-NN 태스크 분해" 요청을 받은 경우.
+메인 Claude 또는 product-planner 완료 후 호출된 경우.
 
 **목표**: product-planner가 스토리까지 작성한 epic 파일을 받아, 각 스토리를 기술 구현 단위로 분해하고 impl 파일을 작성한다.
 
