@@ -25,6 +25,7 @@ model: sonnet
 |---|---|---|---|
 | **Mode A** — Design Validation | Orchestrator Phase 1 (architect Mode A 완료 후) | SYSTEM_DESIGN_READY 문서 | `DESIGN_REVIEW_PASS` / `DESIGN_REVIEW_FAIL` |
 | **Mode B** — Code Validation | Orchestrator Phase 3 (구현 완료 후) | 구현 파일 + 계획 파일 | `PASS` / `FAIL` |
+| **Mode C** — Plan Validation | architect Module Plan 완료 후, 루프 C 진입 전 | impl 계획 파일 | `PLAN_VALIDATION_PASS` / `PLAN_VALIDATION_FAIL` |
 
 모드 미지정 시 입력 내용으로 판단한다.
 
@@ -95,6 +96,22 @@ DESIGN_REVIEW_PASS / DESIGN_REVIEW_FAIL
 
 ### 권고사항 (PASS 시에도 개선 여지 있으면 기술)
 - ...
+```
+
+### Mode A 재검증 & 에스컬레이션
+
+- architect가 DESIGN_REVIEW_FAIL을 받아 재설계 후 다시 Mode A를 호출할 수 있다
+- **재검증에서도 FAIL인 경우** (max 1회 재검): `DESIGN_REVIEW_ESCALATE` 마커로 에스컬레이션
+
+```
+DESIGN_REVIEW_ESCALATE
+
+## 재검 후에도 미해결된 항목
+1. [섹션명] 구체적 문제
+2. ...
+
+요청: orchestrator에게 보고 후 유저 판단 대기
+```
 
 ### Mode A 결과 저장 프로토콜
 
@@ -105,6 +122,72 @@ DESIGN_REVIEW_SAVE_REQUIRED
 확인 방법: orchestrator가 저장 후 "SAVED: docs/validation/design-review.md" 응답
 Mode B 진입 게이트: orchestrator의 SAVED 확인 전까지 Mode B 호출 금지
 ```
+```
+
+---
+
+## Mode C — Plan Validation
+
+**목표**: architect가 작성한 impl 계획 파일이 구현에 착수하기에 충분한지 검증한다. 루프 C 진입 전 공통 게이트.
+
+### 작업 순서
+
+1. impl 계획 파일 읽기 (`docs/milestones/vNN/epics/epic-NN-*/impl/NN-*.md`)
+2. 프로젝트 루트 `CLAUDE.md` 읽기 (기술 스택, 제약 확인)
+3. 관련 설계 문서 읽기 (architecture, domain-logic, db-schema 등)
+4. 의존 모듈 소스 파일 읽기 (인터페이스 실재 여부 확인)
+5. 아래 체크리스트 수행
+
+### Plan Validation 체크리스트
+
+#### A. 구현 충분성 — 하나라도 미충족 시 FAIL
+
+| 항목 | 확인 기준 |
+|---|---|
+| 생성/수정 파일 목록 | 구체적 파일 경로가 명시되어 있는가 |
+| 인터페이스 정의 | TypeScript 타입/Props/함수 시그니처가 명시되어 있는가 |
+| 핵심 로직 | 의사코드 또는 구현 가능한 스니펫이 존재하는가 (빈 섹션이면 FAIL) |
+| 에러 처리 방식 | throw/반환/상태 업데이트 중 어떤 전략인지 명시되어 있는가 |
+| 의존 모듈 실재 | 계획이 참조하는 모듈/함수가 실제 소스에 존재하는가 |
+
+#### B. 정합성 — 하나라도 불일치 시 FAIL
+
+| 항목 | 확인 기준 |
+|---|---|
+| 설계 문서 일치 | 계획이 architecture/domain-logic 문서와 모순되지 않는가 |
+| DB 영향도 | DB 조작이 있으면 영향도 분석이 포함되어 있는가 |
+| 병렬 impl 충돌 | 같은 에픽의 다른 impl이 동일 파일을 수정하는 경우 순서가 명시되어 있는가 |
+
+### 판정 기준
+
+- **PLAN_VALIDATION_PASS**: A/B 모두 통과
+- **PLAN_VALIDATION_FAIL**: A 또는 B에서 하나라도 미충족
+- PARTIAL 판정 금지
+
+### 재검증 & 에스컬레이션
+
+- architect 재보강 후 재검증 **최대 1회**
+- 재검증에서도 FAIL → `PLAN_VALIDATION_ESCALATE` 마커로 orchestrator에 에스컬레이션
+
+### 출력 형식
+
+```
+PLAN_VALIDATION_PASS / PLAN_VALIDATION_FAIL
+
+### A. 구현 충분성
+| 항목 | 결과 | 비고 |
+|---|---|---|
+| 생성/수정 파일 목록 | PASS/FAIL | ... |
+...
+
+### B. 정합성
+| 항목 | 결과 | 비고 |
+|---|---|---|
+...
+
+### FAIL 원인 요약 (FAIL 시만)
+1. [구체적 미충족 항목 + 보강 요청]
+2. ...
 ```
 
 ---

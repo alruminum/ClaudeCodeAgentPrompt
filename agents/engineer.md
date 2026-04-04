@@ -106,6 +106,7 @@ SPEC_GAP_FOUND
 - **validator FAIL 후 재시도 최대 3회**: 3회 초과 시 `IMPLEMENTATION_ESCALATE` 마커와 함께 orchestrator에 에스컬레이션
 - 재시도 시 반드시 이전 FAIL 원인 목록을 상단에 정리하고 시작
 - 같은 방식으로 같은 FAIL이 반복되면 → architect에게 SPEC_GAP 보고 후 중단
+- **SPEC_GAP 리셋 카운터**: SPEC_GAP_FOUND → architect → SPEC_GAP_RESOLVED로 attempt 카운터가 리셋되는 횟수는 **최대 2회**. 2회 초과 리셋 시 `IMPLEMENTATION_ESCALATE`로 에스컬레이션
 
 ---
 
@@ -136,7 +137,7 @@ SPEC_GAP_FOUND
 - 파일 목록 일치: PASS
 - ...
 
-다음 단계: validator 에이전트 호출 권장
+다음 단계: test-engineer → validator 에이전트 순서로 호출 권장
 ```
 
 ## 프로젝트 특화 지침

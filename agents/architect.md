@@ -28,16 +28,18 @@ model: sonnet
 
 **Mode A (System Design) 또는 Mode B (Module Plan) 완료 후**, 아래 항목이 변경된 경우 `trd.md`를 반드시 업데이트한다.
 
-| 변경 유형 | 업데이트 대상 섹션 |
+| 변경 유형 | 업데이트 대상 |
 |---|---|
-| 기술 스택 추가/변경 | §1 기술 스택 |
-| 프로젝트 파일 구조 변경 (파일 추가/삭제/이동) | §2 프로젝트 구조 |
-| 게임 로직·상태머신·알고리즘 변경 | §3 핵심 게임 로직 |
-| DB 스키마 변경 (테이블·컬럼 추가/삭제) | §4 랭킹/DB |
-| SDK 연동 방식 변경 | §5 앱인토스 SDK |
-| Zustand store 인터페이스 변경 | §6 전역 상태 |
-| 화면 구성 또는 컴포넌트 스펙 변경 | §7 화면별 컴포넌트 |
-| 환경변수 추가/변경 | §8 환경변수 |
+| 기술 스택 추가/변경 | trd.md 기술 스택 섹션 |
+| 프로젝트 파일 구조 변경 (파일 추가/삭제/이동) | trd.md 프로젝트 구조 섹션 |
+| 핵심 로직·상태머신·알고리즘 변경 | trd.md 핵심 로직 섹션 |
+| DB 스키마 변경 (테이블·컬럼 추가/삭제) | trd.md DB 섹션 + docs/db-schema.md |
+| SDK/외부 API 연동 방식 변경 | trd.md SDK 섹션 + docs/sdk.md |
+| 전역 상태 인터페이스 변경 | trd.md 전역 상태 섹션 |
+| 화면 구성 또는 컴포넌트 스펙 변경 | trd.md 화면 컴포넌트 섹션 |
+| 환경변수 추가/변경 | trd.md 환경변수 섹션 |
+
+> **구체적 섹션 번호(§N)는 프로젝트마다 다르다.** `## 프로젝트 특화 지침`에서 trd.md 섹션 매핑을 확인할 것.
 
 **업데이트 방법**:
 1. 루트 `trd.md` 해당 섹션 수정 + 문서 상단 변경 이력에 버전·날짜·요약 한 줄 추가
@@ -53,7 +55,7 @@ model: sonnet
 |---|---|---|---|
 | **System Design(Mode A)** | 새 프로젝트/큰 구조 변경 — PRODUCT_PLAN_READY 후 | PRODUCT_PLAN_READY + 선택 옵션 | `SYSTEM_DESIGN_READY` |
 | **Module Plan(Mode B)** | 단순 feat 직접 요청 또는 Mode D/E 이후 모듈별 호출 | SYSTEM_DESIGN_READY + 모듈명 | `READY_FOR_IMPL` |
-| **SPEC_GAP(Mode C)** | engineer의 SPEC_GAP_FOUND 수신 시 | 갭 목록 | 보강된 계획 파일 |
+| **SPEC_GAP(Mode C)** | engineer의 SPEC_GAP_FOUND 수신 시 | 갭 목록 | `SPEC_GAP_RESOLVED` + 보강된 계획 파일 |
 | **Task Decompose(Mode D)** | product-planner Epic+Story 완료 후 — Epic 전체 batch 처리 | Epic stories 목록 | `READY_FOR_IMPL` ×N |
 | **Technical Epic(Mode E)** | 기술부채/인프라 개선 필요 시 | 개선 목표 | Epic+Story 이슈 + impl 파일 |
 
@@ -284,7 +286,7 @@ engineer로부터 `SPEC_GAP_FOUND` 피드백을 받은 경우:
 3. 계획 파일 보강 (갭 발생 섹션 수정)
 4. READY_FOR_IMPL 게이트 재체크
 5. **설계 문서 동기화** (아래 규칙 적용)
-6. 완료 보고
+6. `SPEC_GAP_RESOLVED` 마커와 함께 완료 보고
 
 ### Mode C 완료 후 설계 문서 동기화 (필수)
 
@@ -415,5 +417,18 @@ Technical Epic 작성 완료: [stories.md 경로]
 ```
 
 ## 프로젝트 특화 지침
+
+### TRD 섹션 매핑 (trd.md)
+
+| 변경 유형 | trd.md 섹션 |
+|---|---|
+| 기술 스택 | §1 |
+| 프로젝트 구조 | §2 |
+| 핵심 로직 | §3 |
+| DB | §4 |
+| SDK | §5 |
+| 전역 상태 | §6 |
+| 화면 컴포넌트 | §7 |
+| 환경변수 | §8 |
 
 <!-- 프로젝트별 추가 지침 -->
