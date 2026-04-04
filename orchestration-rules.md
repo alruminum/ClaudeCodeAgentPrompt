@@ -152,7 +152,11 @@ src/** 변경 있음?
     CHANGES_REQUESTED ─────────────────────────────→ FAIL
     LGTM                                      3회 후 → IMPLEMENTATION_ESCALATE
       ↓                                                → 메인 Claude 보고
-  git commit                                            (architect SPEC_GAP 권장)
+  security-reviewer                                     (architect SPEC_GAP 권장)
+    VULNERABILITIES_FOUND (HIGH/MEDIUM) ───────────────→ FAIL
+    SECURE (LOW만 있으면 SECURE 판정)
+      ↓
+  git commit
       ↓
   HARNESS_DONE
       ↓
@@ -250,7 +254,8 @@ DESIGN_REVIEW_ESCALATE        │
 | `SPEC_GAP_RESOLVED` | architect Mode C | engineer 재시도 |
 | `TESTS_PASS` / `TESTS_FAIL` | test-engineer | PASS → vitest / FAIL → retry |
 | `PASS` / `FAIL` | validator Mode B | PASS → pr-reviewer / FAIL → retry |
-| `LGTM` / `CHANGES_REQUESTED` | pr-reviewer | LGTM → commit / CR → retry |
+| `LGTM` / `CHANGES_REQUESTED` | pr-reviewer | LGTM → security-reviewer / CR → retry |
+| `SECURE` / `VULNERABILITIES_FOUND` | security-reviewer | SECURE → commit / VF (HIGH/MEDIUM) → retry |
 | `HARNESS_DONE` | harness-loop.sh | 메인 Claude: stories 체크 → 유저 보고 |
 | `IMPLEMENTATION_ESCALATE` | harness-loop.sh | 메인 Claude 보고 후 architect SPEC_GAP 권장 |
 | `KNOWN_ISSUE` | qa | 메인 Claude 보고 후 대기 |
@@ -293,6 +298,13 @@ DESIGN_REVIEW_ESCALATE        │
 에스컬레이션 마커 수신 시 자동 복구 시도 금지.
 반드시 유저에게 보고 후 지시를 기다린다.
 
+**6. 단일 소스 원칙 — orchestration-rules.md 선행 수정 강제**
+워크플로우 변경(에이전트 추가/삭제, 루프 순서 변경, 마커 추가, 플래그 추가)이 필요할 때:
+1. **먼저** 이 파일(`orchestration-rules.md`)에 변경 사항을 반영한다.
+2. **그 다음** 스크립트(`harness-executor.sh`, `harness-loop.sh`, `setup-harness.sh` 등)를 업데이트한다.
+3. 스크립트를 먼저 수정하고 이 파일을 나중에 수정하는 것은 **절대 금지**.
+위반 시 PreToolUse 훅이 차단한다 (`orch_rules_first` 게이트).
+
 ---
 
 ## 에이전트 역할 경계
@@ -308,6 +320,7 @@ DESIGN_REVIEW_ESCALATE        │
 | product-planner | PRD/TRD 작성 | 코드·설계 문서 수정 |
 | test-engineer | 테스트 코드 작성 | 소스 수정 |
 | pr-reviewer | 코드 품질 리뷰 | 파일 수정 |
+| security-reviewer | OWASP+WebView 보안 감사 | 파일 수정 |
 
 ---
 
@@ -318,4 +331,5 @@ DESIGN_REVIEW_ESCALATE        │
 | 루프 순서 / 조건 변경 | `harness-executor.sh`, `harness-loop.sh` |
 | 마커 추가 / 변경 | 해당 에이전트 md 파일 |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 |
+| 에이전트 추가 / 삭제 | 역할 경계 표 + 해당 루프 다이어그램 + 마커 표 + 스크립트 |
 | architect Mode 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
