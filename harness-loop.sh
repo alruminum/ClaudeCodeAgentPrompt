@@ -92,6 +92,20 @@ append_failure() {
       echo "[HARNESS] ⚠️ 실패 패턴 자동 프로모션: $pattern_key ($count회)"
     fi
   fi
+
+  # ── P1: Memory 후보 파일 기록 (HARNESS_DONE 후 유저에게 제안) ─────────────
+  local candidate_file="/tmp/${PREFIX}_memory_candidate.md"
+  # 같은 루프 내 중복 기록 방지
+  if ! grep -q "$pattern_key" "$candidate_file" 2>/dev/null; then
+    cat >> "$candidate_file" <<CANDIDATE
+---
+date: $date_str
+impl: $impl_name
+type: $type
+pattern: $err_1line
+suggestion: "impl 파일에 관련 제약 추가 또는 에이전트 지시 보강 검토"
+CANDIDATE
+  fi
 }
 
 append_success() {
@@ -414,6 +428,21 @@ $(git diff HEAD 2>&1 | head -500)" > "/tmp/${PREFIX}_sec_out.txt" 2>&1 || true
     echo "attempts: $((attempt+1))"
     echo "commit: $commit_hash"
     echo "pr_body: /tmp/${PREFIX}_pr_body.txt"
+
+    # ── P1: Memory 후보 존재 시 유저에게 기록 제안 ───────────────────────
+    local candidate_file="/tmp/${PREFIX}_memory_candidate.md"
+    if [[ -f "$candidate_file" ]]; then
+      echo ""
+      echo "💾 [HARNESS MEMORY] 이번 루프에서 실패 패턴이 감지됐습니다."
+      echo "   아래 후보를 harness-memory.md에 기록하면 다음 루프의 CONSTRAINTS로 활용됩니다."
+      echo "   파일: $candidate_file"
+      echo "   내용:"
+      cat "$candidate_file"
+      echo ""
+      echo "   → 기록할까요? (메인 Claude에게 'Y' 또는 'N' 응답 요청)"
+      echo "memory_candidate: $candidate_file"
+    fi
+
     exit 0
 
   done
