@@ -15,13 +15,14 @@
 set -euo pipefail
 
 MODE=${1:-""}; shift || true
-IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"
+IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; DEPTH="std"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --impl)   IMPL_FILE="$2"; shift 2 ;;
     --issue)  ISSUE_NUM="$2"; shift 2 ;;
     --prefix) PREFIX="$2";    shift 2 ;;
+    --depth)  DEPTH="$2";     shift 2 ;;
     *) shift ;;
   esac
 done
@@ -216,6 +217,39 @@ if [[ "$MODE" == "impl2" ]]; then
 
   touch "/tmp/${PREFIX}_harness_active"
   [[ ! -f "/tmp/${PREFIX}_plan_validation_passed" ]] && touch "/tmp/${PREFIX}_plan_validation_passed"
+
+  # ── fast mode: engineer → commit (테스트·리뷰·보안 스킵) ─────────────
+  if [[ "$DEPTH" == "fast" ]]; then
+    echo "[HARNESS/fast] engineer 호출 중 (테스트·리뷰·보안 스킵)"
+    context=$(cat "$IMPL_FILE" | head -c 30000)
+    claude --agent engineer --print \
+      -p "impl: $IMPL_FILE
+issue: #$ISSUE_NUM
+task: impl 파일의 구현 명세 이행
+context:
+$context
+constraints:
+$CONSTRAINTS" > "/tmp/${PREFIX}_eng_out.txt" 2>&1 || true
+    echo "[HARNESS/fast] engineer 완료"
+
+    mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+    if [[ ${#commit_files[@]} -gt 0 ]]; then
+      git add -- "${commit_files[@]}"
+      git commit -m "$(generate_commit_msg) [fast-mode]"
+      commit_hash=$(git rev-parse --short HEAD)
+      echo "HARNESS_DONE (fast)"
+      echo "impl: $IMPL_FILE"
+      echo "issue: #$ISSUE_NUM"
+      echo "commit: $commit_hash"
+      echo "⚠️ fast mode: 테스트·리뷰·보안 검사 스킵됨. 중요 변경엔 --depth=std 사용."
+    else
+      echo "[HARNESS/fast] 변경사항 없음"
+    fi
+    exit 0
+  fi
+
+  # deep = std (G2·G7 구현 후 확장 예정)
+  [[ "$DEPTH" == "deep" ]] && echo "[HARNESS/deep] deep mode — 현재 std와 동일 (G2·G7 미구현)"
 
   attempt=0
   MAX=3

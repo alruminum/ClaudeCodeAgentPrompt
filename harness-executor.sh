@@ -16,7 +16,7 @@
 set -euo pipefail
 
 MODE=${1:-""}; shift || true
-IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; BUG_DESC=""; CONTEXT=""
+IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; BUG_DESC=""; CONTEXT=""; DEPTH="auto"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,9 +25,26 @@ while [[ $# -gt 0 ]]; do
     --prefix)  PREFIX="$2";     shift 2 ;;
     --bug)     BUG_DESC="$2";   shift 2 ;;
     --context) CONTEXT="$2";    shift 2 ;;
+    --depth)   DEPTH="$2";      shift 2 ;;
     *) shift ;;
   esac
 done
+
+# ── depth 자동 감지 (--depth 미지정 또는 auto 시) ─────────────────────
+detect_depth() {
+  local impl="$1"
+  if [[ -z "$impl" || ! -f "$impl" ]]; then
+    echo "std"; return
+  fi
+  if grep -q "(BROWSER:DOM)" "$impl" 2>/dev/null; then
+    echo "deep"
+  elif grep -q "(MANUAL)" "$impl" 2>/dev/null && \
+       ! grep -qE "\(TEST\)|\(BROWSER:DOM\)" "$impl" 2>/dev/null; then
+    echo "fast"
+  else
+    echo "std"
+  fi
+}
 
 # ── 공통: harness-loop.sh 경로 결정 ─────────────────────────────────
 LOOP_SCRIPT=".claude/harness-loop.sh"
@@ -195,7 +212,11 @@ run_plan() {
 # ══════════════════════════════════════════════════════════════════════
 case "$MODE" in
   impl)    run_impl ;;
-  impl2)   bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" ;;
+  impl2)
+    [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
+    echo "[HARNESS] depth: $DEPTH"
+    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH"
+    ;;
   design)  run_design ;;
   bugfix)  run_bugfix ;;
   plan)    run_plan ;;

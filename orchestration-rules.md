@@ -12,7 +12,7 @@
 | 신규 프로젝트 / PRD 변경 | → **루프 A** |
 | UI 변경 요청 (design_critic_passed 없음) | → **루프 B** |
 | 구현 요청 + READY_FOR_IMPL 확정 | → **루프 C** (`bash .claude/harness-executor.sh impl ...`) |
-| 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`bash .claude/harness-executor.sh impl2 ...`) |
+| 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`bash .claude/harness-executor.sh impl2 --depth <fast\|std\|deep> ...`) |
 | 버그 보고 (bug 레이블 OR 유저 직접 보고) | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) |
 | 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
 | **AMBIGUOUS** (의도 불명확, 진행 중 워크플로우 없음) | → **product-planner 자동 힌트 주입** (루프 진입 금지) |
@@ -291,7 +291,19 @@ DESIGN_REVIEW_ESCALATE        │
 
 **2. 구현 루프 예외 없음**
 `src/**` 변경이 발생하는 모든 작업은 루프 C를 반드시 거친다.
-"줄 수가 적다", "간단한 수정", "빨리 해달라" — 어느 것도 예외 근거가 되지 않는다.
+"줄 수가 적다", "간단한 수정", "빨리 해달라" — 어느 것도 루프 자체를 건너뛰는 근거가 되지 않는다.
+단, `--depth=fast` 플래그로 루프 깊이를 줄이는 것은 허용된다:
+
+| depth | 실행 단계 | 사용 조건 |
+|---|---|---|
+| `fast` | engineer → commit (테스트·리뷰·보안 스킵) | impl에 `(MANUAL)` 태그만 있을 때 / 변수명·설정값 등 단순 변경 |
+| `std` | 현재 전체 루프 (기본값) | 일반 구현 |
+| `deep` | std + coverage gate + BROWSER:DOM | impl에 `(BROWSER:DOM)` 태그 있을 때 (G2·G7 구현 후 활성) |
+
+자동 선택 규칙 (`--depth` 미지정 시):
+- impl 파일에 `(MANUAL)` 태그만 있고 `(TEST)` `(BROWSER:DOM)` 없음 → `fast` 자동
+- impl 파일에 `(BROWSER:DOM)` 태그 있음 → `deep` 자동
+- 그 외 → `std`
 
 **3. 유저 게이트 — 자동 진행 절대 금지**
 
