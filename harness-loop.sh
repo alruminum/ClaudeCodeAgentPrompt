@@ -144,6 +144,48 @@ $(cat "$f")"
   echo "$ctx" | head -c 50000
 }
 
+generate_pr_body() {
+  local attempt_num="$1"
+  local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
+
+  # 테스트 결과 요약 (마지막 3줄)
+  local test_summary
+  test_summary=$(grep -E "Tests |passed|failed" "/tmp/${PREFIX}_test_out.txt" 2>/dev/null \
+    | tail -3 | tr '\n' ' ' || echo "PASS")
+
+  # 보안 최고 등급
+  local sec_level
+  sec_level=$(grep -oE '\bHIGH\b|\bMEDIUM\b|\bLOW\b' "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null \
+    | head -1 || echo "LOW")
+
+  # pr-reviewer 권고사항 (NICE TO HAVE 아래 bullet)
+  local pr_notes
+  pr_notes=$(grep -A5 -i "nice to have\|권고사항" "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null \
+    | grep "^[-•*]" | head -3 | tr '\n' ' ' || echo "없음")
+
+  # impl 결정 근거 첫 줄
+  local why
+  why=$(grep -A3 "^## 결정 근거" "$IMPL_FILE" 2>/dev/null \
+    | grep "^-" | head -1 | sed 's/^- //' || echo "Issue #${ISSUE_NUM} 구현")
+
+  cat <<PRBODY
+## What / Why
+Issue #${ISSUE_NUM} — \`${impl_name}\`
+${why}
+
+## 작동 증거
+- vitest: ${test_summary}
+- 시도: ${attempt_num}/${MAX}회 성공
+
+## 위험 + AI 역할
+- 보안 최고 등급: ${sec_level}
+- AI(Claude) 구현·테스트·검증·리뷰 완료. 인간 최종 확인 권장: 비즈니스 로직
+
+## 리뷰 포커스
+${pr_notes}
+PRBODY
+}
+
 generate_commit_msg() {
   local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
   # git add 이후 staged 파일 목록 사용 (HEAD~1은 최초 커밋 시 없을 수 있음)
@@ -327,6 +369,9 @@ $(git diff HEAD 2>&1 | head -500)" > "/tmp/${PREFIX}_sec_out.txt" 2>&1 || true
     git commit -m "$(generate_commit_msg)"
     commit_hash=$(git rev-parse --short HEAD)
 
+    # ── G6: PR body 생성 ─────────────────────────────────────────
+    generate_pr_body $((attempt+1)) > "/tmp/${PREFIX}_pr_body.txt" 2>/dev/null || true
+
     append_success $((attempt+1))
 
     echo "HARNESS_DONE"
@@ -334,6 +379,7 @@ $(git diff HEAD 2>&1 | head -500)" > "/tmp/${PREFIX}_sec_out.txt" 2>&1 || true
     echo "issue: #$ISSUE_NUM"
     echo "attempts: $((attempt+1))"
     echo "commit: $commit_hash"
+    echo "pr_body: /tmp/${PREFIX}_pr_body.txt"
     exit 0
 
   done

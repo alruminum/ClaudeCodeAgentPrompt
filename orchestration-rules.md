@@ -156,13 +156,13 @@ src/** 변경 있음?
     VULNERABILITIES_FOUND (HIGH/MEDIUM) ───────────────→ FAIL
     SECURE (LOW만 있으면 SECURE 판정)
       ↓
-  git commit
+  git commit (PR body → /tmp/{prefix}_pr_body.txt 자동 생성)
       ↓
-  HARNESS_DONE
+  HARNESS_DONE  ← pr_body 파일 경로 포함 출력
       ↓
   메인 Claude: stories.md 체크 + GitHub Issue 업데이트
       ↓
-  유저 보고 후 대기
+  유저 보고 후 대기 (PR 생성 시 pr_body 파일 내용 활용 권장)
       ↓
   유저 승인 → git push
       ↓
@@ -321,6 +321,30 @@ DESIGN_REVIEW_ESCALATE        │
 1. 해당 패턴을 `## Auto-Promoted Rules` 섹션으로 이동
 2. 이후 CONSTRAINTS 로드 시 Auto-Promoted Rules를 최우선 포함
 3. 프로모션된 규칙은 수동 삭제 전까지 영구 적용
+
+**8. 수용 기준 메타데이터 없는 태스크 = 구현 진입 불가**
+impl 파일의 모든 요구사항 항목은 `## 수용 기준` 섹션에 검증 방법 태그가 있어야 한다.
+
+**impl 파일 필수 포맷 요구사항**:
+- `## 수용 기준` 섹션 필수 (섹션 자체가 없으면 PLAN_VALIDATION_FAIL)
+- 각 요구사항 행에 `(TEST)` / `(BROWSER:DOM)` / `(MANUAL)` 중 하나 필수
+
+**검증 방법 태그 의미**:
+| 태그 | 의미 | 사용 조건 |
+|---|---|---|
+| `(TEST)` | vitest 자동 테스트 | 기본값 — 로직·상태·훅 검증 |
+| `(BROWSER:DOM)` | Playwright DOM 쿼리 | UI 렌더링·DOM 상태 검증이 필요한 경우 |
+| `(MANUAL)` | curl/bash 수동 절차 | 자동화가 불가능한 경우에만 (이유 명시 필수) |
+
+impl 진입 게이트 상세:
+```
+validator [Plan Validation]
+  ↓ PASS (기존 A/B 체크)
+validator [수용 기준 메타데이터 감사]  ← 정책 8 게이트
+  태그 없는 요구사항 발견 → PLAN_VALIDATION_FAIL (architect 재보강)
+  ↓ PASS
+READY_FOR_IMPL
+```
 
 ---
 
