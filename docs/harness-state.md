@@ -107,6 +107,9 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S4 | Depth Selector | `--depth=fast/std/deep` — fast: engineer→commit만 / std: 전체 루프 / deep: std+S15 stub + 자동 감지 | 2026-04-05 |
 | S5 | Memory 반자동 기록 | FAIL 시 `/tmp/{p}_memory_candidate.md` 초안 작성, HARNESS_DONE 후 유저에게 기록 여부 제안 | 2026-04-05 |
 | S6 | AMBIGUOUS 자동 트리거 | `harness-router.py` AMBIGUOUS + no_active → product-planner 힌트 주입 (루프 진입 금지) | 2026-04-05 |
+| S7 | 세션 컨텍스트 브리지 | `harness-session-start.py` — 프로젝트명·최근커밋·진행중 항목 자동 주입. HARNESS_DONE 시 `last_issue` 저장 | 2026-04-05 |
+| S8 | 하네스 smoke test | `commands/harness-test.md` — 파일존재·문법·플래그 dry-run, SMOKE_PASS/FAIL 판정 | 2026-04-05 |
+| S10 | 납품 게이트 | `commands/deliver.md` — .env노출·console.log·하드코딩URL·빌드 스캔, DELIVERY_READY/BLOCKED/WARN | 2026-04-05 |
 
 ---
 

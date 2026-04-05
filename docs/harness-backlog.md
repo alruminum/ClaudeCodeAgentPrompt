@@ -27,10 +27,10 @@
 | S4 | Depth Selector (fast/std/deep) | S | ✅ 완료 |
 | S5 | Memory 반자동 기록 (실패 패턴 초안 → 유저 승인) | S | ✅ 완료 |
 | S6 | AMBIGUOUS 자동 트리거 (product-planner 힌트 주입) | S | ✅ 완료 |
-| S7 | 세션 컨텍스트 브리지 (새 세션 상태 자동 주입) | S | ⬜ 대기 |
-| S8 | 하네스 smoke test (/harness-test) | S | ⬜ 대기 |
+| S7 | 세션 컨텍스트 브리지 (새 세션 상태 자동 주입) | S | ✅ 완료 |
+| S8 | 하네스 smoke test (/harness-test) | S | ✅ 완료 |
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
-| S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ⬜ 대기 |
+| S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
@@ -156,7 +156,7 @@ AMBIGUOUS + 진행 중 워크플로우 없음 → product-planner 힌트 주입.
 
 ---
 
-### ⬜ S7 — 세션 컨텍스트 브리지
+### ✅ S7 — 세션 컨텍스트 브리지
 
 새 세션마다 "기존꺼 파악하라"는 지시에 드는 토큰 비용 제거.
 SessionStart 훅에서 현재 상태를 자동 압축해 주입.
@@ -171,7 +171,7 @@ SessionStart → harness.config.json 확인
 
 ---
 
-### ⬜ S8 — 하네스 smoke test
+### ✅ S8 — 하네스 smoke test
 
 하네스 수정 후 루프가 깨졌는지 확인하는 방법이 없음.
 fixture impl로 플래그 흐름만 dry-run.
@@ -201,7 +201,7 @@ impl 진입 시 → 변경 대상 파일 목록 파싱
 
 ---
 
-### ⬜ S10 — 납품 게이트
+### ✅ S10 — 납품 게이트
 
 B2B 납품 전 "클라이언트에게 줘도 되는가" 자동 체크.
 security-reviewer와 다른 기준 — 실수 방지용.

@@ -422,6 +422,9 @@ $(git diff HEAD 2>&1 | head -500)" > "/tmp/${PREFIX}_sec_out.txt" 2>&1 || true
 
     append_success $((attempt+1))
 
+    # ── S7: last_issue 저장 (다음 세션 컨텍스트 브리지용) ───────────────
+    echo "$ISSUE_NUM" > "/tmp/${PREFIX}_last_issue"
+
     echo "HARNESS_DONE"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
