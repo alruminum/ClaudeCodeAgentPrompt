@@ -110,6 +110,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S7 | 세션 컨텍스트 브리지 | `harness-session-start.py` — 프로젝트명·최근커밋·진행중 항목 자동 주입. HARNESS_DONE 시 `last_issue` 저장 | 2026-04-05 |
 | S8 | 하네스 smoke test | `commands/harness-test.md` — 파일존재·문법·플래그 dry-run, SMOKE_PASS/FAIL 판정 | 2026-04-05 |
 | S10 | 납품 게이트 | `commands/deliver.md` — .env노출·console.log·하드코딩URL·빌드 스캔, DELIVERY_READY/BLOCKED/WARN | 2026-04-05 |
+| S16 | runHarnessLoop 구현 | `hooks/harness-router.py` — Popen(start_new_session=True) 5모드 자동 라우팅. impl/design/bugfix/plan/impl2 백그라운드 실행 → `/tmp/{p}_harness_output.log` | 2026-04-05 |
 
 ---
 
