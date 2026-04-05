@@ -161,9 +161,7 @@ GC 경계:
 
 ---
 
-### P5. AMBIGUOUS → product-planner 자동 트리거
-
-**상태**: 보류 (즉시 적용 가능)
+### ~~P5. AMBIGUOUS → product-planner 자동 트리거~~ ✅ 완료 (2026-04-05)
 
 **왜**: 현재 harness-router.py가 프롬프트를 AMBIGUOUS로 분류하면 그냥 PASS (일반 채팅 폴백). pseudo-code의 `triggerDeepInterview()` 의도가 구현 안 됨. 모호한 요청이 루프로 진입하면 잘못된 방향으로 전체 루프를 소모할 수 있음.
 
@@ -432,7 +430,7 @@ MEDIUM G1(보안 파일 한정) → 전체 PR로 확장.
 
 | 상황 | 재검토 항목 |
 |---|---|
-| 즉시 | P0, P1, P5, P6, P7 |
+| 즉시 | P0, P1, P6, P7 |
 | 장기 프로젝트 시작 | P2 |
 | 세션 중단 손해 경험 | P3 |
 | 토큰 비용 체감 | P4 |

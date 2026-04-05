@@ -15,6 +15,7 @@
 | 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`bash .claude/harness-executor.sh impl2 ...`) |
 | 버그 보고 (bug 레이블 OR 유저 직접 보고) | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) |
 | 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
+| **AMBIGUOUS** (의도 불명확, 진행 중 워크플로우 없음) | → **product-planner 자동 힌트 주입** (루프 진입 금지) |
 
 ---
 

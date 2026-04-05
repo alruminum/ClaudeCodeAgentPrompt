@@ -145,9 +145,27 @@ def _main_inner():
                 is_bug = True
             cat = llm_cat
 
-    # QUESTION/AMBIGUOUS이고 진행 중인 워크플로우 없으면 아무것도 주입 안 함 (버그 감지 시 예외)
-    if cat in ("QUESTION", "AMBIGUOUS") and not any_active and not is_bug:
-        log(prefix, f"PASS({cat.lower()}/no-active) prompt={prompt[:60]!r}")
+    # QUESTION이고 진행 중인 워크플로우 없으면 아무것도 주입 안 함 (버그 감지 시 예외)
+    if cat == "QUESTION" and not any_active and not is_bug:
+        log(prefix, f"PASS(question/no-active) prompt={prompt[:60]!r}")
+        sys.exit(0)
+
+    # AMBIGUOUS + 진행 중 워크플로우 없음 → product-planner 힌트 주입 (루프 진입 금지)
+    if cat == "AMBIGUOUS" and not any_active and not is_bug:
+        ctx = (
+            "[HARNESS ROUTER] 요청이 모호합니다. 루프 진입 전 명확화 필요.\n\n"
+            "구현 수준 모호성 (파일/동작이 불명확):\n"
+            "  → 아래 3가지 답변 후 재요청\n"
+            "  1. 어떤 파일/컴포넌트가 대상인가?\n"
+            "  2. 현재 동작 vs 기대 동작은?\n"
+            "  3. 관련 GitHub 이슈 번호가 있는가?\n\n"
+            "PRD 수준 모호성 (무엇을 만들지 불명확):\n"
+            "  → product-planner 에이전트를 호출하세요 (역질문 → PRD 작성)\n"
+            "  → PRD 완료 후 루프 A 진입\n\n"
+            "명확한 요청 없이 구현 루프를 시작하지 마세요."
+        )
+        log(prefix, f"INJECT(ambiguous/product-planner-hint) prompt={prompt[:60]!r}")
+        print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
         sys.exit(0)
 
     flag_lines = "\n".join(
