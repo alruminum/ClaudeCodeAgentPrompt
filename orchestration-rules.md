@@ -346,6 +346,15 @@ validator [수용 기준 메타데이터 감사]  ← 정책 8 게이트
 READY_FOR_IMPL
 ```
 
+**9. 하네스 파일 변경 전 문서 선행 업데이트**
+`harness-executor.sh` / `harness-loop.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` 변경 시:
+1. **먼저** 이 파일(`orchestration-rules.md`)에 변경 사항 반영 (정책 6)
+2. **그 다음** `docs/harness-state.md` 관련 섹션 업데이트 (완료/한계 목록 갱신)
+3. **그 다음** `docs/harness-backlog.md` 해당 항목 상태 업데이트 (보류→진행중→완료)
+4. **마지막** 실제 파일 수정
+스크립트를 먼저 수정하고 state/backlog를 나중에 기록하는 것은 **절대 금지**.
+물리적 강제: 현재는 written policy. 향후 `orch-rules-first.py` 확장으로 물리적 차단 예정.
+
 ---
 
 ## 에이전트 역할 경계
@@ -383,8 +392,9 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 
 | 변경 내용 | 업데이트 대상 |
 |-----------|---------------|
-| 루프 순서 / 조건 변경 | `harness-executor.sh`, `harness-loop.sh` |
+| 루프 순서 / 조건 변경 | `harness-executor.sh`, `harness-loop.sh`, `docs/harness-state.md` |
 | 마커 추가 / 변경 | 해당 에이전트 md 파일 |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 |
 | 에이전트 추가 / 삭제 | 역할 경계 표 + 해당 루프 다이어그램 + 마커 표 + 스크립트 |
+| 하네스 기능 추가 / 변경 | `docs/harness-state.md` (완료/한계 섹션) + `docs/harness-backlog.md` (항목 상태) |
 | architect Mode 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
