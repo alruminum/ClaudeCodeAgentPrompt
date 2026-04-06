@@ -10,6 +10,7 @@ import os
 import re
 import time
 import subprocess
+import urllib.request
 from datetime import datetime
 
 LOG_FILE = "/tmp/harness-router.log"
@@ -20,7 +21,34 @@ def log(prefix, msg):
         f.write(f"[{ts}] [{prefix}] {msg}\n")
 
 def _call_haiku(prompt_text, max_tokens, prefix):
-    """socrates 에이전트로 Haiku 호출 — OAuth 인증 자동 처리, HARNESS_INTERNAL로 재귀 방지."""
+    """Haiku 호출 — API 직접 호출 우선, 실패 시 CLI 폴백 (timeout 축소)."""
+    # 1차: API 직접 호출 (subprocess 스폰 없이 ~0.5-2초)
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+    if api_key:
+        try:
+            body = json.dumps({
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": max_tokens,
+                "messages": [{"role": "user", "content": prompt_text}]
+            }).encode()
+            req = urllib.request.Request(
+                "https://api.anthropic.com/v1/messages",
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01"
+                }
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+                result = data["content"][0]["text"].strip()
+                log(prefix, f"HAIKU_API_OK len={len(result)}")
+                return result
+        except Exception as e:
+            log(prefix, f"HAIKU_API_FAIL: {e} — falling back to CLI")
+
+    # 2차 폴백: CLI 호출 (OAuth/구독 환경용, timeout 15→5초로 축소)
     try:
         env = {**os.environ, 'HARNESS_INTERNAL': '1'}
         result = subprocess.run(
@@ -28,11 +56,11 @@ def _call_haiku(prompt_text, max_tokens, prefix):
              '--print', '--output-format', 'text',
              '-p', prompt_text],
             env=env,
-            capture_output=True, text=True, timeout=15
+            capture_output=True, text=True, timeout=5
         )
         return result.stdout.strip()
     except Exception as e:
-        log(prefix, f"HAIKU_FAIL: {e}")
+        log(prefix, f"HAIKU_CLI_FAIL: {e}")
         return ""
 
 
@@ -216,6 +244,39 @@ def _check_harness_internal_prompt(prompt):
     return any(re.match(p, prompt.strip(), re.DOTALL | re.IGNORECASE) for p in patterns)
 
 
+def fast_classify(prompt):
+    """
+    2단계 regex 즉시 분류 — LLM 호출 없이 ~0ms.
+    확실한 것만 잡고, 애매한 건 None 반환 → LLM 폴백.
+    키워드 하나가 아니라 조합+위치로 판단한다.
+    """
+    p = prompt.strip()
+
+    # 1. GREETING — 전체가 짧은 반응어 (완전 일치에 가까운 것만)
+    if re.match(r'^(ㅇㅇ|응|네|좋아|좋아요|ok|okay|ㅎㅎ|고마워|감사|알겠어|잘\s*했어|오케이|수고|ㅋ+|ㅎ+|good|great|thanks|thank\s*you|thx|ty|nice|cool|awesome|lgtm|done)[\s!.]*$', p, re.I):
+        return "GREETING"
+
+    # 2. QUESTION — 물음표로 끝나면 무조건 QUESTION
+    if re.search(r'\?\s*$', p):
+        return "QUESTION"
+
+    # 3. BUG — 버그 키워드가 있되, 구현/추가 동사가 없는 경우만
+    if re.search(r'(버그|bug|크래시|crash)', p, re.I) and not re.search(r'(추가|구현|만들)', p):
+        return "BUG"
+    if re.search(r'(안\s*[되돼]고|안\s*[되돼]요|안\s*됨|깨[졌지]|작동.*안|동작.*안)', p):
+        return "BUG"
+
+    # 4. IMPLEMENTATION — 이슈번호 + 명령형 동사 조합
+    if re.search(r'#\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
+        return "IMPLEMENTATION"
+    # 구현/추가/만들어 + 해/해줘 패턴 (의문사가 없을 때만)
+    if re.search(r'(구현|추가|만들어|생성|작성).*해', p) and not re.search(r'^(왜|어떻게|뭐)', p):
+        return "IMPLEMENTATION"
+
+    # 매칭 안 되면 → LLM 폴백
+    return None
+
+
 def _check_spawn_rate(prefix):
     """
     Spawn rate limiter — 60초 내 MAX_SPAWNS 초과 시 하드 블록.
@@ -313,7 +374,11 @@ def _main_inner():
     if len(prompt.strip()) <= 2:
         cat = "GREETING"
     else:
-        cat = extract_intent(prompt, prefix) or "AMBIGUOUS"
+        cat = fast_classify(prompt)
+        if cat:
+            log(prefix, f"FAST_CLASSIFY result={cat} prompt={prompt[:60]!r}")
+        else:
+            cat = extract_intent(prompt, prefix) or "AMBIGUOUS"
 
     is_bug = (cat == "BUG")
 
