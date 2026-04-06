@@ -33,14 +33,15 @@ def extract_intent(prompt, prefix):
             "model": "claude-haiku-4-5-20251001",
             "max_tokens": 20,
             "messages": [{"role": "user", "content":
-                "소프트웨어 개발 어시스턴트 채팅에서 사용자 메시지 의도를 분류하라.\n"
+                "소프트웨어 개발 어시스턴트 채팅에서 사용자 메시지를 분류하라.\n"
+                "먼저: 소프트웨어·코딩과 관련 없으면 → GENERIC 또는 GREETING.\n"
                 "다음 중 하나만 출력 (다른 말 금지):\n"
-                "GREETING — 인사·긍정·짧은 반응 (ㅇㅇ, 응, 좋아, ok, hi, ㅎㅎ, 맞아, 고마워)\n"
-                "QUESTION — 코드·시스템 질문 (왜, 어떻게, 설명해줘, ?)\n"
-                "IMPLEMENTATION — 구현·수정 요청 (이슈 번호, 고쳐, 만들어, fix, 구현, 추가)\n"
-                "BUG — 버그 보고 (버그, 안돼, 이상해, 깨졌어, 오류, 에러)\n"
-                "AMBIGUOUS — 의도 불명확, 명확화 필요\n"
-                "GENERIC — 코딩과 무관한 일상 대화·날씨·음식 등, 관찰, 코멘트\n\n"
+                "GREETING — 인사·긍정·짧은 반응·감탄 (ㅇㅇ, 응, 좋아, ok, hi, ㅎㅎ, 맞아, 고마워, 알겠어)\n"
+                "GENERIC — 소프트웨어와 무관한 모든 것 (날씨, 음식, 일상, 감상, 짧은 단답)\n"
+                "QUESTION — 코드·시스템에 대한 질문 (왜, 어떻게, 설명해줘, ?)\n"
+                "IMPLEMENTATION — 코드 구현·수정 요청 (이슈 번호 포함, 구체적 기능 변경)\n"
+                "BUG — 버그·오류 보고 (버그, 안돼, 이상해, 깨졌어, 에러)\n"
+                "AMBIGUOUS — 소프트웨어 요청인 것 같지만 대상·범위 불명확\n\n"
                 f"\"{prompt[:200]}\""}]
         })
         result = subprocess.run(
