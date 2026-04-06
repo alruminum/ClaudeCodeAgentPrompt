@@ -5,25 +5,17 @@
 
 ---
 
-## 루프 진입 기준
+## 루프 진입 기준 (메인 Claude)
 
-**S16 이후**: harness-router.py(UserPromptSubmit 훅)가 의도를 분류하고 harness-executor.sh를 **백그라운드(Popen)로 직접 실행**한다. 메인 Claude는 루프를 직접 시작하지 않는다.
-
-| 분류 | harness-router.py 처리 |
-|------|----------------------|
-| IMPLEMENTATION + UI 키워드 | `Popen(harness-executor.sh design)` |
-| IMPLEMENTATION + plan_validation_passed 없음 | `Popen(harness-executor.sh impl)` |
-| IMPLEMENTATION + plan_validation_passed ✅ | `impl2 직접 지시` (Bash로 실행) |
-| BUG | `Popen(harness-executor.sh bugfix)` |
-| PLANNING | `Popen(harness-executor.sh plan)` |
-| **AMBIGUOUS** | product-planner 힌트 주입 (루프 진입 금지) |
-| QUESTION/CHAT | pass-through |
-
-**메인 Claude 역할 (S16 이후)**:
-1. harness-router가 주입한 log 파일 읽기
-2. PLAN_VALIDATION_PASS / DESIGN_DONE 확인
-3. impl 설계문서 읽어서 **유저에게 보여주고 승인 받기**
-4. 승인 후 `bash .claude/harness-executor.sh impl2` 실행
+| 상황 | 호출 |
+|------|------|
+| 신규 프로젝트 / PRD 변경 | → **루프 A** |
+| UI 변경 요청 (design_critic_passed 없음) | → **루프 B** |
+| 구현 요청 + READY_FOR_IMPL 확정 | → **루프 C** (`bash .claude/harness-executor.sh impl ...`) |
+| 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`bash .claude/harness-executor.sh impl2 --depth <fast\|std\|deep> ...`) |
+| 버그 보고 (bug 레이블 OR 유저 직접 보고) | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) |
+| 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
+| **AMBIGUOUS** (의도 불명확, 진행 중 워크플로우 없음) | → **product-planner 자동 힌트 주입** (루프 진입 금지) |
 
 ---
 
