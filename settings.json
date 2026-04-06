@@ -9,6 +9,7 @@
       "Bash(cd ~/.claude && bash -c *)",
       "Bash(cd ~/.claude && git *)",
       "Bash(git *)",
+      "Bash(python3 -c *)",
       "mcp__playwright__browser_navigate",
       "mcp__playwright__browser_navigate_back",
       "mcp__playwright__browser_screenshot",
@@ -30,7 +31,25 @@
       "mcp__playwright__browser_close",
       "mcp__playwright__browser_resize",
       "mcp__playwright__browser_network_requests",
-      "mcp__playwright__browser_console_messages"
+      "mcp__playwright__browser_console_messages",
+      "mcp__github__create_issue",
+      "mcp__github__get_issue",
+      "mcp__github__list_issues",
+      "mcp__github__update_issue",
+      "mcp__github__add_issue_comment",
+      "mcp__github__list_pull_requests",
+      "mcp__github__get_pull_request",
+      "mcp__github__get_pull_request_comments",
+      "mcp__github__get_pull_request_files",
+      "mcp__github__get_pull_request_reviews",
+      "mcp__github__get_pull_request_status",
+      "mcp__github__list_commits",
+      "mcp__github__search_issues",
+      "mcp__github__search_code",
+      "mcp__github__search_repositories",
+      "mcp__github__search_users",
+      "mcp__github__create_branch",
+      "mcp__github__create_pull_request"
     ]
   },
   "hooks": {
@@ -40,7 +59,7 @@
           {
             "type": "command",
             "command": "python3 /Users/dc.kim/.claude/hooks/harness-router.py auto 2>/dev/null; exit 0",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }
