@@ -149,6 +149,7 @@ src/** 변경 있음?
     FAIL ────────────────────────────────────────── → FAIL
     PASS
       ↓
+  [deep only]
   pr-reviewer
     CHANGES_REQUESTED ─────────────────────────────→ FAIL
     LGTM                                      3회 후 → IMPLEMENTATION_ESCALATE
@@ -156,6 +157,7 @@ src/** 변경 있음?
   security-reviewer                                     (architect SPEC_GAP 권장)
     VULNERABILITIES_FOUND (HIGH/MEDIUM) ───────────────→ FAIL
     SECURE (LOW만 있으면 SECURE 판정)
+  [std: pr-reviewer·security-reviewer 스킵, 플래그 자동 생성]
       ↓
   git commit (PR body → /tmp/{prefix}_pr_body.txt 자동 생성)
       ↓
@@ -297,8 +299,8 @@ DESIGN_REVIEW_ESCALATE        │
 | depth | 실행 단계 | 사용 조건 |
 |---|---|---|
 | `fast` | engineer → commit (테스트·리뷰·보안 스킵) | impl에 `(MANUAL)` 태그만 있을 때 / 변수명·설정값 등 단순 변경 |
-| `std` | 현재 전체 루프 (기본값) | 일반 구현 |
-| `deep` | std + coverage gate + BROWSER:DOM | impl에 `(BROWSER:DOM)` 태그 있을 때 (G2·G7 구현 후 활성) |
+| `std` | engineer → test-engineer → vitest → validator → commit (LLM 3회) | 일반 구현 (기본값) |
+| `deep` | engineer → test-engineer → vitest → validator → pr-reviewer → security-reviewer → commit (LLM 5회) | impl에 `(BROWSER:DOM)` 태그 있을 때, 또는 보안·품질 게이트 필요 시 |
 
 자동 선택 규칙 (`--depth` 미지정 시):
 - impl 파일에 `(MANUAL)` 태그만 있고 `(TEST)` `(BROWSER:DOM)` 없음 → `fast` 자동

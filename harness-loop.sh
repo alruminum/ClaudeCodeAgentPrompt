@@ -320,9 +320,6 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     exit 0
   fi
 
-  # deep = std (G2·G7 구현 후 확장 예정)
-  [[ "$DEPTH" == "deep" ]] && echo "[HARNESS/deep] deep mode — 현재 std와 동일 (G2·G7 미구현)"
-
   attempt=0
   MAX=3
   error_trace=""
@@ -458,71 +455,77 @@ $changed_files
     fi
     touch "/tmp/${PREFIX}_validator_b_passed"
 
-    # ── 워커 4: pr-reviewer ───────────────────────────────────────
-    diff_out=$(git diff HEAD 2>&1 | head -300)
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
-    hlog "▶ pr-reviewer 시작 (depth=$DEPTH, timeout=180s)"
-    AGENT_EXIT=0
-    _agent_call "pr-reviewer" 180 \
-      "변경 내용 리뷰:
+    # ── 워커 4+5: pr-reviewer / security-reviewer (deep only) ────────
+    if [[ "$DEPTH" == "deep" ]]; then
+      diff_out=$(git diff HEAD 2>&1 | head -300)
+      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
+      hlog "▶ pr-reviewer 시작 (deep only, timeout=180s)"
+      AGENT_EXIT=0
+      _agent_call "pr-reviewer" 180 \
+        "변경 내용 리뷰:
 $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
-    hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
-    pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
-    if echo "$pr_out" | grep -qE "^LGTM$"; then
-      pr_result="PASS"
-    elif echo "$pr_out" | grep -qE "^CHANGES_REQUESTED$"; then
-      pr_result="FAIL"
-    else
-      pr_result="UNKNOWN"
-      echo "[HARNESS] ⚠️ pr-reviewer 출력에서 마커(LGTM/CHANGES_REQUESTED)를 찾지 못함"
-    fi
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
-    if [[ "$pr_result" != "PASS" ]]; then
-      error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10)
-      [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
-      fail_type="pr_fail"
-      append_failure "pr_fail" "$error_trace"
-      attempt=$((attempt+1))
-      continue
-    fi
-    touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
-    echo "[HARNESS] LGTM"
+      hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
+      if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
+      pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
+      if echo "$pr_out" | grep -qE "^LGTM$"; then
+        pr_result="PASS"
+      elif echo "$pr_out" | grep -qE "^CHANGES_REQUESTED$"; then
+        pr_result="FAIL"
+      else
+        pr_result="UNKNOWN"
+        echo "[HARNESS] ⚠️ pr-reviewer 출력에서 마커(LGTM/CHANGES_REQUESTED)를 찾지 못함"
+      fi
+      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
+      if [[ "$pr_result" != "PASS" ]]; then
+        error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10)
+        [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
+        fail_type="pr_fail"
+        append_failure "pr_fail" "$error_trace"
+        attempt=$((attempt+1))
+        continue
+      fi
+      touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+      echo "[HARNESS] LGTM"
 
-    # ── 워커 5: security-reviewer ─────────────────────────────────
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
-    hlog "▶ security-reviewer 시작 (depth=$DEPTH, timeout=180s)"
-    changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
-    AGENT_EXIT=0
-    _agent_call "security-reviewer" 180 \
-      "보안 리뷰 대상 파일:
+      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
+      hlog "▶ security-reviewer 시작 (deep only, timeout=180s)"
+      changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
+      AGENT_EXIT=0
+      _agent_call "security-reviewer" 180 \
+        "보안 리뷰 대상 파일:
 $changed_src
 
 변경 diff:
 $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
-    hlog "◀ security-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ security-reviewer timeout — skip"; fi
-    sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
-    if echo "$sec_out" | grep -qE "^SECURE$"; then
-      sec_result="PASS"
-    elif echo "$sec_out" | grep -qE "^VULNERABILITIES_FOUND$"; then
-      sec_result="FAIL"
+      hlog "◀ security-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo 0)bytes)"
+      if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ security-reviewer timeout — skip"; fi
+      sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
+      if echo "$sec_out" | grep -qE "^SECURE$"; then
+        sec_result="PASS"
+      elif echo "$sec_out" | grep -qE "^VULNERABILITIES_FOUND$"; then
+        sec_result="FAIL"
+      else
+        sec_result="UNKNOWN"
+        echo "[HARNESS] ⚠️ security-reviewer 출력에서 마커(SECURE/VULNERABILITIES_FOUND)를 찾지 못함"
+      fi
+      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
+      if [[ "$sec_result" != "PASS" ]]; then
+        # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 FAIL 도달 시 HIGH/MEDIUM 존재
+        error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10)
+        [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
+        fail_type="security_fail"
+        append_failure "security_fail" "$error_trace"
+        attempt=$((attempt+1))
+        continue
+      fi
+      touch "/tmp/${PREFIX}_security_review_passed"
+      echo "[HARNESS] SECURE"
     else
-      sec_result="UNKNOWN"
-      echo "[HARNESS] ⚠️ security-reviewer 출력에서 마커(SECURE/VULNERABILITIES_FOUND)를 찾지 못함"
+      # std/fast: pr-reviewer·security-reviewer 스킵, 플래그만 자동 생성
+      touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+      touch "/tmp/${PREFIX}_security_review_passed"
+      hlog "⏭ pr-reviewer/security-reviewer 스킵 (depth=$DEPTH)"
     fi
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
-    if [[ "$sec_result" != "PASS" ]]; then
-      # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 FAIL 도달 시 HIGH/MEDIUM 존재
-      error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10)
-      [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
-      fail_type="security_fail"
-      append_failure "security_fail" "$error_trace"
-      attempt=$((attempt+1))
-      continue
-    fi
-    touch "/tmp/${PREFIX}_security_review_passed"
-    echo "[HARNESS] SECURE"
 
     # ── git commit ────────────────────────────────────────────────
     # test-engineer가 테스트 파일 추가했을 수 있으므로 commit 직전 재계산
