@@ -204,6 +204,11 @@ def main():
         sys.exit(0)
 
 def _main_inner():
+    # 하네스 내부 agent 호출 (claude --agent xxx -p "...")도 UserPromptSubmit을 트리거함.
+    # HARNESS_INTERNAL=1 환경변수로 내부 호출 감지 → 즉시 통과 (재귀 루프 방지)
+    if os.environ.get('HARNESS_INTERNAL') == '1':
+        sys.exit(0)
+
     raw_prefix = sys.argv[1] if len(sys.argv) > 1 else "auto"
     if raw_prefix == "auto":
         config_path = os.path.join(os.getcwd(), ".claude", "harness.config.json")
@@ -283,7 +288,7 @@ def _main_inner():
         cat = "AMBIGUOUS"
 
     # LLM 보조 분류: regex가 불확실(AMBIGUOUS/GENERIC)할 때만 호출
-    if cat in ("AMBIGUOUS", "GENERIC") and len(prompt.split()) >= 3 \
+    if cat in ("AMBIGUOUS", "GENERIC") and not is_bug and len(prompt.split()) >= 3 \
             and not os.path.exists(f"/tmp/{prefix}_interview_state.json"):
         llm_cat = classify_intent_llm(prompt, prefix)
         if llm_cat:

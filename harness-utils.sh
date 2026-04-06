@@ -52,7 +52,8 @@ _agent_call() {
   echo "[HARNESS] ${agent} 호출 중..."
 
   # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result 텍스트 추출 → out_file
-  timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
+  # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
+  HARNESS_INTERNAL=1 timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
     --output-format stream-json --include-partial-messages \
     -p "$prompt" 2>&1 \
     | tee -a "${RUN_LOG:-/dev/null}" \

@@ -318,8 +318,10 @@ DESIGN_REVIEW_ESCALATE        │
 **4. 하네스 에이전트 포어그라운드 순차 실행**
 `harness-loop.sh` 내 에이전트(engineer/validator 등) 호출은 포어그라운드 순차 실행. 에이전트 간 백그라운드 스폰 금지.
 단, `harness-executor.sh` 자체는 `harness-router.py` 훅이 Popen 백그라운드 spawn (S16) — LLM이 Bash 도구로 직접 실행 금지 (이중 실행·좀비 방지).
-spawn 안전 메커니즘: Atomic O_CREAT|O_EXCL lock + TTL 120s stale 해제 + heartbeat 15s JSON lease 갱신 + EXIT trap 정리 + timeout 300s per agent call.
+spawn 안전 메커니즘: Atomic O_CREAT|O_EXCL lock + TTL 120s stale 해제 + heartbeat 15s JSON lease 갱신 + EXIT trap 정리 + timeout per agent call.
 pre-evaluator: engineer 완료 직후 sh 레벨 사전 검사 (has_changes / no_new_deps / file_unchanged) → LLM 호출 없이 즉시 attempt++ (S17-2).
+HARNESS_INTERNAL 재귀 방지: `_agent_call`이 `claude --agent xxx -p "..."` 실행 시 UserPromptSubmit 훅도 트리거됨. `HARNESS_INTERNAL=1` env var로 내부 호출 감지 → 라우터 즉시 통과 (재귀 spawn 방지).
+is_bug LLM 분류 스킵: `is_bug=True` 확정 시 `classify_intent_llm()` 호출 금지 — 불필요한 curl 호출이 10s 훅 타임아웃 초과 유발.
 
 **5. 에스컬레이션 → 메인 Claude 보고 후 대기**
 에스컬레이션 마커 수신 시 자동 복구 시도 금지.
