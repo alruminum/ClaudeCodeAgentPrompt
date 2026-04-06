@@ -44,23 +44,28 @@ write_run_end() {
 # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result 텍스트 추출 → out_file
 _agent_call() {
   local agent="$1" timeout_secs="$2" prompt="$3" out_file="$4"
+  local cost_file="${out_file%.txt}_cost.txt"
   local t_start; t_start=$(date +%s)
   local _call_exit=0
 
+  echo "0" > "$cost_file"
   [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d}\n' \
     "$agent" "$t_start" >> "$RUN_LOG"
 
   echo "[HARNESS] ${agent} 호출 중..."
 
-  # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result 텍스트 추출 → out_file
+  # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result + cost 추출 → out_file
   # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
   HARNESS_INTERNAL=1 timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
     --output-format stream-json --include-partial-messages \
+    --max-budget-usd 2.00 \
     -p "$prompt" 2>&1 \
     | tee -a "${RUN_LOG:-/dev/null}" \
     | python3 -c '
 import sys, json
 result = ""
+cost = 0.0
+cost_file = sys.argv[1] if len(sys.argv) > 1 else "/dev/null"
 for line in sys.stdin:
     line = line.strip()
     if not line: continue
@@ -68,14 +73,21 @@ for line in sys.stdin:
         o = json.loads(line)
         if o.get("type") == "result":
             result = o.get("result", "")
+            cost = float(o.get("total_cost_usd", 0) or 0)
     except Exception:
         pass
+try:
+    with open(cost_file, "w") as f:
+        f.write(str(cost))
+except Exception:
+    pass
 print(result, end="")
-' > "$out_file" 2>&1 || _call_exit=$?
+' "$cost_file" > "$out_file" 2>&1 || _call_exit=$?
 
   local t_end; t_end=$(date +%s)
-  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"elapsed":%d,"exit":%d}\n' \
-    "$agent" "$t_end" "$((t_end - t_start))" "$_call_exit" >> "$RUN_LOG"
+  local agent_cost; agent_cost=$(cat "$cost_file" 2>/dev/null || echo "0")
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"elapsed":%d,"exit":%d,"cost_usd":%s}\n' \
+    "$agent" "$t_end" "$((t_end - t_start))" "$_call_exit" "$agent_cost" >> "$RUN_LOG"
 
   echo "[HARNESS] ${agent} 완료 ($((t_end - t_start))s, exit=${_call_exit})"
 

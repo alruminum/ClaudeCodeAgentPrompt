@@ -41,6 +41,9 @@
 | **S24** | **grep 파싱 → 라인 전체 매칭 강화** | S | ✅ 완료 |
 | **S25** | **BATS 테스트 (하네스 스크립트 자체 테스트)** | S | ⬜ 대기 |
 | **S26** | **git diff 타이밍 픽스 (pr-reviewer 빈 diff 방지)** | S | ✅ 완료 |
+| **S30** | **에이전트별 --max-budget-usd 2.00** | S | ✅ 완료 |
+| **S31** | **킬 스위치 (/harness-kill)** | S | ✅ 완료 |
+| **S32** | **전체 루프 비용 상한 $10** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -224,7 +227,7 @@ harness-executor.sh
 
 ---
 
-### ⬜ S17 — Gorchera 패턴 적용 (Lease Heartbeat + automated_checks)
+### ✅ S17 — Gorchera 패턴 적용 (Lease Heartbeat + automated_checks)
 
 **배경**: Gorchera(knewstimek/gorchera) 분석에서 발견한 운영 안정성 패턴 3개.  
 **선행**: S16 완료 후 진행.
@@ -551,3 +554,45 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - deep 모드에서만 해당 (std에서는 pr-reviewer 스킵)
 
 **변경**: `harness-loop.sh`
+
+---
+
+### ✅ S30 — 에이전트별 --max-budget-usd 2.00
+
+**배경**: 개별 에이전트가 폭주해 비용이 무제한 증가하는 경우 방지.
+
+**구현 내용**:
+- `harness-utils.sh` `_agent_call()` claude 호출에 `--max-budget-usd 2.00` 추가
+- 모든 에이전트(engineer/test-engineer/validator/pr-reviewer/security-reviewer 등) 일괄 적용
+
+**변경**: `harness-utils.sh`
+
+---
+
+### ✅ S31 — 킬 스위치
+
+**배경**: 루프가 폭주하거나 잘못된 방향으로 진행 시 즉시 중단할 방법이 없었다.
+
+**구현 내용**:
+- `harness-loop.sh` `kill_check()` 함수 — `/tmp/{PREFIX}_harness_kill` 파일 존재 시 즉시 `HARNESS_KILLED` 출력 후 exit 0
+- 삽입 위치: while 루프 상단 + 각 에이전트 호출 직전(engineer×2, test-engineer, vitest, validator, pr-reviewer, security-reviewer)
+- `harness-executor.sh` EXIT trap에 kill 파일 정리 추가
+- `commands/harness-kill.md` 신규 — `/harness-kill` 커맨드
+
+**사용법**: `touch /tmp/{PREFIX}_harness_kill`
+
+**변경**: `harness-loop.sh`, `harness-executor.sh`, `commands/harness-kill.md` (신규)
+
+---
+
+### ✅ S32 — 전체 루프 비용 상한 $10
+
+**배경**: 루프 전체 비용이 누적돼 예산을 초과하는 경우 방지.
+
+**구현 내용**:
+- `harness-utils.sh` Python parser에서 result 이벤트 `total_cost_usd` 추출 → `{out_file}_cost.txt` 기록
+- `harness-loop.sh` `budget_check()` 함수 — 에이전트별 비용 누적 → $10 초과 시 `HARNESS_BUDGET_EXCEEDED` 출력 후 exit 1
+- `hlog`에 에이전트별·누적 비용 기록 (`💰 ${agent} 비용: $X | 누적: $Y/10`)
+- agent_end JSONL 이벤트에 `cost_usd` 필드 추가
+
+**변경**: `harness-utils.sh`, `harness-loop.sh`

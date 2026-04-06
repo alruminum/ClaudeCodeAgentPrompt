@@ -271,6 +271,8 @@ DESIGN_REVIEW_ESCALATE        │
 | `LGTM` / `CHANGES_REQUESTED` | pr-reviewer | LGTM → security-reviewer / CR → retry |
 | `SECURE` / `VULNERABILITIES_FOUND` | security-reviewer | SECURE → commit / VF (HIGH/MEDIUM) → retry |
 | `HARNESS_DONE` | harness-loop.sh | 메인 Claude: stories 체크 → 유저 보고 |
+| `HARNESS_KILLED` | harness-loop.sh (킬 스위치) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
+| `HARNESS_BUDGET_EXCEEDED` | harness-loop.sh (비용 상한) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
 | `IMPLEMENTATION_ESCALATE` | harness-loop.sh | 메인 Claude 보고 후 architect SPEC_GAP 권장 |
 | `KNOWN_ISSUE` | qa | 메인 Claude 보고 후 대기 |
 | `PLAN_NEEDED` | harness-executor.sh | 유저 결정 → 루프 A or 이슈 종료 |
@@ -321,6 +323,9 @@ DESIGN_REVIEW_ESCALATE        │
 `harness-loop.sh` 내 에이전트(engineer/validator 등) 호출은 포어그라운드 순차 실행. 에이전트 간 백그라운드 스폰 금지.
 단, `harness-executor.sh` 자체는 `harness-router.py` 훅이 Popen 백그라운드 spawn (S16) — LLM이 Bash 도구로 직접 실행 금지 (이중 실행·좀비 방지).
 spawn 안전 메커니즘: Atomic O_CREAT|O_EXCL lock + TTL 120s stale 해제 + heartbeat 15s JSON lease 갱신 + EXIT trap 정리 + timeout per agent call.
+킬 스위치 (S31): `touch /tmp/{PREFIX}_harness_kill` → 다음 에이전트 호출 전 감지 → 즉시 `HARNESS_KILLED` 출력 + 루프 종료. harness-executor EXIT trap에서도 kill 파일 정리.
+에이전트별 예산 상한 (S30): 모든 `_agent_call`에 `--max-budget-usd 2.00` 적용. 개별 에이전트 폭주 방지.
+전체 루프 비용 상한 (S32): stream-json result 이벤트에서 `total_cost_usd` 추출 → `TOTAL_COST` 누적 → $10 초과 시 즉시 `HARNESS_BUDGET_EXCEEDED` 출력 + 루프 종료. `hlog`에 에이전트별·누적 비용 기록.
 pre-evaluator: engineer 완료 직후 sh 레벨 사전 검사 (has_changes / no_new_deps / file_unchanged) → LLM 호출 없이 즉시 attempt++ (S17-2).
 HARNESS_INTERNAL 재귀 방지: `_agent_call`이 `claude --agent xxx -p "..."` 실행 시 UserPromptSubmit 훅도 트리거됨. `HARNESS_INTERNAL=1` env var로 내부 호출 감지 → 라우터 즉시 통과 (재귀 spawn 방지).
 is_bug LLM 분류 스킵: `is_bug=True` 확정 시 `classify_intent_llm()` 호출 금지 — 불필요한 curl 호출이 10s 훅 타임아웃 초과 유발.

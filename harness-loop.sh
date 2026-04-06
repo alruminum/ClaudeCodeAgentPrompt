@@ -275,6 +275,34 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ── S31: 킬 스위치 / S32: 비용 추적 ───────────────────────────────────
+TOTAL_COST=0
+MAX_TOTAL_COST=10  # 달러 — 전체 루프 비용 상한
+
+kill_check() {
+  if [ -f "/tmp/${PREFIX}_harness_kill" ]; then
+    hlog "🛑 킬 스위치 감지 — 즉시 중단"
+    rm -f "/tmp/${PREFIX}_harness_active" "/tmp/${PREFIX}_harness_kill"
+    echo "HARNESS_KILLED: 사용자 요청으로 중단됨"
+    exit 0
+  fi
+}
+
+budget_check() {
+  local agent_name="$1" out_file="$2"
+  local cost_file="${out_file%.txt}_cost.txt"
+  local agent_cost
+  agent_cost=$(cat "$cost_file" 2>/dev/null || echo "0")
+  TOTAL_COST=$(echo "$TOTAL_COST + $agent_cost" | bc 2>/dev/null || echo "$TOTAL_COST")
+  hlog "💰 ${agent_name} 비용: \$${agent_cost} | 누적: \$${TOTAL_COST}/${MAX_TOTAL_COST}"
+  if [ "$(echo "$TOTAL_COST > $MAX_TOTAL_COST" | bc 2>/dev/null)" = "1" ]; then
+    hlog "🚨 비용 상한 초과 (\$${TOTAL_COST} > \$${MAX_TOTAL_COST}) — 즉시 중단"
+    echo "HARNESS_BUDGET_EXCEEDED: \$${TOTAL_COST} spent, limit \$${MAX_TOTAL_COST}"
+    rm -f "/tmp/${PREFIX}_harness_active"
+    exit 1
+  fi
+}
+
 # ══════════════════════════════════════════════════════════════════════
 # mode: impl2
 # ══════════════════════════════════════════════════════════════════════
@@ -287,9 +315,11 @@ if [[ "$MODE" == "impl2" ]]; then
   # ── fast mode: engineer → commit (테스트·리뷰·보안 스킵) ─────────────
   if [[ "$DEPTH" == "fast" ]]; then
     hlog "=== 하네스 루프 시작 (depth=fast) ==="
+    kill_check
     echo "[HARNESS/fast] engineer 호출 중 (테스트·리뷰·보안 스킵)"
     context=$(cat "$IMPL_FILE" | head -c 30000)
     hlog "▶ engineer 시작 (depth=fast, timeout=900s)"
+    kill_check
     AGENT_EXIT=0
     _agent_call "engineer" 900 \
       "impl: $IMPL_FILE
@@ -301,6 +331,7 @@ constraints:
 $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     hlog "◀ engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null || echo 0)bytes)"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
+    budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
     mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
     if [[ ${#commit_files[@]} -gt 0 ]]; then
@@ -328,6 +359,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
 
   while [[ $attempt -lt $MAX ]]; do
     ATTEMPT=$attempt
+    kill_check
 
     # ── Context GC: 스마트 컨텍스트 (관련 청크만 로드) ──────────────
     context=$(build_smart_context "$IMPL_FILE" "$attempt" "$error_trace")
@@ -371,6 +403,7 @@ ${error_1line}
     # ── 워커 1: engineer ──────────────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 호출 중"
     hlog "▶ engineer 시작 (depth=$DEPTH, timeout=900s)"
+    kill_check
     AGENT_EXIT=0
     _agent_call "engineer" 900 \
       "impl: $IMPL_FILE
@@ -383,6 +416,7 @@ constraints:
 $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     hlog "◀ engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null || echo 0)bytes)"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
+    budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
     # ── S17-2: pre-evaluator automated_checks ────────────────────────
     if ! run_automated_checks "$IMPL_FILE"; then
@@ -398,6 +432,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
     hlog "▶ test-engineer 시작 (depth=$DEPTH, timeout=300s)"
+    kill_check
     AGENT_EXIT=0
     _agent_call "test-engineer" 300 \
       "구현된 파일:
@@ -406,10 +441,12 @@ $changed_files
 테스트 작성 후 npx vitest run. issue: #$ISSUE_NUM" "/tmp/${PREFIX}_te_out.txt" || AGENT_EXIT=$?
     hlog "◀ test-engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_te_out.txt" 2>/dev/null || echo 0)bytes)"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ test-engineer timeout — skip"; fi
+    budget_check "test-engineer" "/tmp/${PREFIX}_te_out.txt"
 
     # ── Ground truth: 실제 테스트 실행 (LLM 주장과 독립) ──────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — npx vitest run"
     hlog "▶ vitest 시작"
+    kill_check
     set +e
     npx vitest run > "/tmp/${PREFIX}_test_out.txt" 2>&1
     test_exit=$?
@@ -429,12 +466,14 @@ $changed_files
     # ── 워커 3: validator Mode B ──────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
     hlog "▶ validator 시작 (depth=$DEPTH, timeout=300s)"
+    kill_check
     AGENT_EXIT=0
     _agent_call "validator" 300 \
       "Mode B — impl: $IMPL_FILE" \
       "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
     hlog "◀ validator 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo 0)bytes)"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ validator timeout — skip"; fi
+    budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
     val_out=$(cat "/tmp/${PREFIX}_val_out.txt")
     if echo "$val_out" | grep -qE "^PASS$"; then
       val_result="PASS"
@@ -461,12 +500,14 @@ $changed_files
       diff_out=$(git diff HEAD 2>&1 | head -300)
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
       hlog "▶ pr-reviewer 시작 (deep only, timeout=180s)"
+      kill_check
       AGENT_EXIT=0
       _agent_call "pr-reviewer" 180 \
         "변경 내용 리뷰:
 $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
+      budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
       pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
       if echo "$pr_out" | grep -qE "^LGTM$"; then
         pr_result="PASS"
@@ -490,6 +531,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
 
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
       hlog "▶ security-reviewer 시작 (deep only, timeout=180s)"
+      kill_check
       changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
       AGENT_EXIT=0
       _agent_call "security-reviewer" 180 \
@@ -500,6 +542,7 @@ $changed_src
 $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       hlog "◀ security-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo 0)bytes)"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ security-reviewer timeout — skip"; fi
+      budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
       sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
       if echo "$sec_out" | grep -qE "^SECURE$"; then
         sec_result="PASS"

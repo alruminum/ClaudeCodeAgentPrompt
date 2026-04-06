@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-06
+> 최종 업데이트: 2026-04-06 (S30+S31+S32)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -74,6 +74,8 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `{p}_pr_body.txt` | harness-loop.sh (HARNESS_DONE) | 메인 Claude (PR 생성 시 활용) | PR 본문 자동 생성 |
 | `{p}_memory_candidate.md` | harness-loop.sh (FAIL 시) | 메인 Claude (유저 승인 후 harness-memory.md에 기록) | 실패 패턴 초안 (S5) |
 | `{p}-agent-calls.log` | harness-loop.sh | - | 에이전트 호출 로그 |
+| `{p}_harness_kill` | 사용자 (`/harness-kill`) | harness-loop.sh `kill_check()` | 킬 스위치 — 다음 에이전트 호출 전 루프 중단 (S31) |
+| `{p}_{agent}_cost.txt` | `harness-utils.sh` `_agent_call()` | `harness-loop.sh` `budget_check()` | 에이전트별 비용 (USD). result 이벤트 `total_cost_usd` 추출 (S32) |
 
 **생명주기**: SessionStart → `harness-session-start.py`가 `/tmp/{p}_*` 전체 삭제 → 루프 진행 중 생성 → HARNESS_DONE 후 정리
 
@@ -113,6 +115,16 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S16 | Router spawn 안전화 | `harness-router.py` try_spawn_harness() O_EXCL lock + TTL 120s + heartbeat / `harness-executor.sh` EXIT trap + timeout 300 / `harness-loop.sh` timeout 300 | 2026-04-06 |
 | S17 | pre-evaluator + JSON Lease | `harness-loop.sh` run_automated_checks() (has_changes/no_new_deps/file_unchanged) / `harness-executor.sh` _write_lease() JSON heartbeat / `harness-router.py` _lease_age() | 2026-04-06 |
 | S18 | Adaptive Interview Harness | `harness-router.py` run_interview_turn() + AMBIGUOUS 분기 교체 — AMBIGUOUS 감지 → Haiku Q&A (max_turn=4) → plan 자동 spawn / interview_state.json 상태 관리 / LLM override 차단 (0-A) / double Haiku 방지 (0-B) | 2026-04-06 |
+| S19 | macOS timeout 호환 + impl_path 누락 가드 | `timeout` shim (perl fallback) + impl_path 미설정 시 즉시 오류 출력 | 2026-04-06 |
+| S20 | Agent Observability | `harness-utils.sh` `_agent_call()` — stream-json tee → JSONL 아카이브 + python3 result 추출. FIFO 10-run 보존 (`rotate_harness_logs()`). 로그 위치: `~/.claude/harness-logs/{prefix}/run_*.jsonl` | 2026-04-06 |
+| S21 | 타임스탬프 로깅 (hlog) | `harness-loop.sh` `hlog()` 함수 — `[HH:MM:SS] [attempt=N]` 형식. 루프 시작/종료·에이전트 전후·vitest 전후 기록. `/tmp/${PREFIX}-harness-debug.log` | 2026-04-06 |
+| S22 | 에이전트 timeout + exit 124 감지 | `harness-utils.sh` `_call_exit` 전파 + `return $_call_exit`. `harness-loop.sh` 모든 `_agent_call`에 `\|\| AGENT_EXIT=$?` + exit 124 hlog | 2026-04-06 |
+| S23 | std 모드 게이트 축소 (5→3단계) | fast=1단계, std=3단계(engineer→test-engineer→validator), deep=5단계(+pr-reviewer+security-reviewer). std/fast에서 플래그 자동 touch | 2026-04-06 |
+| S24 | grep 파싱 라인 전체 매칭 | `grep -oE` → `grep -qE "^MARKER$"` 교체. UNKNOWN 케이스 `!= PASS` 통일. validator/pr-reviewer/security-reviewer 3곳 | 2026-04-06 |
+| S26 | git diff 타이밍 픽스 | deep 모드 pr-reviewer 호출 직전 `git add -A` 추가 → staged 변경이 diff에 포함 보장 | 2026-04-06 |
+| S30 | 에이전트별 예산 상한 | `harness-utils.sh` `_agent_call()`에 `--max-budget-usd 2.00` 추가. 개별 에이전트 폭주 방지 | 2026-04-06 |
+| S31 | 킬 스위치 | `harness-loop.sh` `kill_check()` — `/tmp/{p}_harness_kill` 감지 시 즉시 `HARNESS_KILLED` 출력 후 종료. while 루프 상단 + 에이전트 호출 직전 전수 삽입. `/harness-kill` 커맨드 추가. `harness-executor.sh` EXIT trap에서 kill 파일 정리 | 2026-04-06 |
+| S32 | 전체 루프 비용 상한 $10 | `harness-loop.sh` `budget_check()` — stream-json result 이벤트에서 `total_cost_usd` 추출 → `TOTAL_COST` 누적 → $10 초과 시 `HARNESS_BUDGET_EXCEEDED` 출력 후 종료. hlog에 에이전트별·누적 비용 기록 | 2026-04-06 |
 
 ---
 
