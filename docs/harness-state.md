@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-06 (S30+S31+S32)
+> 최종 업데이트: 2026-04-07 (RF1 — 5f19c2a 복원 리팩토링 + Stop hook)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -38,7 +38,8 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 
 | 파일 | 트리거 | 역할 |
 |---|---|---|
-| `harness-router.py` | UserPromptSubmit (global) | 프롬프트 의도 분류 (regex+LLM 하이브리드) → 워크플로우 상태 주입 |
+| `harness-router.py` | UserPromptSubmit (global) | fast_classify(regex) → extract_intent(Haiku LLM) → 워크플로우 상태/Adaptive Interview 주입 |
+| `harness-stop-gate.sh` | Stop (global) | harness_active 존재 시 exit 2 → 종료 차단 (S33) |
 | `harness-session-start.py` | SessionStart (global) | `/tmp/{prefix}_*` 플래그 전체 초기화 |
 | `orch-rules-first.py` | PreToolUse(Edit/Write) (global) | `orchestration-rules.md` 선행 수정 물리적 강제 |
 | `agent-boundary.py` | PreToolUse(Edit/Write) (global) | 에이전트별 파일 수정 경로 물리적 제한 |
@@ -112,9 +113,9 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S7 | 세션 컨텍스트 브리지 | `harness-session-start.py` — 프로젝트명·최근커밋·진행중 항목 자동 주입. HARNESS_DONE 시 `last_issue` 저장 | 2026-04-05 |
 | S8 | 하네스 smoke test | `commands/harness-test.md` — 파일존재·문법·플래그 dry-run, SMOKE_PASS/FAIL 판정 | 2026-04-05 |
 | S10 | 납품 게이트 | `commands/deliver.md` — .env노출·console.log·하드코딩URL·빌드 스캔, DELIVERY_READY/BLOCKED/WARN | 2026-04-05 |
-| S16 | Router spawn 안전화 | `harness-router.py` try_spawn_harness() O_EXCL lock + TTL 120s + heartbeat / `harness-executor.sh` EXIT trap + timeout 300 / `harness-loop.sh` timeout 300 | 2026-04-06 |
-| S17 | pre-evaluator + JSON Lease | `harness-loop.sh` run_automated_checks() (has_changes/no_new_deps/file_unchanged) / `harness-executor.sh` _write_lease() JSON heartbeat / `harness-router.py` _lease_age() | 2026-04-06 |
-| S18 | Adaptive Interview Harness | `harness-router.py` run_interview_turn() + AMBIGUOUS 분기 교체 — AMBIGUOUS 감지 → Haiku Q&A (max_turn=4) → plan 자동 spawn / interview_state.json 상태 관리 / LLM override 차단 (0-A) / double Haiku 방지 (0-B) | 2026-04-06 |
+| S16 | ~~Router spawn~~ → Rate Limiter 유지 | `harness-router.py` _check_invoke_rate() (5회/60초). Popen/Atomic Lock/TTL/heartbeat 제거 (RF1) | 2026-04-07 |
+| S17 | ~~JSON Lease~~ → pre-evaluator 유지 | `harness-loop.sh` run_automated_checks() (has_changes/no_new_deps/file_unchanged). JSON Lease 제거 (RF1) | 2026-04-07 |
+| S18 | Adaptive Interview (additionalContext) | `harness-router.py` _run_interview_turn() + Haiku Q&A(max 4턴) → additionalContext로 질문/힌트 주입. Popen spawn 제거 (RF1) | 2026-04-07 |
 | S19 | macOS timeout 호환 + impl_path 누락 가드 | `timeout` shim (perl fallback) + impl_path 미설정 시 즉시 오류 출력 | 2026-04-06 |
 | S20 | Agent Observability | `harness-utils.sh` `_agent_call()` — stream-json tee → JSONL 아카이브 + python3 result 추출. FIFO 10-run 보존 (`rotate_harness_logs()`). 로그 위치: `~/.claude/harness-logs/{prefix}/run_*.jsonl` | 2026-04-06 |
 | S21 | 타임스탬프 로깅 (hlog) | `harness-loop.sh` `hlog()` 함수 — `[HH:MM:SS] [attempt=N]` 형식. 루프 시작/종료·에이전트 전후·vitest 전후 기록. `/tmp/${PREFIX}-harness-debug.log` | 2026-04-06 |
@@ -125,6 +126,10 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S30 | 에이전트별 예산 상한 | `harness-utils.sh` `_agent_call()`에 `--max-budget-usd 2.00` 추가. 개별 에이전트 폭주 방지 | 2026-04-06 |
 | S31 | 킬 스위치 | `harness-loop.sh` `kill_check()` — `/tmp/{p}_harness_kill` 감지 시 즉시 `HARNESS_KILLED` 출력 후 종료. while 루프 상단 + 에이전트 호출 직전 전수 삽입. `/harness-kill` 커맨드 추가. `harness-executor.sh` EXIT trap에서 kill 파일 정리 | 2026-04-06 |
 | S32 | 전체 루프 비용 상한 $10 | `harness-loop.sh` `budget_check()` — stream-json result 이벤트에서 `total_cost_usd` 추출 → `TOTAL_COST` 누적 → $10 초과 시 `HARNESS_BUDGET_EXCEEDED` 출력 후 종료. hlog에 에이전트별·누적 비용 기록 | 2026-04-06 |
+| S27 | fast_classify() regex 즉시 분류 | `harness-router.py` fast_classify() — GREETING/QUESTION/BUG/IMPLEMENTATION 4카테고리 regex 즉시 판정, 미분류 시 LLM 폴백 | 2026-04-07 |
+| S28 | _call_haiku() API 직접 호출 | `harness-router.py` _call_haiku() — urllib API 직접(5s) + claude --agent socrates CLI 폴백(10s) | 2026-04-07 |
+| S33 | Stop hook 종료 차단 | `hooks/harness-stop-gate.sh` — harness_active 존재 시 exit 2. kill switch 시 즉시 허용. `settings.json` Stop hook 등록 | 2026-04-07 |
+| RF1 | 5f19c2a 복원 리팩토링 | Popen 전면 제거. 라우터=분류+힌트, Claude=판단+실행 원칙 복원. S27/S28/S18/Rate Limiter/Kill Switch 선별 병합 | 2026-04-07 |
 
 ---
 
@@ -146,7 +151,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 ```mermaid
 graph TD
   User[사용자 프롬프트] --> Router[harness-router.py\nUserPromptSubmit]
-  Router -->|AMBIGUOUS| Hint[product-planner 힌트 주입\n루프 진입 차단]
+  Router -->|AMBIGUOUS| Interview[Adaptive Interview\nHaiku Q&A → product-planner 힌트]
   Router -->|분류 완료| Executor[harness-executor.sh\n5모드 라우터]
   Executor -->|impl2 + depth 감지| Loop[harness-loop.sh\n구현 루프]
   Executor -->|impl| Architect[architect\nModule Plan]

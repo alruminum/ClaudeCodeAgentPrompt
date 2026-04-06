@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-06 (S21~S26 추가)
+> 최종 업데이트: 2026-04-07 (5f19c2a 복원 리팩토링 + Stop hook)
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -30,9 +30,9 @@
 | S7 | 세션 컨텍스트 브리지 (새 세션 상태 자동 주입) | S | ✅ 완료 |
 | S8 | 하네스 smoke test (/harness-test) | S | ✅ 완료 |
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
-| **S16** | **Router spawn 안전화 — Atomic Lock + TTL (좀비 방지)** | S | ✅ 완료 |
-| **S17** | **Gorchera 패턴 — Lease Heartbeat + automated_checks** | S | ✅ 완료 |
-| **S18** | **Adaptive Interview Harness — AMBIGUOUS → Haiku Q&A → plan spawn** | S | ✅ 완료 |
+| **S16** | **~~Router spawn 안전화~~** → Popen 제거, Rate Limiter(5/60s) 유지 | S | ✅ 리팩 |
+| **S17** | **~~Gorchera 패턴~~** → JSON Lease 제거, pre-evaluator 유지 | S | ✅ 리팩 |
+| **S18** | **Adaptive Interview — AMBIGUOUS → Haiku Q&A → additionalContext 힌트** | S | ✅ 리팩 |
 | **S19** | **macOS timeout 호환 (shim) + impl_path 누락 가드** | S | ✅ 완료 |
 | **S20** | **Agent Observability: 전 에이전트 실행 로그 + FIFO 10-run 보존** | S | ✅ 완료 |
 | **S21** | **하네스 루프 타임스탬프 로깅 (hlog 함수)** | S | ✅ 완료 |
@@ -44,6 +44,10 @@
 | **S30** | **에이전트별 --max-budget-usd 2.00** | S | ✅ 완료 |
 | **S31** | **킬 스위치 (/harness-kill)** | S | ✅ 완료 |
 | **S32** | **전체 루프 비용 상한 $10** | S | ✅ 완료 |
+| **S27** | **fast_classify() — regex 2단계 즉시 분류** | S | ✅ 완료 |
+| **S28** | **_call_haiku() — urllib API 직접 + CLI(socrates) 폴백** | S | ✅ 완료 |
+| **S33** | **Stop hook — harness_active 물리적 종료 차단** | S | ✅ 완료 |
+| **RF1** | **5f19c2a 복원 리팩토링 — Popen 전면 제거, 라우터=분류+힌트** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -200,61 +204,39 @@ fixture impl로 플래그 흐름만 dry-run.
 
 ---
 
-### 🔥 S16 — Router spawn 안전화 (Atomic Lock + TTL)
+### ✅ S16 — ~~Router spawn 안전화~~ → Popen 제거, Rate Limiter 유지
 
-**배경**: S16 구현(980ca48)이 Popen 백그라운드 spawn + lock 없음으로 무한 좀비 루프 → 1분 만에 $100 소진.  
-**방향**: 직접 spawn 방식 유지 (LLM 우회 목적 정당), 구현만 안전하게 교체.
+**배경**: S16 구현(980ca48)이 Popen 백그라운드 spawn + lock 없음으로 무한 좀비 루프 → 1분 만에 $100 소진.
+**결과**: RF1 리팩토링에서 Popen/Atomic Lock/TTL/heartbeat 전면 제거. 라우터=분류+힌트 원칙으로 복원.
 
-**Phase 1 변경 내용:**
+**잔존 기능**: Rate Limiter(5회/60초) — 훅 자체의 중복 실행 방어용으로 유지.
 
-```
-harness-router.py
-  - try_spawn_harness() 추가
-    - TTL 체크: lock 파일 mtime 기준 120초 초과 → stale → 삭제
-    - Atomic create: os.O_CREAT | os.O_EXCL (race condition 방지)
-    - FileExistsError → spawn 금지 (중복 차단)
-    - BUG/PLANNING 분기에도 active 체크 추가 (S16 버그 수정)
-
-harness-executor.sh
-  - 모든 mode 진입 시 즉시 lock 갱신
-  - heartbeat 백그라운드 (15초마다 touch → mtime 갱신)
-  - EXIT trap: heartbeat kill + lock 삭제 (성공/실패/크래시 모두)
-```
-
-**수용 기준**: 동시 2개 UserPromptSubmit 발생 시 1개만 spawn. 크래시 후 2분 내 재spawn 불가, 2분 후 가능.
-
-**변경 파일**: `hooks/harness-router.py`, `harness-executor.sh`
+**변경 파일**: `hooks/harness-router.py`
 
 ---
 
-### ✅ S17 — Gorchera 패턴 적용 (Lease Heartbeat + automated_checks)
+### ✅ S17 — ~~Gorchera 패턴~~ → JSON Lease 제거, pre-evaluator 유지
 
-**배경**: Gorchera(knewstimek/gorchera) 분석에서 발견한 운영 안정성 패턴 3개.  
-**선행**: S16 완료 후 진행.
+**배경**: Gorchera 분석에서 발견한 패턴 중 JSON Lease는 Popen 전제 → RF1에서 제거.
 
-**Phase 2 변경 내용:**
+**잔존 기능**: pre-evaluator automated_checks (has_changes/no_new_deps/file_unchanged) — `harness-loop.sh`에서 유지.
 
-```
-1. Lease 파일 고도화 (S16 단순 touch → JSON lease)
-   /tmp/{prefix}_harness_active.json
-   { "pid": 1234, "mode": "bugfix", "started": 1712345678, "heartbeat": 1712345693 }
-   → router가 heartbeat 필드로 stale 판단 (touch mtime보다 명시적)
+**변경 파일**: `harness-loop.sh`
 
-2. pre-evaluator automated_checks (LLM 호출 전 sh 사전 검사)
-   harness-executor.sh impl 모드에 추가:
-   - file_exists: 생성 예정 파일 실제 존재 확인
-   - no_new_deps: package.json 의존성 추가 여부 감지
-   - file_unchanged: 변경 금지 파일 수정 여부 확인
-   → 실패 시 validator 호출 없이 즉시 FAIL (토큰 절약)
+---
 
-3. estimateTokenCount 한국어 보정 (선택)
-   Gorchera의 char/4 추정이 CJK에서 4배 낮게 나오는 문제
-   → 우리 시스템에선 직접적 영향 없지만, 비용 추정 기능 추가 시 참고
-```
+### ✅ S18 — Adaptive Interview (additionalContext 방식)
 
-**수용 기준**: pre-evaluator 체크에서 잡힌 오류가 validator 에이전트 호출 없이 FAIL 처리됨.
+**배경**: AMBIGUOUS 요청이 루프로 직행하던 것을 Haiku Q&A로 명확화 후 진입.
+**RF1 변경**: Popen spawn 제거 → additionalContext로 질문/힌트 주입. 메인 Claude가 질문 전달.
 
-**변경 파일**: `hooks/harness-router.py`, `harness-executor.sh`
+**구현 내용**:
+- `_run_interview_turn()` — Haiku로 다음 질문 생성, DONE이면 None 반환
+- `/tmp/{p}_interview_state.json` — 인터뷰 상태 관리 (history, current_q, original, turn)
+- max_turn=4 하드캡 — 4턴 초과 시 자동 완료
+- 완료 시 product-planner 호출 힌트 주입
+
+**변경 파일**: `hooks/harness-router.py`
 
 ---
 
@@ -596,3 +578,61 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - agent_end JSONL 이벤트에 `cost_usd` 필드 추가
 
 **변경**: `harness-utils.sh`, `harness-loop.sh`
+
+---
+
+### ✅ S27 — fast_classify() regex 2단계 즉시 분류
+
+**배경**: 모든 프롬프트가 Haiku LLM을 거쳐 분류 지연 발생.
+
+**구현 내용**:
+- GREETING: 짧은 반응어 완전 일치 (`ㅇㅇ`, `응`, `ok`, `ㅋ+` 등)
+- QUESTION: `?`로 끝나면 무조건
+- BUG: 버그 키워드 있되 구현 동사 없는 경우만
+- IMPLEMENTATION: 이슈번호 + 명령형 동사 조합
+- 미분류 → LLM 폴백 (extract_intent)
+
+**변경 파일**: `hooks/harness-router.py`
+
+---
+
+### ✅ S28 — _call_haiku() urllib API 직접 + CLI 폴백
+
+**배경**: CLI `claude -p` 호출이 느리고 타임아웃 발생 빈번.
+
+**구현 내용**:
+- urllib.request로 Anthropic API 직접 호출 (timeout=5s)
+- API 키 없거나 실패 시 `claude --agent socrates` CLI 폴백 (timeout=10s)
+- HARNESS_INTERNAL=1 env로 재귀 방지
+
+**변경 파일**: `hooks/harness-router.py`, `agents/socrates.md`
+
+---
+
+### ✅ S33 — Stop hook (harness_active 물리적 종료 차단)
+
+**배경**: 하네스 실행 중 Claude가 조기 종료 선언하면 루프가 중단됨.
+
+**구현 내용**:
+- `hooks/harness-stop-gate.sh` — Stop hook에서 `/tmp/{p}_harness_active` 체크
+- 존재 시 exit 2 → 종료 차단, kill switch 활성 시 즉시 허용
+- `settings.json` Stop hook: gate → afplay 순서 등록
+
+**변경 파일**: `hooks/harness-stop-gate.sh` (신규), `settings.json`
+
+---
+
+### ✅ RF1 — 5f19c2a 복원 리팩토링
+
+**배경**: 980ca48(S16 Popen 도입) 이후 구조가 복잡해져 유지보수 불가.
+
+**핵심 원칙**: 라우터=분류+힌트 주입, Claude=판단+실행. Popen 전면 제거.
+
+**변경 내용**:
+- `hooks/harness-router.py` — 5f19c2a 베이스로 복원 + S27/S28/S18/S16(Rate Limiter)/S30(Kill Switch) 선별 병합
+- `orchestration-rules.md` — 정책4 복원(Popen→포어그라운드), AMBIGUOUS→Adaptive Interview, 정책10 추가
+- `hooks/harness-stop-gate.sh` + `settings.json` — Stop hook 신규
+
+**제거된 것**: Popen spawn, Atomic Lock, JSON Lease, heartbeat, try_spawn_harness(), run_harness(), get_harness_sh()
+
+**변경 파일**: `hooks/harness-router.py`, `orchestration-rules.md`, `hooks/harness-stop-gate.sh`, `settings.json`
