@@ -285,6 +285,16 @@ def _main_inner():
         log(raw_prefix if raw_prefix != "auto" else "?", f"PASS(harness_internal_pattern) prompt={prompt[:60]!r}")
         sys.exit(0)
 
+    # 3차 방어: 붙여넣기 콘텐츠 감지 — 로그/대화 기록을 유저 명령으로 오인 방지
+    _PASTE_PATTERNS = [
+        r'^\[\d{2}:\d{2}:\d{2}\]\s+\[\w+\]\s+',   # [HH:MM:SS] [prefix] 로그 라인
+        r'❯\s+\S.*\n\s+⎿',                           # Claude Code UI 대화 기록 (❯ + ⎿)
+        r'\n✶\s',                                      # 어시스턴트 턴 마커
+    ]
+    if any(re.search(p, prompt, re.MULTILINE) for p in _PASTE_PATTERNS):
+        log(raw_prefix if raw_prefix != "auto" else "?", f"PASS(pasted_content) prompt={prompt[:60]!r}")
+        sys.exit(0)
+
     # mtime 기반 스태일 designer_ran 감지 (any_active 계산 전)
     dr_path = f"/tmp/{prefix}_designer_ran"
     dc_path = f"/tmp/{prefix}_design_critic_passed"

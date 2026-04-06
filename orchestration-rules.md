@@ -323,6 +323,7 @@ pre-evaluator: engineer 완료 직후 sh 레벨 사전 검사 (has_changes / no_
 HARNESS_INTERNAL 재귀 방지: `_agent_call`이 `claude --agent xxx -p "..."` 실행 시 UserPromptSubmit 훅도 트리거됨. `HARNESS_INTERNAL=1` env var로 내부 호출 감지 → 라우터 즉시 통과 (재귀 spawn 방지).
 is_bug LLM 분류 스킵: `is_bug=True` 확정 시 `classify_intent_llm()` 호출 금지 — 불필요한 curl 호출이 10s 훅 타임아웃 초과 유발.
 이중 방어선: ① 내부 프롬프트 패턴 감지(^bug:.*issue: 등) → 즉시 통과. ② spawn rate limiter — 60초 내 3회 초과 시 하드 블록. HARNESS_INTERNAL 실패해도 차단.
+붙여넣기 콘텐츠 감지(3차 방어): 유저가 로그/대화 기록을 붙여넣으면 라우터가 내용 속 키워드를 실제 명령으로 오인해 하네스 스폰. `[HH:MM:SS] [prefix]` 타임스탬프 패턴, Claude Code UI 마커(❯+⎿, ✶) 감지 시 즉시 통과.
 
 **5. 에스컬레이션 → 메인 Claude 보고 후 대기**
 에스컬레이션 마커 수신 시 자동 복구 시도 금지.
