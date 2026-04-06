@@ -112,6 +112,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S10 | 납품 게이트 | `commands/deliver.md` — .env노출·console.log·하드코딩URL·빌드 스캔, DELIVERY_READY/BLOCKED/WARN | 2026-04-05 |
 | S16 | Router spawn 안전화 | `harness-router.py` try_spawn_harness() O_EXCL lock + TTL 120s + heartbeat / `harness-executor.sh` EXIT trap + timeout 300 / `harness-loop.sh` timeout 300 | 2026-04-06 |
 | S17 | pre-evaluator + JSON Lease | `harness-loop.sh` run_automated_checks() (has_changes/no_new_deps/file_unchanged) / `harness-executor.sh` _write_lease() JSON heartbeat / `harness-router.py` _lease_age() | 2026-04-06 |
+| S18 | Adaptive Interview Harness | `harness-router.py` run_interview_turn() + AMBIGUOUS 분기 교체 — AMBIGUOUS 감지 → Haiku Q&A (max_turn=4) → plan 자동 spawn / interview_state.json 상태 관리 / LLM override 차단 (0-A) / double Haiku 방지 (0-B) | 2026-04-06 |
 
 ---
 
