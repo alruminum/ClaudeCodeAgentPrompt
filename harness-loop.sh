@@ -263,6 +263,11 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 MSGEOF
 }
 
+# ── 타임스탬프 디버그 로그 ─────────────────────────────────────────────
+HLOG="/tmp/${PREFIX}-harness-debug.log"
+ATTEMPT=0
+hlog() { echo "[$(date +%H:%M:%S)] [attempt=${ATTEMPT}] $*" | tee -a "$HLOG"; }
+
 # ── harness_active 플래그 정리 (성공/실패 모두) ────────────────────────
 cleanup() {
   rm -f "/tmp/${PREFIX}_harness_active"
@@ -281,8 +286,11 @@ if [[ "$MODE" == "impl2" ]]; then
 
   # ── fast mode: engineer → commit (테스트·리뷰·보안 스킵) ─────────────
   if [[ "$DEPTH" == "fast" ]]; then
+    hlog "=== 하네스 루프 시작 (depth=fast) ==="
     echo "[HARNESS/fast] engineer 호출 중 (테스트·리뷰·보안 스킵)"
     context=$(cat "$IMPL_FILE" | head -c 30000)
+    hlog "▶ engineer 시작 (depth=fast, timeout=900s)"
+    AGENT_EXIT=0
     _agent_call "engineer" 900 \
       "impl: $IMPL_FILE
 issue: #$ISSUE_NUM
@@ -290,7 +298,9 @@ task: impl 파일의 구현 명세 이행
 context:
 $context
 constraints:
-$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt"
+$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
+    hlog "◀ engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
 
     mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
     if [[ ${#commit_files[@]} -gt 0 ]]; then
@@ -302,8 +312,10 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt"
       echo "issue: #$ISSUE_NUM"
       echo "commit: $commit_hash"
       echo "⚠️ fast mode: 테스트·리뷰·보안 검사 스킵됨. 중요 변경엔 --depth=std 사용."
+      hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=1) ==="
     else
       echo "[HARNESS/fast] 변경사항 없음"
+      hlog "=== 하네스 루프 종료 (결과=no_changes, 시도=1) ==="
     fi
     exit 0
   fi
@@ -315,8 +327,10 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt"
   MAX=3
   error_trace=""
   fail_type=""
+  hlog "=== 하네스 루프 시작 (depth=$DEPTH, max_retries=$MAX) ==="
 
   while [[ $attempt -lt $MAX ]]; do
+    ATTEMPT=$attempt
 
     # ── Context GC: 스마트 컨텍스트 (관련 청크만 로드) ──────────────
     context=$(build_smart_context "$IMPL_FILE" "$attempt" "$error_trace")
@@ -359,6 +373,8 @@ ${error_1line}
 
     # ── 워커 1: engineer ──────────────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 호출 중"
+    hlog "▶ engineer 시작 (depth=$DEPTH, timeout=900s)"
+    AGENT_EXIT=0
     _agent_call "engineer" 900 \
       "impl: $IMPL_FILE
 issue: #$ISSUE_NUM
@@ -367,7 +383,9 @@ $task
 context:
 $context
 constraints:
-$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt"
+$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
+    hlog "◀ engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
 
     # ── S17-2: pre-evaluator automated_checks ────────────────────────
     if ! run_automated_checks "$IMPL_FILE"; then
@@ -382,18 +400,24 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt"
     # ── 워커 2: test-engineer ─────────────────────────────────────
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
+    hlog "▶ test-engineer 시작 (depth=$DEPTH, timeout=300s)"
+    AGENT_EXIT=0
     _agent_call "test-engineer" 300 \
       "구현된 파일:
 $changed_files
 
-테스트 작성 후 npx vitest run. issue: #$ISSUE_NUM" "/tmp/${PREFIX}_te_out.txt"
+테스트 작성 후 npx vitest run. issue: #$ISSUE_NUM" "/tmp/${PREFIX}_te_out.txt" || AGENT_EXIT=$?
+    hlog "◀ test-engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_te_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ test-engineer timeout — skip"; fi
 
     # ── Ground truth: 실제 테스트 실행 (LLM 주장과 독립) ──────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — npx vitest run"
+    hlog "▶ vitest 시작"
     set +e
     npx vitest run > "/tmp/${PREFIX}_test_out.txt" 2>&1
     test_exit=$?
     set -e
+    hlog "◀ vitest 종료 (exit=$test_exit)"
     if [[ $test_exit -ne 0 ]]; then
       echo "[HARNESS] TESTS_FAIL"
       error_trace=$(cat "/tmp/${PREFIX}_test_out.txt")
@@ -407,9 +431,13 @@ $changed_files
 
     # ── 워커 3: validator Mode B ──────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
+    hlog "▶ validator 시작 (depth=$DEPTH, timeout=300s)"
+    AGENT_EXIT=0
     _agent_call "validator" 300 \
       "Mode B — impl: $IMPL_FILE" \
-      "/tmp/${PREFIX}_val_out.txt"
+      "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
+    hlog "◀ validator 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ validator timeout — skip"; fi
     val_out=$(cat "/tmp/${PREFIX}_val_out.txt")
     if echo "$val_out" | grep -qE "^PASS$"; then
       val_result="PASS"
@@ -433,9 +461,13 @@ $changed_files
     # ── 워커 4: pr-reviewer ───────────────────────────────────────
     diff_out=$(git diff HEAD 2>&1 | head -300)
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
+    hlog "▶ pr-reviewer 시작 (depth=$DEPTH, timeout=180s)"
+    AGENT_EXIT=0
     _agent_call "pr-reviewer" 180 \
       "변경 내용 리뷰:
-$diff_out" "/tmp/${PREFIX}_pr_out.txt"
+$diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
+    hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
     pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
     if echo "$pr_out" | grep -qE "^LGTM$"; then
       pr_result="PASS"
@@ -459,13 +491,17 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt"
 
     # ── 워커 5: security-reviewer ─────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
+    hlog "▶ security-reviewer 시작 (depth=$DEPTH, timeout=180s)"
     changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
+    AGENT_EXIT=0
     _agent_call "security-reviewer" 180 \
       "보안 리뷰 대상 파일:
 $changed_src
 
 변경 diff:
-$(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt"
+$(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
+    hlog "◀ security-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ security-reviewer timeout — skip"; fi
     sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
     if echo "$sec_out" | grep -qE "^SECURE$"; then
       sec_result="PASS"
@@ -508,6 +544,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt"
     # ── S7: last_issue 저장 (다음 세션 컨텍스트 브리지용) ───────────────
     echo "$ISSUE_NUM" > "/tmp/${PREFIX}_last_issue"
 
+    hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=$((attempt+1))) ==="
     echo "HARNESS_DONE"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
@@ -534,6 +571,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt"
   done
 
   # 3회 모두 실패
+  hlog "=== 하네스 루프 종료 (결과=IMPLEMENTATION_ESCALATE, 시도=$MAX) ==="
   echo "IMPLEMENTATION_ESCALATE"
   echo "attempts: $MAX"
   echo "마지막 에러:"

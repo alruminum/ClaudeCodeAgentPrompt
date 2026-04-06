@@ -45,6 +45,7 @@ write_run_end() {
 _agent_call() {
   local agent="$1" timeout_secs="$2" prompt="$3" out_file="$4"
   local t_start; t_start=$(date +%s)
+  local _call_exit=0
 
   [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d}\n' \
     "$agent" "$t_start" >> "$RUN_LOG"
@@ -70,13 +71,13 @@ for line in sys.stdin:
     except Exception:
         pass
 print(result, end="")
-' > "$out_file" 2>&1 || true
+' > "$out_file" 2>&1 || _call_exit=$?
 
   local t_end; t_end=$(date +%s)
-  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"elapsed":%d}\n' \
-    "$agent" "$t_end" "$((t_end - t_start))" >> "$RUN_LOG"
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"elapsed":%d,"exit":%d}\n' \
+    "$agent" "$t_end" "$((t_end - t_start))" "$_call_exit" >> "$RUN_LOG"
 
-  echo "[HARNESS] ${agent} 완료 ($((t_end - t_start))s)"
+  echo "[HARNESS] ${agent} 완료 ($((t_end - t_start))s, exit=${_call_exit})"
 
   # 에이전트 결과 요약을 harness output log에 출력 (tail -f로 실시간 확인용)
   if [[ -s "$out_file" ]]; then
@@ -86,4 +87,5 @@ print(result, end="")
     [[ "$total_lines" -gt 30 ]] && echo "  ... (나머지 $((total_lines - 30))줄 생략)"
     echo "└──────────────────────────────────"
   fi
+  return $_call_exit
 }
