@@ -30,7 +30,7 @@
 | S7 | 세션 컨텍스트 브리지 (새 세션 상태 자동 주입) | S | ✅ 완료 |
 | S8 | 하네스 smoke test (/harness-test) | S | ✅ 완료 |
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
-| **S16** | **Router spawn 안전화 — Atomic Lock + TTL (좀비 방지)** | S | 🔥 긴급 |
+| **S16** | **Router spawn 안전화 — Atomic Lock + TTL (좀비 방지)** | S | 🔄 진행 중 |
 | **S17** | **Gorchera 패턴 — Lease Heartbeat + automated_checks** | S | ⬜ 대기 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |

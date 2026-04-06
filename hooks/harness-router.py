@@ -52,6 +52,78 @@ def classify_intent_llm(prompt, prefix):
         log(prefix, f"LLM_CLASSIFY_FAIL: {e}")
     return None
 
+HARNESS_LOCK_TTL = 120  # seconds — 이 시간 동안 갱신 없으면 stale로 판단
+
+
+def get_harness_sh():
+    """harness-executor.sh 경로 — 프로젝트 로컬 우선, 없으면 글로벌."""
+    local = os.path.join(os.getcwd(), ".claude", "harness-executor.sh")
+    if os.path.exists(local):
+        return local
+    globl = os.path.expanduser("~/.claude/harness-executor.sh")
+    return globl if os.path.exists(globl) else None
+
+
+def try_spawn_harness(mode, harness_sh, prefix, issue_num, extra_args=None):
+    """
+    harness-executor.sh를 백그라운드로 1회만 spawn.
+    - Atomic O_CREAT|O_EXCL: race condition 방지 (OS 커널 보장)
+    - TTL 120s: stale lock 자동 해제 (크래시 후 복구)
+    반환값: log_file 경로(spawn 성공) 또는 None(이미 실행 중)
+    """
+    lock = f"/tmp/{prefix}_harness_active"
+
+    # 1. TTL 체크 — mtime 기준 120초 초과 시 stale로 판단하고 제거
+    if os.path.exists(lock):
+        age = time.time() - os.path.getmtime(lock)
+        if age < HARNESS_LOCK_TTL:
+            log(prefix, f"SKIP(already_active age={age:.0f}s) mode={mode}")
+            return None  # 진짜 실행 중 → spawn 금지
+        # stale lock → 제거 후 계속
+        try:
+            os.remove(lock)
+            log(prefix, f"STALE_LOCK_REMOVED age={age:.0f}s mode={mode}")
+        except OSError:
+            return None  # 다른 프로세스가 먼저 제거 중 → 안전하게 skip
+
+    # 2. Atomic create — O_CREAT|O_EXCL: 파일이 이미 있으면 즉시 FileExistsError
+    #    두 UserPromptSubmit이 동시에 도달해도 하나만 통과 (커널 레벨 보장)
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        os.close(fd)
+    except FileExistsError:
+        log(prefix, f"SKIP(race_lost) mode={mode}")
+        return None
+
+    # 3. Spawn
+    log_file = f"/tmp/{prefix}_harness_output.log"
+    args = ["bash", harness_sh, mode,
+            "--issue", str(issue_num),
+            "--prefix", prefix]
+    if extra_args:
+        args += extra_args
+    try:
+        with open(log_file, "w") as lf:
+            subprocess.Popen(
+                args,
+                stdout=lf,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                cwd=os.getcwd()
+            )
+        log(prefix, f"SPAWNED mode={mode} issue={issue_num} lock={lock}")
+    except Exception as e:
+        # spawn 실패 시 lock 해제
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+        log(prefix, f"SPAWN_FAILED mode={mode} err={e}")
+        return None
+
+    return log_file
+
+
 def main():
     try:
         _main_inner()
@@ -104,12 +176,13 @@ def _main_inner():
 
     # 현재 플래그 상태
     flags = {
+        "harness_active":         os.path.exists(f"/tmp/{prefix}_harness_active"),
         "plan_validation_passed": os.path.exists(f"/tmp/{prefix}_plan_validation_passed"),
-        "designer_ran":         os.path.exists(f"/tmp/{prefix}_designer_ran"),
-        "design_critic_passed": os.path.exists(f"/tmp/{prefix}_design_critic_passed"),
-        "test_engineer_passed": os.path.exists(f"/tmp/{prefix}_test_engineer_passed"),
-        "validator_b_passed":   os.path.exists(f"/tmp/{prefix}_validator_b_passed"),
-        "pr_reviewer_lgtm":     os.path.exists(f"/tmp/{prefix}_pr_reviewer_lgtm"),
+        "designer_ran":           os.path.exists(f"/tmp/{prefix}_designer_ran"),
+        "design_critic_passed":   os.path.exists(f"/tmp/{prefix}_design_critic_passed"),
+        "test_engineer_passed":   os.path.exists(f"/tmp/{prefix}_test_engineer_passed"),
+        "validator_b_passed":     os.path.exists(f"/tmp/{prefix}_validator_b_passed"),
+        "pr_reviewer_lgtm":       os.path.exists(f"/tmp/{prefix}_pr_reviewer_lgtm"),
     }
     any_active = any(flags.values())
 
@@ -228,33 +301,55 @@ def _main_inner():
                 except Exception:
                     pass
 
-        # harness-executor.sh 라우팅 지시 (설계 스펙: isActionable → runHarnessLoop)
-        if flags["plan_validation_passed"]:
-            impl_path_file = f"/tmp/{prefix}_impl_path"
-            impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else "[IMPL_PATH]"
-            issue_ref = current_issue or "N"
-            harness_directive = (
-                f"\n\n🔁 [HARNESS ROUTER] plan_validation_passed OK → 아래 Bash 명령을 즉시 실행하라:\n"
-                f"bash .claude/harness-executor.sh impl2 --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
-                "engineer 직접 호출 금지. 위 스크립트가 루프를 완주한다."
+        issue_ref = (current_issue or "N").lstrip("#")
+        harness_sh = get_harness_sh()
+
+        if flags["harness_active"]:
+            # 이미 실행 중 → spawn 금지, 로그 확인 안내만
+            log_file = f"/tmp/{prefix}_harness_output.log"
+            ctx = (
+                f"⏳ [HARNESS] 이미 실행 중입니다. 중복 실행 금지.\n"
+                f"진행 확인: Bash(tail -20 {log_file})\n\n"
+                f"[현재 플래그]\n{flag_lines}"
             )
+            log(prefix, f"INJECT(impl/already_active) prompt={prompt[:60]!r}")
+        elif harness_sh:
+            # spawn 시도
+            if flags["plan_validation_passed"]:
+                impl_path_file = f"/tmp/{prefix}_impl_path"
+                impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else ""
+                extra = ["--impl", impl_path] if impl_path else []
+                log_file = try_spawn_harness("impl2", harness_sh, prefix, issue_ref, extra)
+                mode_label = "impl2"
+            else:
+                log_file = try_spawn_harness("impl", harness_sh, prefix, issue_ref)
+                mode_label = "impl"
+
+            if log_file:
+                ctx = (
+                    f"🔁 [HARNESS] {mode_label} 루프 실행 시작 (issue #{issue_ref})\n"
+                    f"로그 확인: Bash(tail -f {log_file})\n"
+                    f"완료 대기 중. 완료 후 결과를 유저에게 보고하라.\n\n"
+                    f"[현재 플래그]\n{flag_lines}"
+                )
+            else:
+                log_file = f"/tmp/{prefix}_harness_output.log"
+                ctx = (
+                    f"⏳ [HARNESS] 동시 실행 충돌. 이미 실행 중.\n"
+                    f"진행 확인: Bash(tail -20 {log_file})"
+                )
+            log(prefix, f"INJECT(impl/{mode_label}) issue={issue_ref} prompt={prompt[:60]!r}")
         else:
+            # harness_sh 없음 → fallback
             harness_directive = (
                 "\n\n⚠️ src/** 직접 Edit/Write 금지. engineer 에이전트 직접 호출 금지.\n"
-                f"올바른 순서: Bash로 harness-executor.sh 호출.\n"
-                f"예: bash .claude/harness-executor.sh impl --impl [IMPL_PATH] --issue {current_issue or 'N'} --prefix {prefix}"
+                "harness-executor.sh를 찾을 수 없습니다. 수동으로 실행하세요."
             )
+            ctx = "[HARNESS ROUTER] 현재 워크플로우 상태\n" + flag_lines + harness_directive
+            log(prefix, f"INJECT(impl/no-harness-sh) prompt={prompt[:60]!r}")
 
-        ctx = (
-            "[HARNESS ROUTER] 현재 워크플로우 상태\n"
-            + flag_lines
-            + "\n\n요청 분류: IMPLEMENTATION"
-            + harness_directive
-        )
         if memory_patterns:
             ctx += "\n\n[HARNESS MEMORY] Known Failure Patterns:\n" + "\n---\n".join(memory_patterns)
-        active_flags = [k for k, v in flags.items() if v]
-        log(prefix, f"INJECT(impl) issue={current_issue} prompt={prompt[:60]!r} active={active_flags}")
     else:
         if not any_active and not is_bug:
             log(prefix, f"PASS(generic/no-active) prompt={prompt[:60]!r}")
@@ -265,15 +360,37 @@ def _main_inner():
             ctx = "[HARNESS ROUTER] 진행 중인 워크플로우 있음\n" + flag_lines
         log(prefix, f"INJECT(generic/active) prompt={prompt[:60]!r}")
 
-    # 버그/이슈 감지 시 QA 에이전트 힌트 prepend
-    if is_bug:
-        qa_hint = (
-            "🐛 [HARNESS ROUTER] 버그/이슈 감지\n"
-            "→ QA 에이전트를 먼저 호출하세요: 원인 분석 + 워크플로우 라우팅 추천\n"
-            "→ 원인이 이미 명확하면 QA 생략하고 architect (버그픽스 — Mode B) 직행 가능\n"
-        )
-        ctx = qa_hint + "\n" + ctx
-        log(prefix, f"QA_HINT injected prompt={prompt[:60]!r}")
+    # 버그/이슈 감지 시 bugfix harness 직접 spawn
+    if is_bug and not flags["harness_active"]:
+        harness_sh = get_harness_sh()
+        issue_match_bug = re.search(r'#(\d+)', prompt)
+        issue_ref = issue_match_bug.group(1) if issue_match_bug else "N"
+        if harness_sh:
+            log_file = try_spawn_harness("bugfix", harness_sh, prefix, issue_ref,
+                                         ["--bug", prompt[:200]])
+            if log_file:
+                ctx = (
+                    f"🐛 [HARNESS] bugfix 루프 실행 시작 (issue #{issue_ref})\n"
+                    f"로그 확인: Bash(tail -f {log_file})\n"
+                    f"완료 대기 중. 완료 후 결과를 유저에게 보고하라."
+                )
+            else:
+                log_file = f"/tmp/{prefix}_harness_output.log"
+                ctx = f"⏳ [HARNESS] 이미 실행 중. 확인: Bash(tail -20 {log_file})"
+        else:
+            ctx = (
+                "🐛 [HARNESS ROUTER] 버그 감지 — harness-executor.sh 없음.\n"
+                "→ QA 에이전트를 수동으로 호출하세요."
+            )
+        log(prefix, f"INJECT(bugfix) issue={issue_ref} prompt={prompt[:60]!r}")
+        print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
+        sys.exit(0)
+    elif is_bug and flags["harness_active"]:
+        log_file = f"/tmp/{prefix}_harness_output.log"
+        ctx = f"⏳ [HARNESS] 이미 실행 중. 버그 처리 포함됨. 확인: Bash(tail -20 {log_file})"
+        log(prefix, f"INJECT(bugfix/already_active) prompt={prompt[:60]!r}")
+        print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
+        sys.exit(0)
 
     print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
 

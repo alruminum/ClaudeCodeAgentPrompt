@@ -11,9 +11,9 @@
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **루프 A** |
 | UI 변경 요청 (design_critic_passed 없음) | → **루프 B** |
-| 구현 요청 + READY_FOR_IMPL 확정 | → **루프 C** (`bash .claude/harness-executor.sh impl ...`) |
-| 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`bash .claude/harness-executor.sh impl2 --depth <fast\|std\|deep> ...`) |
-| 버그 보고 (bug 레이블 OR 유저 직접 보고) | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) |
+| 구현 요청 + READY_FOR_IMPL 확정 | → **루프 C** (`harness-router.py`가 `harness-executor.sh impl` 자동 spawn — LLM Bash 직접 실행 금지) |
+| 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`harness-router.py`가 `harness-executor.sh impl2` 자동 spawn — LLM Bash 직접 실행 금지) |
+| 버그 보고 (bug 레이블 OR 유저 직접 보고) | → **루프 D** (`harness-router.py`가 `harness-executor.sh bugfix` 자동 spawn — LLM Bash 직접 실행 금지) |
 | 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
 | **AMBIGUOUS** (의도 불명확, 진행 중 워크플로우 없음) | → **product-planner 자동 힌트 주입** (루프 진입 금지) |
 
@@ -315,8 +315,10 @@ DESIGN_REVIEW_ESCALATE        │
 | `PLAN_DONE` | 유저 결정 전 다음 단계 진입 금지 |
 | `PLAN_VALIDATION_PASS` | 유저 확인 전 impl2 자동 호출 금지 |
 
-**4. 서브에이전트 포어그라운드 순차 실행**
-백그라운드 스폰 금지. 한 에이전트가 완료된 후 다음 에이전트 호출.
+**4. 하네스 에이전트 포어그라운드 순차 실행**
+`harness-loop.sh` 내 에이전트(engineer/validator 등) 호출은 포어그라운드 순차 실행. 에이전트 간 백그라운드 스폰 금지.
+단, `harness-executor.sh` 자체는 `harness-router.py` 훅이 Popen 백그라운드 spawn (S16) — LLM이 Bash 도구로 직접 실행 금지 (이중 실행·좀비 방지).
+spawn 안전 메커니즘: Atomic O_CREAT|O_EXCL lock + TTL 120s stale 해제 + heartbeat 15s mtime 갱신 + EXIT trap 정리 + timeout 300s per agent call.
 
 **5. 에스컬레이션 → 메인 Claude 보고 후 대기**
 에스컬레이션 마커 수신 시 자동 복구 시도 금지.

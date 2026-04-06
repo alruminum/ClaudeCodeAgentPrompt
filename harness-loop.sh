@@ -236,7 +236,7 @@ if [[ "$MODE" == "impl2" ]]; then
   if [[ "$DEPTH" == "fast" ]]; then
     echo "[HARNESS/fast] engineer 호출 중 (테스트·리뷰·보안 스킵)"
     context=$(cat "$IMPL_FILE" | head -c 30000)
-    claude --agent engineer --print \
+    timeout 300 claude --agent engineer --print \
       -p "impl: $IMPL_FILE
 issue: #$ISSUE_NUM
 task: impl 파일의 구현 명세 이행
@@ -309,7 +309,7 @@ ${error_1line}
     # ── 워커 1: engineer ──────────────────────────────────────────
     # 파이프 SIGPIPE 방지: 출력을 파일로 저장
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 호출 중"
-    claude --agent engineer --print \
+    timeout 300 claude --agent engineer --print \
       -p "impl: $IMPL_FILE
 issue: #$ISSUE_NUM
 task:
@@ -323,7 +323,7 @@ $CONSTRAINTS" > "/tmp/${PREFIX}_eng_out.txt" 2>&1 || true
     # ── 워커 2: test-engineer ─────────────────────────────────────
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
-    claude --agent test-engineer --print \
+    timeout 300 claude --agent test-engineer --print \
       -p "구현된 파일:
 $changed_files
 
@@ -349,7 +349,7 @@ $changed_files
 
     # ── 워커 3: validator Mode B ──────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
-    claude --agent validator --print \
+    timeout 300 claude --agent validator --print \
       -p "Mode B — impl: $IMPL_FILE" > "/tmp/${PREFIX}_val_out.txt" 2>&1 || true
     val_out=$(cat "/tmp/${PREFIX}_val_out.txt")
     val_result=$(echo "$val_out" | grep -oE '\bPASS\b|\bFAIL\b' | head -1 || echo "UNKNOWN")
@@ -366,7 +366,7 @@ $changed_files
     # ── 워커 4: pr-reviewer ───────────────────────────────────────
     diff_out=$(git diff HEAD 2>&1 | head -300)
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
-    claude --agent pr-reviewer --print \
+    timeout 300 claude --agent pr-reviewer --print \
       -p "변경 내용 리뷰:
 $diff_out" > "/tmp/${PREFIX}_pr_out.txt" 2>&1 || true
     pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
@@ -385,7 +385,7 @@ $diff_out" > "/tmp/${PREFIX}_pr_out.txt" 2>&1 || true
     # ── 워커 5: security-reviewer ─────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
     changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
-    claude --agent security-reviewer --print \
+    timeout 300 claude --agent security-reviewer --print \
       -p "보안 리뷰 대상 파일:
 $changed_src
 
