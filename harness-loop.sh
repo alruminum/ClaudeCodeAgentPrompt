@@ -411,10 +411,18 @@ $changed_files
       "Mode B — impl: $IMPL_FILE" \
       "/tmp/${PREFIX}_val_out.txt"
     val_out=$(cat "/tmp/${PREFIX}_val_out.txt")
-    val_result=$(echo "$val_out" | grep -oE '\bPASS\b|\bFAIL\b' | head -1 || echo "UNKNOWN")
+    if echo "$val_out" | grep -qE "^PASS$"; then
+      val_result="PASS"
+    elif echo "$val_out" | grep -qE "^FAIL$"; then
+      val_result="FAIL"
+    else
+      val_result="UNKNOWN"
+      echo "[HARNESS] ⚠️ validator 출력에서 마커(PASS/FAIL)를 찾지 못함"
+    fi
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 결과: $val_result"
-    if [[ "$val_result" == "FAIL" ]]; then
+    if [[ "$val_result" != "PASS" ]]; then
       error_trace=$(echo "$val_out" | grep -A5 "FAIL" | head -6)
+      [[ -z "$error_trace" ]] && error_trace=$(echo "$val_out" | tail -6)
       fail_type="validator_fail"
       append_failure "validator_fail" "$error_trace"
       attempt=$((attempt+1))
@@ -429,10 +437,18 @@ $changed_files
       "변경 내용 리뷰:
 $diff_out" "/tmp/${PREFIX}_pr_out.txt"
     pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
-    pr_result=$(echo "$pr_out" | grep -oE 'LGTM|CHANGES_REQUESTED' | head -1 || echo "UNKNOWN")
+    if echo "$pr_out" | grep -qE "^LGTM$"; then
+      pr_result="PASS"
+    elif echo "$pr_out" | grep -qE "^CHANGES_REQUESTED$"; then
+      pr_result="FAIL"
+    else
+      pr_result="UNKNOWN"
+      echo "[HARNESS] ⚠️ pr-reviewer 출력에서 마커(LGTM/CHANGES_REQUESTED)를 찾지 못함"
+    fi
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
-    if [[ "$pr_result" == "CHANGES_REQUESTED" ]]; then
+    if [[ "$pr_result" != "PASS" ]]; then
       error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10)
+      [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
       fail_type="pr_fail"
       append_failure "pr_fail" "$error_trace"
       attempt=$((attempt+1))
@@ -451,11 +467,19 @@ $changed_src
 변경 diff:
 $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt"
     sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
-    sec_result=$(echo "$sec_out" | grep -oE 'SECURE|VULNERABILITIES_FOUND' | head -1 || echo "UNKNOWN")
+    if echo "$sec_out" | grep -qE "^SECURE$"; then
+      sec_result="PASS"
+    elif echo "$sec_out" | grep -qE "^VULNERABILITIES_FOUND$"; then
+      sec_result="FAIL"
+    else
+      sec_result="UNKNOWN"
+      echo "[HARNESS] ⚠️ security-reviewer 출력에서 마커(SECURE/VULNERABILITIES_FOUND)를 찾지 못함"
+    fi
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
-    if [[ "$sec_result" == "VULNERABILITIES_FOUND" ]]; then
-      # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 여기 도달 안 함
+    if [[ "$sec_result" != "PASS" ]]; then
+      # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 FAIL 도달 시 HIGH/MEDIUM 존재
       error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10)
+      [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
       fail_type="security_fail"
       append_failure "security_fail" "$error_trace"
       attempt=$((attempt+1))
