@@ -14,6 +14,14 @@
 
 set -euo pipefail
 
+# macOS timeout 호환 — perl은 macOS 기본 탑재, Linux timeout 있으면 무시
+command -v timeout &>/dev/null || timeout() {
+  perl -e 'alarm shift; exec @ARGV' -- "$@"
+}
+
+# shellcheck source=/dev/null
+source "${HOME}/.claude/harness-utils.sh"
+
 MODE=${1:-""}; shift || true
 IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; DEPTH="std"
 
@@ -258,6 +266,7 @@ MSGEOF
 # ── harness_active 플래그 정리 (성공/실패 모두) ────────────────────────
 cleanup() {
   rm -f "/tmp/${PREFIX}_harness_active"
+  write_run_end
 }
 trap cleanup EXIT
 
@@ -268,20 +277,20 @@ if [[ "$MODE" == "impl2" ]]; then
 
   touch "/tmp/${PREFIX}_harness_active"
   [[ ! -f "/tmp/${PREFIX}_plan_validation_passed" ]] && touch "/tmp/${PREFIX}_plan_validation_passed"
+  rotate_harness_logs "$PREFIX" "impl2"
 
   # ── fast mode: engineer → commit (테스트·리뷰·보안 스킵) ─────────────
   if [[ "$DEPTH" == "fast" ]]; then
     echo "[HARNESS/fast] engineer 호출 중 (테스트·리뷰·보안 스킵)"
     context=$(cat "$IMPL_FILE" | head -c 30000)
-    timeout 300 claude --agent engineer --print \
-      -p "impl: $IMPL_FILE
+    _agent_call "engineer" 900 \
+      "impl: $IMPL_FILE
 issue: #$ISSUE_NUM
 task: impl 파일의 구현 명세 이행
 context:
 $context
 constraints:
-$CONSTRAINTS" > "/tmp/${PREFIX}_eng_out.txt" 2>&1 || true
-    echo "[HARNESS/fast] engineer 완료"
+$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt"
 
     mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
     if [[ ${#commit_files[@]} -gt 0 ]]; then
@@ -349,18 +358,16 @@ ${error_1line}
     fi
 
     # ── 워커 1: engineer ──────────────────────────────────────────
-    # 파이프 SIGPIPE 방지: 출력을 파일로 저장
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 호출 중"
-    timeout 300 claude --agent engineer --print \
-      -p "impl: $IMPL_FILE
+    _agent_call "engineer" 900 \
+      "impl: $IMPL_FILE
 issue: #$ISSUE_NUM
 task:
 $task
 context:
 $context
 constraints:
-$CONSTRAINTS" > "/tmp/${PREFIX}_eng_out.txt" 2>&1 || true
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 완료"
+$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt"
 
     # ── S17-2: pre-evaluator automated_checks ────────────────────────
     if ! run_automated_checks "$IMPL_FILE"; then
@@ -375,12 +382,11 @@ $CONSTRAINTS" > "/tmp/${PREFIX}_eng_out.txt" 2>&1 || true
     # ── 워커 2: test-engineer ─────────────────────────────────────
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
-    timeout 300 claude --agent test-engineer --print \
-      -p "구현된 파일:
+    _agent_call "test-engineer" 300 \
+      "구현된 파일:
 $changed_files
 
-테스트 작성 후 npx vitest run. issue: #$ISSUE_NUM" > "/tmp/${PREFIX}_te_out.txt" 2>&1 || true
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 완료"
+테스트 작성 후 npx vitest run. issue: #$ISSUE_NUM" "/tmp/${PREFIX}_te_out.txt"
 
     # ── Ground truth: 실제 테스트 실행 (LLM 주장과 독립) ──────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — npx vitest run"
@@ -401,8 +407,9 @@ $changed_files
 
     # ── 워커 3: validator Mode B ──────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
-    timeout 300 claude --agent validator --print \
-      -p "Mode B — impl: $IMPL_FILE" > "/tmp/${PREFIX}_val_out.txt" 2>&1 || true
+    _agent_call "validator" 300 \
+      "Mode B — impl: $IMPL_FILE" \
+      "/tmp/${PREFIX}_val_out.txt"
     val_out=$(cat "/tmp/${PREFIX}_val_out.txt")
     val_result=$(echo "$val_out" | grep -oE '\bPASS\b|\bFAIL\b' | head -1 || echo "UNKNOWN")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 결과: $val_result"
@@ -418,9 +425,9 @@ $changed_files
     # ── 워커 4: pr-reviewer ───────────────────────────────────────
     diff_out=$(git diff HEAD 2>&1 | head -300)
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
-    timeout 300 claude --agent pr-reviewer --print \
-      -p "변경 내용 리뷰:
-$diff_out" > "/tmp/${PREFIX}_pr_out.txt" 2>&1 || true
+    _agent_call "pr-reviewer" 180 \
+      "변경 내용 리뷰:
+$diff_out" "/tmp/${PREFIX}_pr_out.txt"
     pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
     pr_result=$(echo "$pr_out" | grep -oE 'LGTM|CHANGES_REQUESTED' | head -1 || echo "UNKNOWN")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
@@ -437,12 +444,12 @@ $diff_out" > "/tmp/${PREFIX}_pr_out.txt" 2>&1 || true
     # ── 워커 5: security-reviewer ─────────────────────────────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
     changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
-    timeout 300 claude --agent security-reviewer --print \
-      -p "보안 리뷰 대상 파일:
+    _agent_call "security-reviewer" 180 \
+      "보안 리뷰 대상 파일:
 $changed_src
 
 변경 diff:
-$(git diff HEAD 2>&1 | head -500)" > "/tmp/${PREFIX}_sec_out.txt" 2>&1 || true
+$(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt"
     sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
     sec_result=$(echo "$sec_out" | grep -oE 'SECURE|VULNERABILITIES_FOUND' | head -1 || echo "UNKNOWN")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"

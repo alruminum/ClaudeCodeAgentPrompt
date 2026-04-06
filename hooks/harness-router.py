@@ -337,9 +337,12 @@ def _main_inner():
                                                   ["--context", qa_ctx])
                                 if harness_sh else None)
                     fallback_log = f"/tmp/{prefix}_harness_output.log"
+                    watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
+                    actual_log = log_file or fallback_log
                     ctx = (
                         f"✅ [INTERVIEW] 요구사항 수집 완료. 계획 수립 시작.\n"
-                        f"로그: Bash(tail -f {log_file or fallback_log})"
+                        f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
+                        f"bash {watch_sh} {actual_log}"
                     )
                     log(prefix, f"INJECT(interview/done→plan) prompt={prompt[:60]!r}")
                 else:
@@ -441,9 +444,11 @@ def _main_inner():
         if flags["harness_active"]:
             # 이미 실행 중 → spawn 금지, 로그 확인 안내만
             log_file = f"/tmp/{prefix}_harness_output.log"
+            watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
             ctx = (
                 f"⏳ [HARNESS] 이미 실행 중입니다. 중복 실행 금지.\n"
-                f"진행 확인: Bash(tail -20 {log_file})\n\n"
+                f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
+                f"bash {watch_sh} {log_file}\n\n"
                 f"[현재 플래그]\n{flag_lines}"
             )
             log(prefix, f"INJECT(impl/already_active) prompt={prompt[:60]!r}")
@@ -452,25 +457,39 @@ def _main_inner():
             if flags["plan_validation_passed"]:
                 impl_path_file = f"/tmp/{prefix}_impl_path"
                 impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else ""
-                extra = ["--impl", impl_path] if impl_path else []
-                log_file = try_spawn_harness("impl2", harness_sh, prefix, issue_ref, extra)
-                mode_label = "impl2"
+                if impl_path:
+                    extra = ["--impl", impl_path]
+                    log_file = try_spawn_harness("impl2", harness_sh, prefix, issue_ref, extra)
+                    mode_label = "impl2"
+                else:
+                    # impl_path 없음 → plan_validation_passed 스테일 → impl로 강등
+                    try:
+                        os.remove(f"/tmp/{prefix}_plan_validation_passed")
+                    except OSError:
+                        pass
+                    log(prefix, "STALE_PLAN_VALIDATION: impl_path missing → downgrade impl")
+                    log_file = try_spawn_harness("impl", harness_sh, prefix, issue_ref)
+                    mode_label = "impl"
             else:
                 log_file = try_spawn_harness("impl", harness_sh, prefix, issue_ref)
                 mode_label = "impl"
 
             if log_file:
+                watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
                 ctx = (
                     f"🔁 [HARNESS] {mode_label} 루프 실행 시작 (issue #{issue_ref})\n"
-                    f"로그 확인: Bash(tail -f {log_file})\n"
-                    f"완료 대기 중. 완료 후 결과를 유저에게 보고하라.\n\n"
+                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
+                    f"bash {watch_sh} {log_file}\n"
+                    f"HARNESS_DONE / ESCALATE / PASS 메시지 확인 후 유저에게 결과를 한국어로 보고하라.\n\n"
                     f"[현재 플래그]\n{flag_lines}"
                 )
             else:
                 log_file = f"/tmp/{prefix}_harness_output.log"
+                watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
                 ctx = (
                     f"⏳ [HARNESS] 동시 실행 충돌. 이미 실행 중.\n"
-                    f"진행 확인: Bash(tail -20 {log_file})"
+                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
+                    f"bash {watch_sh} {log_file}"
                 )
             log(prefix, f"INJECT(impl/{mode_label}) issue={issue_ref} prompt={prompt[:60]!r}")
         else:
@@ -502,15 +521,21 @@ def _main_inner():
         if harness_sh:
             log_file = try_spawn_harness("bugfix", harness_sh, prefix, issue_ref,
                                          ["--bug", prompt[:200]])
+            watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
             if log_file:
                 ctx = (
                     f"🐛 [HARNESS] bugfix 루프 실행 시작 (issue #{issue_ref})\n"
-                    f"로그 확인: Bash(tail -f {log_file})\n"
-                    f"완료 대기 중. 완료 후 결과를 유저에게 보고하라."
+                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
+                    f"bash {watch_sh} {log_file}\n"
+                    f"완료 메시지 확인 후 유저에게 결과를 한국어로 보고하라."
                 )
             else:
                 log_file = f"/tmp/{prefix}_harness_output.log"
-                ctx = f"⏳ [HARNESS] 이미 실행 중. 확인: Bash(tail -20 {log_file})"
+                ctx = (
+                    f"⏳ [HARNESS] 이미 실행 중.\n"
+                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
+                    f"bash {watch_sh} {log_file}"
+                )
         else:
             ctx = (
                 "🐛 [HARNESS ROUTER] 버그 감지 — harness-executor.sh 없음.\n"

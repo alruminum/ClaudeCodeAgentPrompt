@@ -15,6 +15,14 @@
 
 set -euo pipefail
 
+# macOS timeout 호환 — perl은 macOS 기본 탑재, Linux timeout 있으면 무시
+command -v timeout &>/dev/null || timeout() {
+  perl -e 'alarm shift; exec @ARGV' -- "$@"
+}
+
+# shellcheck source=/dev/null
+source "${HOME}/.claude/harness-utils.sh"
+
 MODE=${1:-""}; shift || true
 IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; BUG_DESC=""; CONTEXT=""; DEPTH="auto"
 
@@ -50,7 +58,7 @@ HB_PID=$!
 
 # EXIT trap: 성공/실패/크래시/kill 모두 lock 해제
 # (SIGKILL 제외 — kill -9는 어쩔 수 없음, TTL이 120s 후 자동 해제)
-trap 'kill "$HB_PID" 2>/dev/null; rm -f "$LOCK_FILE"' EXIT
+trap 'kill "$HB_PID" 2>/dev/null; rm -f "$LOCK_FILE"; write_run_end' EXIT
 
 # router가 O_EXCL로 빈 파일 생성 → JSON 내용 채우기
 _write_lease
@@ -91,12 +99,15 @@ run_impl() {
     fi
   fi
 
+  # run_bugfix → run_impl 이중 로테이션 방지: RUN_LOG 이미 설정돼있으면 스킵
+  [[ -z "$RUN_LOG" ]] && rotate_harness_logs "$PREFIX" "impl"
+
   # Phase 0.7 — impl 파일 없으면 architect 호출
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
     echo "[HARNESS] Phase 0.7 — architect Mode B 호출 중"
-    timeout 300 claude --agent architect --print \
-      -p "Module Plan(Mode B) — issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
-      > "/tmp/${PREFIX}_arch_out.txt" 2>&1 || true
+    _agent_call "architect" 900 \
+      "Module Plan(Mode B) — issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
+      "/tmp/${PREFIX}_arch_out.txt"
     IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
     echo "[HARNESS] Phase 0.7 — architect 완료 / impl: $IMPL_FILE"
   fi
@@ -108,9 +119,9 @@ run_impl() {
 
   # Phase 0.8 — validator Plan Validation (Mode C)
   echo "[HARNESS] Phase 0.8 — validator Plan Validation 호출 중"
-  timeout 300 claude --agent validator --print \
-    -p "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
-    > "/tmp/${PREFIX}_val_pv_out.txt" 2>&1 || true
+  _agent_call "validator" 300 \
+    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_val_pv_out.txt"
   val_result=$(grep -oE '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out.txt" | head -1 || echo "UNKNOWN")
   echo "[HARNESS] Phase 0.8 — Plan Validation 결과: $val_result"
 
@@ -127,14 +138,14 @@ run_impl() {
   # FAIL → architect 재보강 1회 → 재검증
   echo "[HARNESS] Phase 0.8 — FAIL → architect 재보강 중"
   fail_feedback=$(tail -20 "/tmp/${PREFIX}_val_pv_out.txt")
-  timeout 300 claude --agent architect --print \
-    -p "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $IMPL_FILE feedback: ${fail_feedback}" \
-    > "/tmp/${PREFIX}_arch_fix_out.txt" 2>&1 || true
+  _agent_call "architect" 900 \
+    "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $IMPL_FILE feedback: ${fail_feedback}" \
+    "/tmp/${PREFIX}_arch_fix_out.txt"
   echo "[HARNESS] Phase 0.8 — architect 재보강 완료, 재검증 중"
 
-  timeout 300 claude --agent validator --print \
-    -p "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
-    > "/tmp/${PREFIX}_val_pv_out2.txt" 2>&1 || true
+  _agent_call "validator" 300 \
+    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_val_pv_out2.txt"
   val_result2=$(grep -oE '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out2.txt" | head -1 || echo "UNKNOWN")
   echo "[HARNESS] Phase 0.8 — 재검증 결과: $val_result2"
 
@@ -157,18 +168,19 @@ run_impl() {
 # mode: design (Phase D1 → D2 → DESIGN_DONE)
 # ══════════════════════════════════════════════════════════════════════
 run_design() {
+  rotate_harness_logs "$PREFIX" "design"
   attempt=0; MAX=3
   while [[ $attempt -lt $MAX ]]; do
     echo "[HARNESS] Phase D1 attempt $((attempt+1))/$MAX — designer 호출 중"
-    timeout 300 claude --agent designer --print \
-      -p "issue: #$ISSUE_NUM context: $CONTEXT" \
-      > "/tmp/${PREFIX}_des_out.txt" 2>&1 || true
+    _agent_call "designer" 300 \
+      "issue: #$ISSUE_NUM context: $CONTEXT" \
+      "/tmp/${PREFIX}_des_out.txt"
 
     echo "[HARNESS] Phase D2 attempt $((attempt+1))/$MAX — design-critic 호출 중"
     des_out=$(cat "/tmp/${PREFIX}_des_out.txt")
-    timeout 300 claude --agent design-critic --print \
-      -p "$des_out" \
-      > "/tmp/${PREFIX}_dc_out.txt" 2>&1 || true
+    _agent_call "design-critic" 300 \
+      "$des_out" \
+      "/tmp/${PREFIX}_dc_out.txt"
     dc_result=$(grep -oE '\bPICK\b|\bITERATE\b|\bESCALATE\b' "/tmp/${PREFIX}_dc_out.txt" | head -1 || echo "UNKNOWN")
 
     case "$dc_result" in
@@ -195,16 +207,17 @@ run_design() {
 # mode: bugfix (Phase B1 → B2 → Plan Validation)
 # ══════════════════════════════════════════════════════════════════════
 run_bugfix() {
+  rotate_harness_logs "$PREFIX" "bugfix"
   echo "[HARNESS] Phase B1 — qa 호출 중"
-  timeout 300 claude --agent qa --print \
-    -p "bug: $BUG_DESC issue: #$ISSUE_NUM" \
-    > "/tmp/${PREFIX}_qa_out.txt" 2>&1 || true
+  _agent_call "qa" 300 \
+    "bug: $BUG_DESC issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_qa_out.txt"
   qa_out=$(cat "/tmp/${PREFIX}_qa_out.txt")
 
   echo "[HARNESS] Phase B2 — architect bugfix Mode B 호출 중"
-  timeout 300 claude --agent architect --print \
-    -p "버그픽스 — Module Plan(Mode B) — ${qa_out} issue: #$ISSUE_NUM" \
-    > "/tmp/${PREFIX}_arch_out.txt" 2>&1 || true
+  _agent_call "architect" 900 \
+    "버그픽스 — Module Plan(Mode B) — ${qa_out} issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_arch_out.txt"
   IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
 
   # Phase 0.8 재사용 (IMPL_FILE이 이미 설정됨)
@@ -215,16 +228,17 @@ run_bugfix() {
 # mode: plan (Phase P1 → P2 → PLAN_DONE)
 # ══════════════════════════════════════════════════════════════════════
 run_plan() {
+  rotate_harness_logs "$PREFIX" "plan"
   echo "[HARNESS] Phase P1 — product-planner 호출 중"
-  timeout 300 claude --agent product-planner --print \
-    -p "context: $CONTEXT issue: #$ISSUE_NUM" \
-    > "/tmp/${PREFIX}_pp_out.txt" 2>&1 || true
+  _agent_call "product-planner" 300 \
+    "context: $CONTEXT issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_pp_out.txt"
   pp_out=$(cat "/tmp/${PREFIX}_pp_out.txt")
 
   echo "[HARNESS] Phase P2 — architect Mode A 호출 중"
-  timeout 300 claude --agent architect --print \
-    -p "System Design(Mode A) — ${pp_out} issue: #$ISSUE_NUM" \
-    > "/tmp/${PREFIX}_arch_out.txt" 2>&1 || true
+  _agent_call "architect" 900 \
+    "System Design(Mode A) — ${pp_out} issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_arch_out.txt"
 
   echo "PLAN_DONE"
   echo "issue: #$ISSUE_NUM"

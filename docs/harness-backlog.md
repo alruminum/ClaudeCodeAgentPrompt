@@ -34,7 +34,7 @@
 | **S17** | **Gorchera 패턴 — Lease Heartbeat + automated_checks** | S | ✅ 완료 |
 | **S18** | **Adaptive Interview Harness — AMBIGUOUS → Haiku Q&A → plan spawn** | S | ✅ 완료 |
 | **S19** | **macOS timeout 호환 (shim) + impl_path 누락 가드** | S | ✅ 완료 |
-| S20 | Temperature=0 결정론적 실행 (CLI 지원 여부 선행 확인) | S | ⬜ 대기 |
+| **S20** | **Agent Observability: 전 에이전트 실행 로그 + FIFO 10-run 보존** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -249,31 +249,27 @@ harness-executor.sh
 
 ---
 
-### ⬜ S18 — Temperature=0 결정론적 실행
+### ✅ S20 — Agent Observability: 전 에이전트 실행 로그 + FIFO 10-run 보존
 
-**배경**: 수도코드 분석에서 발견. `callIsolatedLLMWorker`에서 `temperature: 0.0` 명시.
-validator/security-reviewer처럼 PASS/FAIL 판정이 중요한 역할은 온도 0이 일관된 결과를 보장.
+**배경**: 하네스 루프 안에서 에이전트가 무엇을 하는지 실행 중에 볼 방법이 없었다.
+`tail -f`로 실시간 확인 + 실행 후 분석용 JSONL 아카이브 필요.
 
-**선행 확인 필요**: `claude --agent --print` CLI가 temperature 파라미터를 지원하는지 확인.
+**구현 내용**:
+- `harness-utils.sh` 신규 — `rotate_harness_logs()` + `write_run_end()` + `_agent_call()` 공용 유틸
+- `_agent_call()`: `--output-format stream-json --include-partial-messages` → `tee`로 JSONL 실시간 기록 + `python3`으로 result 텍스트 추출
+- FIFO 로테이션: prefix별 최신 10개 유지 (`ls -t | tail -n +10 | xargs rm`)
+- 모든 에이전트(architect/engineer/validator/test-engineer/pr-reviewer/security-reviewer/designer/design-critic/qa/product-planner) 대상
+
+**로그 위치**: `~/.claude/harness-logs/{prefix}/run_YYYYMMDD_HHmmss.jsonl`
+
+**실시간 확인**:
 ```bash
-# 확인 방법
-claude --help | grep -i temp
-claude --agent validator --print --temperature 0 -p "test" 2>&1 | head -5
+tail -f ~/.claude/harness-logs/mb/$(ls -t ~/.claude/harness-logs/mb/ | head -1)
 ```
 
-**지원 시 적용 대상**:
-| 에이전트 | 이유 |
-|---|---|
-| validator | PASS/FAIL 판정 — 동일 input에 동일 output 필수 |
-| security-reviewer | VULNERABILITIES_FOUND/SECURE — 판정 일관성 필수 |
-| design-critic | PICK/ITERATE/ESCALATE — 판정 일관성 권장 |
-| pr-reviewer | LGTM/CHANGES_REQUESTED — 판정 일관성 권장 |
+**per-agent timeout**: architect/engineer=900s, validator/test-engineer/designer/design-critic/qa/product-planner=300s, pr-reviewer/security-reviewer=180s
 
-engineer/designer는 창의성 필요 → temperature 유지.
-
-**미지원 시**: 항목 WONTFIX 처리.
-
-**변경**: `harness-executor.sh`, `harness-loop.sh` (claude --agent 호출에 `--temperature 0` 추가)
+**변경 파일**: `harness-utils.sh` (신규), `harness-executor.sh`, `harness-loop.sh`
 
 ---
 

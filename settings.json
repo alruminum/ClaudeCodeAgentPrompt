@@ -2,6 +2,13 @@
   "permissions": {
     "allow": [
       "WebFetch",
+      "Write(~/.claude/**)",
+      "Edit(~/.claude/**)",
+      "Bash(bash -n *)",
+      "Bash(source harness-utils.sh*)",
+      "Bash(cd ~/.claude && bash -c *)",
+      "Bash(cd ~/.claude && git *)",
+      "Bash(git *)",
       "mcp__playwright__browser_navigate",
       "mcp__playwright__browser_navigate_back",
       "mcp__playwright__browser_screenshot",
