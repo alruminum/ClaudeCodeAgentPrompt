@@ -52,6 +52,64 @@ def classify_intent_llm(prompt, prefix):
         log(prefix, f"LLM_CLASSIFY_FAIL: {e}")
     return None
 
+
+def run_interview_turn(history, original_prompt, prefix):
+    """
+    Haiku로 다음 인터뷰 질문 생성 (적응형).
+    - history 비어있으면: 첫 질문 생성
+    - history 있으면: 충분하면 None(DONE), 부족하면 다음 질문 문자열 반환
+    """
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+    if not api_key:
+        return None
+
+    if not history:
+        content = (
+            f"사용자 요청: \"{original_prompt}\"\n\n"
+            "이 요청을 구현하기 전에 가장 중요한 첫 번째 명확화 질문 하나를 생성하라.\n"
+            "출력 형식: QUESTION: <질문>"
+        )
+    else:
+        qa_text = "\n".join(
+            f"Q{i+1}: {h['q']}\nA{i+1}: {h['a']}"
+            for i, h in enumerate(history)
+        )
+        content = (
+            f"원래 요청: \"{original_prompt}\"\n\n"
+            f"지금까지 수집된 요구사항:\n{qa_text}\n\n"
+            "구현을 시작하기에 충분한가?\n"
+            "충분하면: DONE\n"
+            "부족하면: QUESTION: <가장 중요한 추가 질문 하나>"
+        )
+
+    try:
+        payload = json.dumps({
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 80,
+            "messages": [{"role": "user", "content": content}]
+        })
+        result = subprocess.run(
+            ['curl', '-s', '-m', '15',
+             'https://api.anthropic.com/v1/messages',
+             '-H', f'x-api-key: {api_key}',
+             '-H', 'anthropic-version: 2023-06-01',
+             '-H', 'content-type: application/json',
+             '-d', payload],
+            capture_output=True, text=True, timeout=17
+        )
+        text = json.loads(result.stdout)['content'][0]['text'].strip()
+        if 'DONE' in text.upper():
+            log(prefix, "INTERVIEW_DONE")
+            return None
+        if 'QUESTION:' in text:
+            q = text.split('QUESTION:', 1)[1].strip()
+            log(prefix, f"INTERVIEW_Q: {q[:60]}")
+            return q
+    except Exception as e:
+        log(prefix, f"INTERVIEW_FAIL: {e}")
+    return None  # Haiku 실패 → DONE 처리 (static hint fallback으로 이어짐)
+
+
 HARNESS_LOCK_TTL = 120  # seconds — 이 시간 동안 갱신 없으면 stale로 판단
 
 
@@ -219,8 +277,14 @@ def _main_inner():
     else:
         cat = "GENERIC"
 
+    # ── S18: 인터뷰 진행 중이면 cat을 AMBIGUOUS로 고정 (LLM override 방지) ──
+    interview_path = f"/tmp/{prefix}_interview_state.json"
+    if os.path.exists(interview_path) and not any_active and not is_bug:
+        cat = "AMBIGUOUS"
+
     # LLM 보조 분류: regex가 불확실(AMBIGUOUS/GENERIC)할 때만 호출
-    if cat in ("AMBIGUOUS", "GENERIC") and len(prompt.split()) >= 3:
+    if cat in ("AMBIGUOUS", "GENERIC") and len(prompt.split()) >= 3 \
+            and not os.path.exists(f"/tmp/{prefix}_interview_state.json"):
         llm_cat = classify_intent_llm(prompt, prefix)
         if llm_cat:
             log(prefix, f"LLM_OVERRIDE {cat}→{llm_cat}")
@@ -233,21 +297,81 @@ def _main_inner():
         log(prefix, f"PASS(question/no-active) prompt={prompt[:60]!r}")
         sys.exit(0)
 
-    # AMBIGUOUS + 진행 중 워크플로우 없음 → product-planner 힌트 주입 (루프 진입 금지)
+    # AMBIGUOUS + 진행 중 워크플로우 없음 → S18 Adaptive Interview Harness
     if cat == "AMBIGUOUS" and not any_active and not is_bug:
-        ctx = (
-            "[HARNESS ROUTER] 요청이 모호합니다. 루프 진입 전 명확화 필요.\n\n"
-            "구현 수준 모호성 (파일/동작이 불명확):\n"
-            "  → 아래 3가지 답변 후 재요청\n"
-            "  1. 어떤 파일/컴포넌트가 대상인가?\n"
-            "  2. 현재 동작 vs 기대 동작은?\n"
-            "  3. 관련 GitHub 이슈 번호가 있는가?\n\n"
-            "PRD 수준 모호성 (무엇을 만들지 불명확):\n"
-            "  → product-planner 에이전트를 호출하세요 (역질문 → PRD 작성)\n"
-            "  → PRD 완료 후 루프 A 진입\n\n"
-            "명확한 요청 없이 구현 루프를 시작하지 마세요."
-        )
-        log(prefix, f"INJECT(ambiguous/product-planner-hint) prompt={prompt[:60]!r}")
+        if os.path.exists(interview_path):
+            # 진행 중인 인터뷰 — 이 메시지는 답변
+            try:
+                with open(interview_path) as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                try:
+                    os.remove(interview_path)
+                except OSError:
+                    pass
+                state = None
+
+            if state:
+                state['history'].append({'q': state['current_q'], 'a': prompt})
+                state['turn'] = state.get('turn', 0) + 1
+
+                # max_turn=4 하드캡 — Haiku가 DONE을 안 내도 강제 종료
+                if state['turn'] >= 4:
+                    next_q = None
+                    log(prefix, "INTERVIEW_MAX_TURN_REACHED")
+                else:
+                    next_q = run_interview_turn(state['history'], state['original'], prefix)
+
+                if next_q is None:
+                    # 인터뷰 완료 → plan spawn
+                    try:
+                        os.remove(interview_path)
+                    except OSError:
+                        pass
+                    qa_lines = "\n".join(
+                        f"Q: {h['q']}\nA: {h['a']}" for h in state['history']
+                    )
+                    qa_ctx = f"원래요청: {state['original']}\n\n{qa_lines}"
+                    harness_sh = get_harness_sh()
+                    log_file = (try_spawn_harness("plan", harness_sh, prefix, "N",
+                                                  ["--context", qa_ctx])
+                                if harness_sh else None)
+                    fallback_log = f"/tmp/{prefix}_harness_output.log"
+                    ctx = (
+                        f"✅ [INTERVIEW] 요구사항 수집 완료. 계획 수립 시작.\n"
+                        f"로그: Bash(tail -f {log_file or fallback_log})"
+                    )
+                    log(prefix, f"INJECT(interview/done→plan) prompt={prompt[:60]!r}")
+                else:
+                    state['current_q'] = next_q
+                    with open(interview_path, 'w') as f:
+                        json.dump(state, f)
+                    ctx = f"[INTERVIEW] {next_q}"
+                    log(prefix, f"INJECT(interview/next_q) prompt={prompt[:60]!r}")
+            else:
+                # 파싱 실패 → 첫 질문부터 재시작
+                ctx = "[HARNESS ROUTER] 인터뷰 상태 오류. 요청을 다시 입력해주세요."
+                log(prefix, "INJECT(interview/state_error)")
+        else:
+            # 첫 진입 — 첫 질문 생성
+            first_q = run_interview_turn([], prompt, prefix)
+            if first_q:
+                state = {'history': [], 'current_q': first_q, 'original': prompt, 'turn': 0}
+                with open(interview_path, 'w') as f:
+                    json.dump(state, f)
+                ctx = f"[INTERVIEW] {first_q}"
+                log(prefix, f"INJECT(interview/start) prompt={prompt[:60]!r}")
+            else:
+                # Haiku 실패 → static hint fallback
+                ctx = (
+                    "[HARNESS ROUTER] 요청이 모호합니다. 루프 진입 전 명확화 필요.\n\n"
+                    "1. 어떤 파일/컴포넌트가 대상인가?\n"
+                    "2. 현재 동작 vs 기대 동작은?\n"
+                    "3. 관련 GitHub 이슈 번호가 있는가?\n\n"
+                    "명확한 요청 없이 구현 루프를 시작하지 마세요."
+                )
+                log(prefix, f"INJECT(ambiguous/fallback) prompt={prompt[:60]!r}")
+
         print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
         sys.exit(0)
 
