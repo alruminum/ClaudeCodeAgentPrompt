@@ -159,6 +159,43 @@ $(cat "$f")"
   echo "$ctx" | head -c 50000
 }
 
+run_automated_checks() {
+  local impl_file="$1"
+  local out_file="/tmp/${PREFIX}_autocheck_fail.txt"
+  rm -f "$out_file"
+
+  # Check 1: has_changes — engineer가 실제로 파일을 수정했는가?
+  if ! git status --short | grep -qE "^ M|^M |^A "; then
+    echo "no_changes: engineer가 아무 파일도 수정하지 않음" > "$out_file"
+    echo "AUTOMATED_CHECKS_FAIL: no_changes"
+    return 1
+  fi
+
+  # Check 2: no_new_deps — package.json 무단 의존성 추가 여부
+  if git show HEAD:package.json >/dev/null 2>&1; then
+    if git diff HEAD -- package.json 2>/dev/null | grep -qE '^\+\s+"[a-z@]'; then
+      echo "new_deps: package.json에 새 의존성이 추가됨 (사전 승인 필요)" > "$out_file"
+      echo "AUTOMATED_CHECKS_FAIL: new_deps"
+      return 1
+    fi
+  fi
+
+  # Check 3: file_unchanged — impl 파일에 명시된 변경 금지 파일 위반 여부
+  local protected_files
+  protected_files=$(grep -oE '\(PROTECTED\)[[:space:]]+[^[:space:]]+' "$impl_file" 2>/dev/null \
+    | awk '{print $NF}' || true)
+  for pf in $protected_files; do
+    if git diff HEAD -- "$pf" 2>/dev/null | grep -qE "^[-+]"; then
+      echo "file_unchanged: 변경 금지 파일 수정됨: $pf" > "$out_file"
+      echo "AUTOMATED_CHECKS_FAIL: file_unchanged ($pf)"
+      return 1
+    fi
+  done
+
+  echo "AUTOMATED_CHECKS_PASS"
+  return 0
+}
+
 generate_pr_body() {
   local attempt_num="$1"
   local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
@@ -280,6 +317,11 @@ $CONSTRAINTS" > "/tmp/${PREFIX}_eng_out.txt" 2>&1 || true
       # ── C1: 실패 유형별 수정 전략 ────────────────────────────────
       error_1line=$(echo "$error_trace" | head -1 | cut -c1-200)
       case "$fail_type" in
+        autocheck_fail)
+          task="[사전 검사 실패] 시도 ${attempt}회. 검사 결과:
+${error_1line}
+위 문제를 해결한 뒤 다시 구현하라. 테스트·벨리데이터 호출은 검사 통과 후 진행된다."
+          ;;
         test_fail)
           task="[테스트 실패] 시도 ${attempt}회. 테스트 출력:
 ${error_1line}
@@ -319,6 +361,16 @@ $context
 constraints:
 $CONSTRAINTS" > "/tmp/${PREFIX}_eng_out.txt" 2>&1 || true
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 완료"
+
+    # ── S17-2: pre-evaluator automated_checks ────────────────────────
+    if ! run_automated_checks "$IMPL_FILE"; then
+      error_trace=$(cat "/tmp/${PREFIX}_autocheck_fail.txt" 2>/dev/null || echo "automated_checks FAIL")
+      fail_type="autocheck_fail"
+      append_failure "autocheck_fail" "$error_trace"
+      attempt=$((attempt+1))
+      continue
+    fi
+    echo "[HARNESS] automated_checks PASS"
 
     # ── 워커 2: test-engineer ─────────────────────────────────────
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")

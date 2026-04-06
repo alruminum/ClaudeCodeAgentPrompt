@@ -31,12 +31,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 LOCK_FILE="/tmp/${PREFIX}_harness_active"
+LOCK_STARTED=$(date +%s)
 
-# Heartbeat: 15초마다 lock mtime 갱신 → router TTL(120s) 기준 "나 살아있음" 신호
+_write_lease() {
+  printf '{"pid":%d,"mode":"%s","started":%d,"heartbeat":%d}\n' \
+    $$ "$MODE" "$LOCK_STARTED" "$(date +%s)" > "${LOCK_FILE}" 2>/dev/null || true
+}
+
+# Heartbeat: 15초마다 JSON lease 갱신 → router TTL(120s) 기준 "나 살아있음" 신호
 _harness_heartbeat() {
   while true; do
     sleep 15
-    touch "$LOCK_FILE" 2>/dev/null || true
+    _write_lease
   done
 }
 _harness_heartbeat &
@@ -46,8 +52,8 @@ HB_PID=$!
 # (SIGKILL 제외 — kill -9는 어쩔 수 없음, TTL이 120s 후 자동 해제)
 trap 'kill "$HB_PID" 2>/dev/null; rm -f "$LOCK_FILE"' EXIT
 
-# Lock 파일 갱신 (router가 O_EXCL로 이미 생성했지만, 진입 확인용 touch)
-touch "$LOCK_FILE"
+# router가 O_EXCL로 빈 파일 생성 → JSON 내용 채우기
+_write_lease
 
 # ── depth 자동 감지 (--depth 미지정 또는 auto 시) ─────────────────────
 detect_depth() {

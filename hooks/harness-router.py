@@ -64,6 +64,16 @@ def get_harness_sh():
     return globl if os.path.exists(globl) else None
 
 
+def _lease_age(lock_path):
+    """JSON lease의 heartbeat 기준 경과 시간(초). 파싱 실패 시 mtime fallback."""
+    try:
+        with open(lock_path) as f:
+            lease = json.load(f)
+        return time.time() - lease["heartbeat"]
+    except (json.JSONDecodeError, KeyError, OSError):
+        return time.time() - os.path.getmtime(lock_path)
+
+
 def try_spawn_harness(mode, harness_sh, prefix, issue_num, extra_args=None):
     """
     harness-executor.sh를 백그라운드로 1회만 spawn.
@@ -73,9 +83,9 @@ def try_spawn_harness(mode, harness_sh, prefix, issue_num, extra_args=None):
     """
     lock = f"/tmp/{prefix}_harness_active"
 
-    # 1. TTL 체크 — mtime 기준 120초 초과 시 stale로 판단하고 제거
+    # 1. TTL 체크 — JSON lease heartbeat 기준 120초 초과 시 stale로 판단하고 제거
     if os.path.exists(lock):
-        age = time.time() - os.path.getmtime(lock)
+        age = _lease_age(lock)
         if age < HARNESS_LOCK_TTL:
             log(prefix, f"SKIP(already_active age={age:.0f}s) mode={mode}")
             return None  # 진짜 실행 중 → spawn 금지
