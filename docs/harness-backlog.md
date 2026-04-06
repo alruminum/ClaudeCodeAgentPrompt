@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-05
+> 최종 업데이트: 2026-04-06
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -30,7 +30,8 @@
 | S7 | 세션 컨텍스트 브리지 (새 세션 상태 자동 주입) | S | ✅ 완료 |
 | S8 | 하네스 smoke test (/harness-test) | S | ✅ 완료 |
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
-| S16 | harness-router runHarnessLoop 구현 (Popen 5모드 자동 라우팅) | S | ✅ 완료 |
+| **S16** | **Router spawn 안전화 — Atomic Lock + TTL (좀비 방지)** | S | 🔥 긴급 |
+| **S17** | **Gorchera 패턴 — Lease Heartbeat + automated_checks** | S | ⬜ 대기 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -184,6 +185,64 @@ fixture impl로 플래그 흐름만 dry-run.
 ```
 
 **변경**: `commands/harness-test.md` (신규)
+
+---
+
+### 🔥 S16 — Router spawn 안전화 (Atomic Lock + TTL)
+
+**배경**: S16 구현(980ca48)이 Popen 백그라운드 spawn + lock 없음으로 무한 좀비 루프 → 1분 만에 $100 소진.  
+**방향**: 직접 spawn 방식 유지 (LLM 우회 목적 정당), 구현만 안전하게 교체.
+
+**Phase 1 변경 내용:**
+
+```
+harness-router.py
+  - try_spawn_harness() 추가
+    - TTL 체크: lock 파일 mtime 기준 120초 초과 → stale → 삭제
+    - Atomic create: os.O_CREAT | os.O_EXCL (race condition 방지)
+    - FileExistsError → spawn 금지 (중복 차단)
+    - BUG/PLANNING 분기에도 active 체크 추가 (S16 버그 수정)
+
+harness-executor.sh
+  - 모든 mode 진입 시 즉시 lock 갱신
+  - heartbeat 백그라운드 (15초마다 touch → mtime 갱신)
+  - EXIT trap: heartbeat kill + lock 삭제 (성공/실패/크래시 모두)
+```
+
+**수용 기준**: 동시 2개 UserPromptSubmit 발생 시 1개만 spawn. 크래시 후 2분 내 재spawn 불가, 2분 후 가능.
+
+**변경 파일**: `hooks/harness-router.py`, `harness-executor.sh`
+
+---
+
+### ⬜ S17 — Gorchera 패턴 적용 (Lease Heartbeat + automated_checks)
+
+**배경**: Gorchera(knewstimek/gorchera) 분석에서 발견한 운영 안정성 패턴 3개.  
+**선행**: S16 완료 후 진행.
+
+**Phase 2 변경 내용:**
+
+```
+1. Lease 파일 고도화 (S16 단순 touch → JSON lease)
+   /tmp/{prefix}_harness_active.json
+   { "pid": 1234, "mode": "bugfix", "started": 1712345678, "heartbeat": 1712345693 }
+   → router가 heartbeat 필드로 stale 판단 (touch mtime보다 명시적)
+
+2. pre-evaluator automated_checks (LLM 호출 전 sh 사전 검사)
+   harness-executor.sh impl 모드에 추가:
+   - file_exists: 생성 예정 파일 실제 존재 확인
+   - no_new_deps: package.json 의존성 추가 여부 감지
+   - file_unchanged: 변경 금지 파일 수정 여부 확인
+   → 실패 시 validator 호출 없이 즉시 FAIL (토큰 절약)
+
+3. estimateTokenCount 한국어 보정 (선택)
+   Gorchera의 char/4 추정이 CJK에서 4배 낮게 나오는 문제
+   → 우리 시스템에선 직접적 영향 없지만, 비용 추정 기능 추가 시 참고
+```
+
+**수용 기준**: pre-evaluator 체크에서 잡힌 오류가 validator 에이전트 호출 없이 FAIL 처리됨.
+
+**변경 파일**: `hooks/harness-router.py`, `harness-executor.sh`
 
 ---
 
