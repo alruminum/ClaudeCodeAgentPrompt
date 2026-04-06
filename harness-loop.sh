@@ -116,6 +116,13 @@ CANDIDATE
   fi
 }
 
+rollback_attempt() {
+  local attempt_num="$1"
+  git stash push --include-untracked \
+    -m "harness-failed-attempt-${attempt_num}" 2>/dev/null || true
+  hlog "ROLLBACK attempt=${attempt_num} — stashed"
+}
+
 append_success() {
   local attempt_num="$1"
   local date_str; date_str=$(date +%Y-%m-%d)
@@ -423,6 +430,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
       error_trace=$(cat "/tmp/${PREFIX}_autocheck_fail.txt" 2>/dev/null || echo "automated_checks FAIL")
       fail_type="autocheck_fail"
       append_failure "autocheck_fail" "$error_trace"
+      rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
     fi
@@ -457,6 +465,7 @@ $changed_files
       error_trace=$(cat "/tmp/${PREFIX}_test_out.txt")
       fail_type="test_fail"
       append_failure "test_fail" "$error_trace"
+      rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
     fi
@@ -489,6 +498,7 @@ $changed_files
       [[ -z "$error_trace" ]] && error_trace=$(echo "$val_out" | tail -6)
       fail_type="validator_fail"
       append_failure "validator_fail" "$error_trace"
+      rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
     fi
@@ -523,6 +533,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
         [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
         fail_type="pr_fail"
         append_failure "pr_fail" "$error_trace"
+        rollback_attempt $attempt
         attempt=$((attempt+1))
         continue
       fi
@@ -559,6 +570,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
         [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
         fail_type="security_fail"
         append_failure "security_fail" "$error_trace"
+        rollback_attempt $attempt
         attempt=$((attempt+1))
         continue
       fi
