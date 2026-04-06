@@ -40,7 +40,7 @@
 | **S23** | **std 모드 게이트 축소 (5→3단계, deep 분리)** | S | ✅ 완료 |
 | **S24** | **grep 파싱 → 라인 전체 매칭 강화** | S | ✅ 완료 |
 | **S25** | **BATS 테스트 (하네스 스크립트 자체 테스트)** | S | ⬜ 대기 |
-| **S26** | **git diff 타이밍 픽스 (pr-reviewer 빈 diff 방지)** | S | ⬜ 대기 |
+| **S26** | **git diff 타이밍 픽스 (pr-reviewer 빈 diff 방지)** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -542,7 +542,7 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 
 ---
 
-### ⬜ S26 — git diff 타이밍 픽스 (pr-reviewer 빈 diff 방지)
+### ✅ S26 — git diff 타이밍 픽스 (pr-reviewer 빈 diff 방지)
 
 **배경**: pr-reviewer에 diff를 전달하기 전 `git add`가 선행되지 않아 staged 변경이 diff에 포함되지 않는 경우 발생.
 
