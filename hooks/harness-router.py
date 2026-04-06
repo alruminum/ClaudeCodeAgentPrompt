@@ -40,7 +40,7 @@ def extract_intent(prompt, prefix):
                 "IMPLEMENTATION — 구현·수정 요청 (이슈 번호, 고쳐, 만들어, fix, 구현, 추가)\n"
                 "BUG — 버그 보고 (버그, 안돼, 이상해, 깨졌어, 오류, 에러)\n"
                 "AMBIGUOUS — 의도 불명확, 명확화 필요\n"
-                "GENERIC — 그 외 (관찰, 코멘트, 일반 대화)\n\n"
+                "GENERIC — 코딩과 무관한 일상 대화·날씨·음식 등, 관찰, 코멘트\n\n"
                 f"\"{prompt[:200]}\""}]
         })
         result = subprocess.run(
