@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-06
+> 최종 업데이트: 2026-04-06 (S21~S26 추가)
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -35,6 +35,12 @@
 | **S18** | **Adaptive Interview Harness — AMBIGUOUS → Haiku Q&A → plan spawn** | S | ✅ 완료 |
 | **S19** | **macOS timeout 호환 (shim) + impl_path 누락 가드** | S | ✅ 완료 |
 | **S20** | **Agent Observability: 전 에이전트 실행 로그 + FIFO 10-run 보존** | S | ✅ 완료 |
+| **S21** | **하네스 루프 타임스탬프 로깅 (hlog 함수)** | S | ✅ 완료 |
+| **S22** | **에이전트 호출별 timeout 강제 + exit 124 감지** | S | ✅ 완료 |
+| **S23** | **std 모드 게이트 축소 (5→3단계, deep 분리)** | S | ✅ 완료 |
+| **S24** | **grep 파싱 → 라인 전체 매칭 강화** | S | ✅ 완료 |
+| **S25** | **BATS 테스트 (하네스 스크립트 자체 테스트)** | S | ⬜ 대기 |
+| **S26** | **git diff 타이밍 픽스 (pr-reviewer 빈 diff 방지)** | S | ⬜ 대기 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -457,4 +463,91 @@ S14(신규 파일 60%) → 전체 파일 70%로 기준 상향.
 M1(보안 파일 한정) → 전체 PR로 확장.
 
 **전제**: M1 완료 + 토큰 예산 충분
+**변경**: `harness-loop.sh`
+
+---
+
+### ✅ S21 — 하네스 루프 타임스탬프 로깅 (hlog 함수)
+
+**배경**: 하네스 루프 진입 후 어디서 멈추는지 알 수 없었다. `agent-calls.log`만으로는 부족.
+
+**구현 내용**:
+- `harness-loop.sh` 상단에 `HLOG`/`hlog()` 함수 정의
+- `HLOG="/tmp/${PREFIX}-harness-debug.log"`, `hlog()` = `[HH:MM:SS] [attempt=N] 메시지`
+- 루프 시작/종료, 에이전트 전후, vitest 전후에 hlog 추가
+- `ATTEMPT` 전역 변수 루프 반복마다 갱신
+
+**실시간 모니터링**: `tail -f /tmp/${PREFIX}-harness-debug.log`
+
+**변경**: `harness-loop.sh`
+
+---
+
+### ✅ S22 — 에이전트 호출별 timeout 강제 + exit 124 감지
+
+**배경**: `_agent_call`이 `|| true`로 exit code를 먹어버려 hang 발생 시 어디서 멈추는지 알 수 없었다.
+
+**구현 내용**:
+- `harness-utils.sh`: `|| true` → `|| _call_exit=$?` 교체, `return $_call_exit` 추가
+- `agent_end` JSONL 이벤트에 `exit` 필드 추가
+- `harness-loop.sh`: 모든 `_agent_call` 호출에 `|| AGENT_EXIT=$?` 추가
+- exit 124(timeout) 감지 시 `hlog "⏰ ${AGENT} timeout — skip"` 기록
+
+**변경**: `harness-utils.sh`, `harness-loop.sh`
+
+---
+
+### ✅ S23 — std 모드 게이트 축소 (5→3단계, deep 분리)
+
+**배경**: std에서 LLM 에이전트를 5회 호출해 이슈당 10~20분 소요. pr-reviewer·security-reviewer는 일상 작업에서 과도함.
+
+**구현 내용**:
+- `fast`: engineer → commit (LLM 1회)
+- `std`: engineer → test-engineer → vitest → validator → commit (LLM 3회)
+- `deep`: engineer → test-engineer → vitest → validator → pr-reviewer → security-reviewer → commit (LLM 5회)
+- std/fast에서 `pr_reviewer_lgtm`, `security_review_passed` 플래그 자동 touch
+- `orchestration-rules.md` depth 테이블 + 루프 C 다이어그램 동기화
+- "deep = std 미구현" 라인 제거
+
+**변경**: `harness-loop.sh`, `orchestration-rules.md`
+
+---
+
+### ✅ S24 — grep 파싱 → 라인 전체 매칭 강화
+
+**배경**: `grep -oE "PASS|FAIL"` 패턴이 설명 텍스트에 포함된 키워드도 매칭해 오탐 가능.
+
+**구현 내용**:
+- validator: `grep -oE '\bPASS\b|\bFAIL\b'` → `grep -qE "^PASS$"` / `^FAIL$`
+- pr-reviewer: `grep -oE 'LGTM|CHANGES_REQUESTED'` → `^LGTM$` / `^CHANGES_REQUESTED$`
+- security-reviewer: `grep -oE 'SECURE|VULNERABILITIES_FOUND'` → `^SECURE$` / `^VULNERABILITIES_FOUND$`
+- UNKNOWN 케이스: `echo ⚠️` + FAIL 동일 처리 (`!= PASS` 조건으로 통일)
+- UNKNOWN 시 error_trace fallback: `tail -6`
+
+**변경**: `harness-loop.sh`
+
+---
+
+### ⬜ S25 — BATS 테스트 (하네스 스크립트 자체 테스트)
+
+**배경**: `harness-loop.sh`·`harness-executor.sh` 핵심 함수를 수동으로만 검증 중. 회귀 방지 필요.
+
+**구현 대상**:
+- `detect_depth()` — impl 파일 태그별 fast/std/deep 자동 선택
+- `build_smart_context()` — attempt 0 vs N 컨텍스트 분기
+- grep 파싱 함수 — `^마커$` 패턴 PASS/FAIL/UNKNOWN 분기
+
+**도구**: [BATS](https://github.com/bats-core/bats-core) (Bash Automated Testing System)
+**변경**: `tests/harness.bats` (신규)
+
+---
+
+### ⬜ S26 — git diff 타이밍 픽스 (pr-reviewer 빈 diff 방지)
+
+**배경**: pr-reviewer에 diff를 전달하기 전 `git add`가 선행되지 않아 staged 변경이 diff에 포함되지 않는 경우 발생.
+
+**구현 내용**:
+- pr-reviewer 호출 직전 `git add -A` 실행 (또는 `git diff HEAD` 대신 `git diff --cached HEAD` 검토)
+- deep 모드에서만 해당 (std에서는 pr-reviewer 스킵)
+
 **변경**: `harness-loop.sh`
