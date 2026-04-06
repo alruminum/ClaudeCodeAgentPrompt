@@ -20,15 +20,15 @@ def log(prefix, msg):
         f.write(f"[{ts}] [{prefix}] {msg}\n")
 
 def _call_haiku(prompt_text, max_tokens, prefix):
-    """claude CLI로 Haiku 호출 — OAuth 인증 자동 처리, HARNESS_INTERNAL로 재귀 방지."""
+    """socrates 에이전트로 Haiku 호출 — OAuth 인증 자동 처리, HARNESS_INTERNAL로 재귀 방지."""
     try:
         env = {**os.environ, 'HARNESS_INTERNAL': '1'}
         result = subprocess.run(
-            ['claude', '-p', prompt_text,
-             '--model', 'claude-haiku-4-5-20251001',
-             '--output-format', 'text'],
+            ['claude', '--agent', 'socrates',
+             '--print', '--output-format', 'text',
+             '-p', prompt_text],
             env=env,
-            capture_output=True, text=True, timeout=8
+            capture_output=True, text=True, timeout=15
         )
         return result.stdout.strip()
     except Exception as e:
