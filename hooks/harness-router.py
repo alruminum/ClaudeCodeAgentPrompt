@@ -19,48 +19,46 @@ def log(prefix, msg):
     with open(LOG_FILE, "a") as f:
         f.write(f"[{ts}] [{prefix}] {msg}\n")
 
+def _call_haiku(prompt_text, max_tokens, prefix):
+    """claude CLI로 Haiku 호출 — OAuth 인증 자동 처리, HARNESS_INTERNAL로 재귀 방지."""
+    try:
+        env = {**os.environ, 'HARNESS_INTERNAL': '1'}
+        result = subprocess.run(
+            ['claude', '-p', prompt_text,
+             '--model', 'claude-haiku-4-5-20251001',
+             '--output-format', 'text'],
+            env=env,
+            capture_output=True, text=True, timeout=8
+        )
+        return result.stdout.strip()
+    except Exception as e:
+        log(prefix, f"HAIKU_FAIL: {e}")
+        return ""
+
+
 def extract_intent(prompt, prefix):
     """
     PRIMARY 분류기 — Haiku로 유저 의도 추출.
     반환: GREETING | QUESTION | IMPLEMENTATION | BUG | AMBIGUOUS | GENERIC
     실패 시: None (호출자에서 AMBIGUOUS 폴백)
     """
-    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-    if not api_key:
-        return None
-    try:
-        payload = json.dumps({
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 20,
-            "messages": [{"role": "user", "content":
-                "소프트웨어 개발 어시스턴트 채팅에서 사용자 메시지를 분류하라.\n"
-                "먼저: 소프트웨어·코딩과 관련 없으면 → GENERIC 또는 GREETING.\n"
-                "다음 중 하나만 출력 (다른 말 금지):\n"
-                "GREETING — 인사·긍정·짧은 반응·감탄 (ㅇㅇ, 응, 좋아, ok, hi, ㅎㅎ, 맞아, 고마워, 알겠어)\n"
-                "GENERIC — 소프트웨어와 무관한 모든 것 (날씨, 음식, 일상, 감상, 짧은 단답)\n"
-                "QUESTION — 코드·시스템에 대한 질문 (왜, 어떻게, 설명해줘, ?)\n"
-                "IMPLEMENTATION — 코드 구현·수정 요청 (이슈 번호 포함, 구체적 기능 변경)\n"
-                "BUG — 버그·오류 보고 (버그, 안돼, 이상해, 깨졌어, 에러)\n"
-                "AMBIGUOUS — 소프트웨어 요청인 것 같지만 대상·범위 불명확\n\n"
-                f"\"{prompt[:200]}\""}]
-        })
-        result = subprocess.run(
-            ['curl', '-s', '-m', '5',
-             'https://api.anthropic.com/v1/messages',
-             '-H', f'x-api-key: {api_key}',
-             '-H', 'anthropic-version: 2023-06-01',
-             '-H', 'content-type: application/json',
-             '-d', payload],
-            capture_output=True, text=True, timeout=7
-        )
-        data = json.loads(result.stdout)
-        text = data.get('content', [{}])[0].get('text', '')
-        for cat in ["IMPLEMENTATION", "BUG", "QUESTION", "GREETING", "AMBIGUOUS", "GENERIC"]:
-            if cat in text.upper():
-                log(prefix, f"INTENT result={cat}")
-                return cat
-    except Exception as e:
-        log(prefix, f"INTENT_FAIL: {e}")
+    prompt_text = (
+        "소프트웨어 개발 어시스턴트 채팅에서 사용자 메시지를 분류하라.\n"
+        "먼저: 소프트웨어·코딩과 관련 없으면 → GENERIC 또는 GREETING.\n"
+        "다음 중 하나만 출력 (다른 말 금지):\n"
+        "GREETING — 인사·긍정·짧은 반응·감탄 (ㅇㅇ, 응, 좋아, ok, hi, ㅎㅎ, 맞아, 고마워, 알겠어)\n"
+        "GENERIC — 소프트웨어와 무관한 모든 것 (날씨, 음식, 일상, 감상, 짧은 단답)\n"
+        "QUESTION — 코드·시스템에 대한 질문 (왜, 어떻게, 설명해줘, ?)\n"
+        "IMPLEMENTATION — 코드 구현·수정 요청 (이슈 번호 포함, 구체적 기능 변경)\n"
+        "BUG — 버그·오류 보고 (버그, 안돼, 이상해, 깨졌어, 에러)\n"
+        "AMBIGUOUS — 소프트웨어 요청인 것 같지만 대상·범위 불명확\n\n"
+        f"\"{prompt[:200]}\""
+    )
+    text = _call_haiku(prompt_text, 20, prefix)
+    for cat in ["IMPLEMENTATION", "BUG", "QUESTION", "GREETING", "AMBIGUOUS", "GENERIC"]:
+        if cat in text.upper():
+            log(prefix, f"INTENT result={cat}")
+            return cat
     return None
 
 
@@ -70,10 +68,6 @@ def run_interview_turn(history, original_prompt, prefix):
     - history 비어있으면: 첫 질문 생성
     - history 있으면: 충분하면 None(DONE), 부족하면 다음 질문 문자열 반환
     """
-    api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-    if not api_key:
-        return None
-
     if not history:
         content = (
             f"사용자 요청: \"{original_prompt}\"\n\n"
@@ -94,21 +88,7 @@ def run_interview_turn(history, original_prompt, prefix):
         )
 
     try:
-        payload = json.dumps({
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 80,
-            "messages": [{"role": "user", "content": content}]
-        })
-        result = subprocess.run(
-            ['curl', '-s', '-m', '15',
-             'https://api.anthropic.com/v1/messages',
-             '-H', f'x-api-key: {api_key}',
-             '-H', 'anthropic-version: 2023-06-01',
-             '-H', 'content-type: application/json',
-             '-d', payload],
-            capture_output=True, text=True, timeout=17
-        )
-        text = json.loads(result.stdout)['content'][0]['text'].strip()
+        text = _call_haiku(content, 80, prefix)
         if 'DONE' in text.upper():
             log(prefix, "INTERVIEW_DONE")
             return None
