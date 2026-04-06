@@ -457,6 +457,7 @@ $changed_files
 
     # ── 워커 4+5: pr-reviewer / security-reviewer (deep only) ────────
     if [[ "$DEPTH" == "deep" ]]; then
+      git add -A
       diff_out=$(git diff HEAD 2>&1 | head -300)
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
       hlog "▶ pr-reviewer 시작 (deep only, timeout=180s)"
