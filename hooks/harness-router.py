@@ -383,7 +383,7 @@ def _main_inner():
                     state['current_q'] = next_q
                     with open(interview_path, 'w') as f:
                         json.dump(state, f)
-                    ctx = f"[HARNESS ROUTER] 지금 즉시 유저에게 아래 질문을 한국어로 물어보라 (다른 내용 추가 금지):\n{next_q}"
+                    ctx = f"[HARNESS ROUTER] 아래 질문을 한 글자도 수정하지 말고 그대로 유저에게 전달하라:\n{next_q}"
                     log(prefix, f"INJECT(interview/next_q) prompt={prompt[:60]!r}")
             else:
                 # 파싱 실패 → 첫 질문부터 재시작
@@ -396,7 +396,7 @@ def _main_inner():
                 state = {'history': [], 'current_q': first_q, 'original': prompt, 'turn': 0}
                 with open(interview_path, 'w') as f:
                     json.dump(state, f)
-                ctx = f"[HARNESS ROUTER] 지금 즉시 유저에게 아래 질문을 한국어로 물어보라 (다른 내용 추가 금지):\n{first_q}"
+                ctx = f"[HARNESS ROUTER] 아래 질문을 한 글자도 수정하지 말고 그대로 유저에게 전달하라:\n{first_q}"
                 log(prefix, f"INJECT(interview/start) prompt={prompt[:60]!r}")
             else:
                 # Haiku가 질문 못 만들면 소프트웨어 요청 아닌 것 → 그냥 통과
