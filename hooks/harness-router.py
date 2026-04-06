@@ -19,8 +19,12 @@ def log(prefix, msg):
     with open(LOG_FILE, "a") as f:
         f.write(f"[{ts}] [{prefix}] {msg}\n")
 
-def classify_intent_llm(prompt, prefix):
-    """LLM 보조 의도 분류 — AMBIGUOUS/불확실 시에만 호출. curl → Anthropic API."""
+def extract_intent(prompt, prefix):
+    """
+    PRIMARY 분류기 — Haiku로 유저 의도 추출.
+    반환: GREETING | QUESTION | IMPLEMENTATION | BUG | AMBIGUOUS | GENERIC
+    실패 시: None (호출자에서 AMBIGUOUS 폴백)
+    """
     api_key = os.environ.get('ANTHROPIC_API_KEY', '')
     if not api_key:
         return None
@@ -29,8 +33,14 @@ def classify_intent_llm(prompt, prefix):
             "model": "claude-haiku-4-5-20251001",
             "max_tokens": 20,
             "messages": [{"role": "user", "content":
-                "사용자 프롬프트 의도를 분류. 다음 중 하나만 출력:\n"
-                "IMPLEMENTATION QUESTION BUG GREETING GENERIC\n\n"
+                "소프트웨어 개발 어시스턴트 채팅에서 사용자 메시지 의도를 분류하라.\n"
+                "다음 중 하나만 출력 (다른 말 금지):\n"
+                "GREETING — 인사·긍정·짧은 반응 (ㅇㅇ, 응, 좋아, ok, hi, ㅎㅎ, 맞아, 고마워)\n"
+                "QUESTION — 코드·시스템 질문 (왜, 어떻게, 설명해줘, ?)\n"
+                "IMPLEMENTATION — 구현·수정 요청 (이슈 번호, 고쳐, 만들어, fix, 구현, 추가)\n"
+                "BUG — 버그 보고 (버그, 안돼, 이상해, 깨졌어, 오류, 에러)\n"
+                "AMBIGUOUS — 의도 불명확, 명확화 필요\n"
+                "GENERIC — 그 외 (관찰, 코멘트, 일반 대화)\n\n"
                 f"\"{prompt[:200]}\""}]
         })
         result = subprocess.run(
@@ -44,12 +54,12 @@ def classify_intent_llm(prompt, prefix):
         )
         data = json.loads(result.stdout)
         text = data.get('content', [{}])[0].get('text', '')
-        for cat in ["IMPLEMENTATION", "BUG", "QUESTION", "GREETING", "GENERIC"]:
+        for cat in ["IMPLEMENTATION", "BUG", "QUESTION", "GREETING", "AMBIGUOUS", "GENERIC"]:
             if cat in text.upper():
-                log(prefix, f"LLM_CLASSIFY result={cat}")
+                log(prefix, f"INTENT result={cat}")
                 return cat
     except Exception as e:
-        log(prefix, f"LLM_CLASSIFY_FAIL: {e}")
+        log(prefix, f"INTENT_FAIL: {e}")
     return None
 
 
@@ -316,43 +326,24 @@ def _main_inner():
     }
     any_active = any(flags.values())
 
-    # 인사말/짧은 감탄사 → 즉시 통과 (워크플로우 개입 불필요)
-    greet_kw = r"^(헤이|안녕|hi|hey|hello|ㅎㅇ|ㅋ+|ㅎ+|응|네|아|오|음|좋아|감사|고마워|ok|okay)[\s!]*$"
-    if re.match(greet_kw, prompt.strip(), re.IGNORECASE) and not any_active:
-        log(prefix, f"PASS(greeting) prompt={prompt[:60]!r}")
-        sys.exit(0)
-
-    # 요청 분류
-    impl_kw = r"구현|만들어|추가|수정|변경|바꿔|고쳐|삭제|리팩|implement|fix|add|update|src/|루프돌려|만들어보자|구현루프|시작해"
-    q_kw    = r"어떻게|뭐야|왜|뭔가요|하나요|인가요|\?"
-    bug_kw  = r"버그|뻐그|문제(가| 있| 생겼| 발생)|오류|에러|이상해|이상한데|이상하네|안 돼|안돼|안됨|안되네|고장|깨졌|망가|대박|말이 돼|왜 이래|왜이래|이게 뭐야|큐에이|큐에이야|큐에이 포함|버그있다|이슈왔다|야 큐에이|ㅋㅋ.{0,10}(버그|문제|오류)|진짜(야|다| 이래)"
-    ambiguous = len(prompt.split()) < 5 and not re.search(impl_kw, prompt)
-
-    is_bug = bool(re.search(bug_kw, prompt, re.IGNORECASE))
-
-    if re.search(impl_kw, prompt):
-        cat = "IMPLEMENTATION"
-    elif re.search(q_kw, prompt):
-        cat = "QUESTION"
-    elif ambiguous:
-        cat = "AMBIGUOUS"
-    else:
-        cat = "GENERIC"
-
-    # ── S18: 인터뷰 진행 중이면 cat을 AMBIGUOUS로 고정 (LLM override 방지) ──
+    # ── LLM PRIMARY 분류 ─────────────────────────────────────────────
+    # ≤2자 표현은 API 절약 위해 즉시 GREETING 처리 (ㅇㅇ, 응, 네, ok 등)
     interview_path = f"/tmp/{prefix}_interview_state.json"
+    if len(prompt.strip()) <= 2:
+        cat = "GREETING"
+    else:
+        cat = extract_intent(prompt, prefix) or "AMBIGUOUS"
+
+    is_bug = (cat == "BUG")
+
+    # 인터뷰 진행 중이면 cat을 AMBIGUOUS로 고정
     if os.path.exists(interview_path) and not any_active and not is_bug:
         cat = "AMBIGUOUS"
 
-    # LLM 보조 분류: regex가 불확실(AMBIGUOUS/GENERIC)할 때만 호출
-    if cat in ("AMBIGUOUS", "GENERIC") and not is_bug and len(prompt.split()) >= 3 \
-            and not os.path.exists(f"/tmp/{prefix}_interview_state.json"):
-        llm_cat = classify_intent_llm(prompt, prefix)
-        if llm_cat:
-            log(prefix, f"LLM_OVERRIDE {cat}→{llm_cat}")
-            if llm_cat == "BUG":
-                is_bug = True
-            cat = llm_cat
+    # GREETING → 즉시 통과
+    if cat == "GREETING" and not any_active:
+        log(prefix, f"PASS(greeting/llm) prompt={prompt[:60]!r}")
+        sys.exit(0)
 
     # QUESTION이고 진행 중인 워크플로우 없으면 아무것도 주입 안 함 (버그 감지 시 예외)
     if cat == "QUESTION" and not any_active and not is_bug:
