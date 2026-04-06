@@ -141,6 +141,11 @@ def try_spawn_harness(mode, harness_sh, prefix, issue_num, extra_args=None):
     """
     lock = f"/tmp/{prefix}_harness_active"
 
+    # 0. Spawn rate limiter — 60초 내 3회 초과 시 하드 블록 (재귀 루프 최후 방어)
+    if not _check_spawn_rate(prefix):
+        log(prefix, f"RATE_LIMIT_BLOCK mode={mode} — 60초 내 spawn 3회 초과")
+        return None
+
     # 1. TTL 체크 — JSON lease heartbeat 기준 120초 초과 시 stale로 판단하고 제거
     if os.path.exists(lock):
         age = _lease_age(lock)
@@ -203,9 +208,46 @@ def main():
             pass
         sys.exit(0)
 
+def _check_harness_internal_prompt(prompt):
+    """하네스 내부에서 생성된 프롬프트 패턴 — HARNESS_INTERNAL 실패 시 2차 방어선."""
+    patterns = [
+        r'^bug:.*issue:\s*#',           # _agent_call qa: "bug: ... issue: #N"
+        r'^impl:.*issue:\s*#.*task:',   # _agent_call engineer
+        r'^Mode\s+[ABCE]\b',            # architect 호출
+        r'^SPEC_GAP\(',                 # architect SPEC_GAP
+        r'^System Design\(Mode',        # architect Mode A
+        r'^Module Plan\(Mode',          # architect Mode B
+        r'^구현된 파일:',                # test-engineer
+        r'^변경 내용 리뷰:',             # pr-reviewer
+        r'^보안 리뷰 대상',              # security-reviewer
+        r'^Mode\s+[BC]\s*[-—]\s*',     # validator
+    ]
+    return any(re.match(p, prompt.strip(), re.DOTALL | re.IGNORECASE) for p in patterns)
+
+
+def _check_spawn_rate(prefix):
+    """
+    Spawn rate limiter — 60초 내 MAX_SPAWNS 초과 시 하드 블록.
+    재귀 루프 폭주 방지용 최후 방어선.
+    """
+    MAX_SPAWNS = 3
+    WINDOW = 60  # seconds
+    rate_file = f"/tmp/{prefix}_spawn_rate.json"
+    now = time.time()
+    try:
+        data = json.load(open(rate_file)) if os.path.exists(rate_file) else {"count": 0, "window_start": now}
+        if now - data["window_start"] > WINDOW:
+            data = {"count": 0, "window_start": now}
+        data["count"] += 1
+        with open(rate_file, "w") as f:
+            json.dump(data, f)
+        return data["count"] <= MAX_SPAWNS
+    except Exception:
+        return True  # 파일 오류 시 허용 (기능 장애보다 과금이 낫다)
+
+
 def _main_inner():
-    # 하네스 내부 agent 호출 (claude --agent xxx -p "...")도 UserPromptSubmit을 트리거함.
-    # HARNESS_INTERNAL=1 환경변수로 내부 호출 감지 → 즉시 통과 (재귀 루프 방지)
+    # 1차 방어: HARNESS_INTERNAL env var — 내부 agent 호출 재트리거 방지
     if os.environ.get('HARNESS_INTERNAL') == '1':
         sys.exit(0)
 
@@ -236,6 +278,11 @@ def _main_inner():
 
     # 빈 prompt → 즉시 통과
     if not prompt or not prompt.strip():
+        sys.exit(0)
+
+    # 2차 방어: 하네스 내부 생성 프롬프트 패턴 감지 — HARNESS_INTERNAL 실패 시 백업
+    if _check_harness_internal_prompt(prompt):
+        log(raw_prefix if raw_prefix != "auto" else "?", f"PASS(harness_internal_pattern) prompt={prompt[:60]!r}")
         sys.exit(0)
 
     # mtime 기반 스태일 designer_ran 감지 (any_active 계산 전)
