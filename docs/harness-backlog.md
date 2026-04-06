@@ -32,6 +32,7 @@
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
 | **S16** | **Router spawn 안전화 — Atomic Lock + TTL (좀비 방지)** | S | ✅ 완료 |
 | **S17** | **Gorchera 패턴 — Lease Heartbeat + automated_checks** | S | ⬜ 대기 |
+| **S18** | **Temperature=0 결정론적 실행 (CLI 지원 여부 선행 확인)** | S | ⬜ 대기 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -246,6 +247,34 @@ harness-executor.sh
 
 ---
 
+### ⬜ S18 — Temperature=0 결정론적 실행
+
+**배경**: 수도코드 분석에서 발견. `callIsolatedLLMWorker`에서 `temperature: 0.0` 명시.
+validator/security-reviewer처럼 PASS/FAIL 판정이 중요한 역할은 온도 0이 일관된 결과를 보장.
+
+**선행 확인 필요**: `claude --agent --print` CLI가 temperature 파라미터를 지원하는지 확인.
+```bash
+# 확인 방법
+claude --help | grep -i temp
+claude --agent validator --print --temperature 0 -p "test" 2>&1 | head -5
+```
+
+**지원 시 적용 대상**:
+| 에이전트 | 이유 |
+|---|---|
+| validator | PASS/FAIL 판정 — 동일 input에 동일 output 필수 |
+| security-reviewer | VULNERABILITIES_FOUND/SECURE — 판정 일관성 필수 |
+| design-critic | PICK/ITERATE/ESCALATE — 판정 일관성 권장 |
+| pr-reviewer | LGTM/CHANGES_REQUESTED — 판정 일관성 권장 |
+
+engineer/designer는 창의성 필요 → temperature 유지.
+
+**미지원 시**: 항목 WONTFIX 처리.
+
+**변경**: `harness-executor.sh`, `harness-loop.sh` (claude --agent 호출에 `--temperature 0` 추가)
+
+---
+
 ### ⬜ S9 — impl 충돌 감지
 
 동일 파일을 수정하는 impl이 여러 개 동시에 존재할 때 사전 경고.
@@ -287,6 +316,18 @@ security-reviewer와 다른 기준 — 실수 방지용.
 ```
 우선순위: impl 명시 경로 > git diff HEAD~3 최근 변경 > 나머지
 GC: 3회 초과 시 이전 attempt 에러 트레이스만 carry-forward
+```
+
+**S11 확장 — attempt 간 Context GC** (GAP-1):
+현재 attempt 0: impl 전체, attempt 1+: error 관련 파일 로드.
+3회 재시도 시 attempt 1→2→3 사이에 공통 컨텍스트 중복 낭비 발생.
+목표: 이전 attempt들의 공통 컨텍스트를 요약하고, 에러 트레이스 + 변경된 파일만 carry-forward.
+
+```
+attempt 0 → context = impl + 관련 파일 전체 (기존 로직)
+attempt 1 → context = error_trace + 실패 파일 (기존 로직)
+attempt 2 → context = prev_attempt_summary + new_error_trace  ← 신규
+             (prev 컨텍스트를 1줄 요약으로 압축)
 ```
 
 **재검토 트리거**: 에픽 3개+ 프로젝트 시작 시
