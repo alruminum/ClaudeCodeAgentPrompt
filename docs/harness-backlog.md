@@ -31,7 +31,7 @@
 | S8 | 하네스 smoke test (/harness-test) | S | ✅ 완료 |
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
 | **S16** | **Router spawn 안전화 — Atomic Lock + TTL (좀비 방지)** | S | ✅ 완료 |
-| **S17** | **Gorchera 패턴 — Lease Heartbeat + automated_checks** | S | 🔄 진행 중 |
+| **S17** | **Gorchera 패턴 — Lease Heartbeat + automated_checks** | S | ✅ 완료 |
 | **S18** | **Temperature=0 결정론적 실행 (CLI 지원 여부 선행 확인)** | S | ⬜ 대기 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |

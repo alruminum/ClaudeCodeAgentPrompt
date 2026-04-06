@@ -111,6 +111,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S8 | 하네스 smoke test | `commands/harness-test.md` — 파일존재·문법·플래그 dry-run, SMOKE_PASS/FAIL 판정 | 2026-04-05 |
 | S10 | 납품 게이트 | `commands/deliver.md` — .env노출·console.log·하드코딩URL·빌드 스캔, DELIVERY_READY/BLOCKED/WARN | 2026-04-05 |
 | S16 | Router spawn 안전화 | `harness-router.py` try_spawn_harness() O_EXCL lock + TTL 120s + heartbeat / `harness-executor.sh` EXIT trap + timeout 300 / `harness-loop.sh` timeout 300 | 2026-04-06 |
+| S17 | pre-evaluator + JSON Lease | `harness-loop.sh` run_automated_checks() (has_changes/no_new_deps/file_unchanged) / `harness-executor.sh` _write_lease() JSON heartbeat / `harness-router.py` _lease_age() | 2026-04-06 |
 
 ---
 
