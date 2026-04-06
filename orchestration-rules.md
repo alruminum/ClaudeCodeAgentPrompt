@@ -11,11 +11,11 @@
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **루프 A** |
 | UI 변경 요청 (design_critic_passed 없음) | → **루프 B** |
-| 구현 요청 + READY_FOR_IMPL 확정 | → **루프 C** (`harness-router.py`가 `harness-executor.sh impl` 자동 spawn — LLM Bash 직접 실행 금지) |
-| 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`harness-router.py`가 `harness-executor.sh impl2` 자동 spawn — LLM Bash 직접 실행 금지) |
-| 버그 보고 (bug 레이블 OR 유저 직접 보고) | → **루프 D** (`harness-router.py`가 `harness-executor.sh bugfix` 자동 spawn — LLM Bash 직접 실행 금지) |
+| 구현 요청 + READY_FOR_IMPL 확정 | → **루프 C** (`bash .claude/harness-executor.sh impl ...`) |
+| 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`bash .claude/harness-executor.sh impl2 ...`) |
+| 버그 보고 | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) |
 | 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
-| **AMBIGUOUS** (의도 불명확, 진행 중 워크플로우 없음) | → **product-planner 자동 힌트 주입** (루프 진입 금지) |
+| **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 루프 A) |
 
 ---
 
@@ -319,20 +319,10 @@ DESIGN_REVIEW_ESCALATE        │
 | `PLAN_DONE` | 유저 결정 전 다음 단계 진입 금지 |
 | `PLAN_VALIDATION_PASS` | 유저 확인 전 impl2 자동 호출 금지 |
 
-**4. 하네스 에이전트 포어그라운드 순차 실행**
-`harness-loop.sh` 내 에이전트(engineer/validator 등) 호출은 포어그라운드 순차 실행. 에이전트 간 백그라운드 스폰 금지.
-단, `harness-executor.sh` 자체는 `harness-router.py` 훅이 Popen 백그라운드 spawn (S16) — LLM이 Bash 도구로 직접 실행 금지 (이중 실행·좀비 방지).
-spawn 안전 메커니즘: Atomic O_CREAT|O_EXCL lock + TTL 120s stale 해제 + heartbeat 15s JSON lease 갱신 + EXIT trap 정리 + timeout per agent call.
-킬 스위치 (S31): `touch /tmp/{PREFIX}_harness_kill` → 다음 에이전트 호출 전 감지 → 즉시 `HARNESS_KILLED` 출력 + 루프 종료. harness-executor EXIT trap에서도 kill 파일 정리.
-에이전트별 예산 상한 (S30): 모든 `_agent_call`에 `--max-budget-usd 2.00` 적용. 개별 에이전트 폭주 방지.
-전체 루프 비용 상한 (S32): stream-json result 이벤트에서 `total_cost_usd` 추출 → `TOTAL_COST` 누적 → $10 초과 시 즉시 `HARNESS_BUDGET_EXCEEDED` 출력 + 루프 종료. `hlog`에 에이전트별·누적 비용 기록.
-pre-evaluator: engineer 완료 직후 sh 레벨 사전 검사 (has_changes / no_new_deps / file_unchanged) → LLM 호출 없이 즉시 attempt++ (S17-2).
-HARNESS_INTERNAL 재귀 방지: `_agent_call`이 `claude --agent xxx -p "..."` 실행 시 UserPromptSubmit 훅도 트리거됨. `HARNESS_INTERNAL=1` env var로 내부 호출 감지 → 라우터 즉시 통과 (재귀 spawn 방지).
-is_bug LLM 분류 스킵: `is_bug=True` 확정 시 `classify_intent_llm()` 호출 금지 — 불필요한 curl 호출이 10s 훅 타임아웃 초과 유발.
-이중 방어선: ① 내부 프롬프트 패턴 감지(^bug:.*issue: 등) → 즉시 통과. ② spawn rate limiter — 60초 내 3회 초과 시 하드 블록. HARNESS_INTERNAL 실패해도 차단.
-붙여넣기 콘텐츠 감지(3차 방어): 유저가 로그/대화 기록을 붙여넣으면 라우터가 내용 속 키워드를 실제 명령으로 오인해 하네스 스폰. `[HH:MM:SS] [prefix]` 타임스탬프 패턴, Claude Code UI 마커(❯+⎿, ✶) 감지 시 즉시 통과.
-LLM PRIMARY 분류(S19+): regex 키워드 분류 제거 → Haiku `extract_intent()`가 GREETING/QUESTION/IMPLEMENTATION/BUG/AMBIGUOUS/GENERIC 6카테고리 직접 반환. ≤2자 표현은 API 절약 위해 즉시 GREETING 처리. 안전 방어선(1~3차)은 LLM 호출 전 유지.
-인터뷰 질문 주입 포맷: `additionalContext`에 "[HARNESS ROUTER] 지금 즉시 유저에게 아래 질문을 한국어로 물어보라" 형식으로 directive하게 주입 → 메인 Claude가 질문을 유저에게 전달.
+**4. 서브에이전트 포어그라운드 순차 실행**
+메인 Claude가 Bash 도구로 `harness-executor.sh`를 직접 실행한다.
+백그라운드 스폰(Popen) 금지. 한 에이전트가 완료된 후 다음 에이전트 호출.
+실행 중 출력은 대화창에 그대로 노출되며, /cancel로 중단 가능.
 
 **5. 에스컬레이션 → 메인 Claude 보고 후 대기**
 에스컬레이션 마커 수신 시 자동 복구 시도 금지.
@@ -382,6 +372,13 @@ READY_FOR_IMPL
 3. **마지막** `docs/harness-state.md` 관련 섹션 현행화 (완료 기능 / 플래그 / 파일 인벤토리)
 순서 위반(backlog 없이 수정, state 나중에 안 하는 것) 금지.
 물리적 강제: 현재는 written policy. 향후 `orch-rules-first.py` 확장으로 물리적 차단 예정.
+
+**10. Stop hook — 물리적 종료 차단**
+Claude가 작업 완료를 선언하려 할 때, Stop hook이 `/tmp/{prefix}_harness_active`를 체크한다.
+파일이 존재하면 `exit 2`로 종료를 차단하고 Claude는 계속 작업한다.
+`harness_active`는 harness-executor.sh 시작 시 생성, 종료 시 삭제.
+
+유저는 `/cancel` 또는 `/harness-kill`로 언제든 중단 가능.
 
 ---
 
