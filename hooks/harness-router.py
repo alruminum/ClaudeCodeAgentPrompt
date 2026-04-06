@@ -419,15 +419,9 @@ def _main_inner():
                 ctx = f"[INTERVIEW] {first_q}"
                 log(prefix, f"INJECT(interview/start) prompt={prompt[:60]!r}")
             else:
-                # Haiku 실패 → static hint fallback
-                ctx = (
-                    "[HARNESS ROUTER] 요청이 모호합니다. 루프 진입 전 명확화 필요.\n\n"
-                    "1. 어떤 파일/컴포넌트가 대상인가?\n"
-                    "2. 현재 동작 vs 기대 동작은?\n"
-                    "3. 관련 GitHub 이슈 번호가 있는가?\n\n"
-                    "명확한 요청 없이 구현 루프를 시작하지 마세요."
-                )
-                log(prefix, f"INJECT(ambiguous/fallback) prompt={prompt[:60]!r}")
+                # Haiku가 질문 못 만들면 소프트웨어 요청 아닌 것 → 그냥 통과
+                log(prefix, f"PASS(ambiguous/no-question) prompt={prompt[:60]!r}")
+                sys.exit(0)
 
         print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
         sys.exit(0)
