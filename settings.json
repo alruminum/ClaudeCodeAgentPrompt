@@ -80,6 +80,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ~/.claude/hooks/harness-stop-gate.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "afplay /System/Library/Sounds/Glass.aiff"
           }
         ]
