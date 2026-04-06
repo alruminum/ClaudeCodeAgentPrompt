@@ -15,14 +15,37 @@ from datetime import datetime
 
 LOG_FILE = "/tmp/harness-router.log"
 
+
 def log(prefix, msg):
     ts = datetime.now().strftime("%H:%M:%S")
     with open(LOG_FILE, "a") as f:
         f.write(f"[{ts}] [{prefix}] {msg}\n")
 
+
+def fast_classify(prompt):
+    """2단계 regex 즉시 분류 — LLM 호출 없이 ~0ms."""
+    p = prompt.strip()
+    # GREETING — 완전 일치에 가까운 짧은 반응어
+    if re.match(r'^(ㅇㅇ|응|네|좋아|좋아요|ok|okay|ㅎㅎ|고마워|감사|알겠어|잘\s*했어|오케이|수고|ㅋ+|ㅎ+|good|great|thanks|thank\s*you|thx|ty|nice|cool|awesome|lgtm|done)[\s!.]*$', p, re.I):
+        return "GREETING"
+    # QUESTION — 물음표로 끝나면 무조건
+    if re.search(r'\?\s*$', p):
+        return "QUESTION"
+    # BUG — 버그 키워드 있되 구현 동사 없는 경우만
+    if re.search(r'(버그|bug|크래시|crash)', p, re.I) and not re.search(r'(추가|구현|만들)', p):
+        return "BUG"
+    if re.search(r'(안\s*[되돼]고|안\s*[되돼]요|안\s*됨|깨[졌지]|작동.*안|동작.*안)', p):
+        return "BUG"
+    # IMPLEMENTATION — 이슈번호 + 명령형 동사 조합
+    if re.search(r'#\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
+        return "IMPLEMENTATION"
+    if re.search(r'(구현|추가|만들어|생성|작성).*해', p) and not re.search(r'^(왜|어떻게|뭐)', p):
+        return "IMPLEMENTATION"
+    return None  # → LLM 폴백
+
+
 def _call_haiku(prompt_text, max_tokens, prefix):
-    """Haiku 호출 — API 직접 호출 우선, 실패 시 CLI 폴백 (timeout 축소)."""
-    # 1차: API 직접 호출 (subprocess 스폰 없이 ~0.5-2초)
+    """Haiku 호출 — API 직접(urllib) 우선, 실패 시 --agent socrates CLI 폴백."""
     api_key = os.environ.get('ANTHROPIC_API_KEY', '')
     if api_key:
         try:
@@ -46,56 +69,50 @@ def _call_haiku(prompt_text, max_tokens, prefix):
                 log(prefix, f"HAIKU_API_OK len={len(result)}")
                 return result
         except Exception as e:
-            log(prefix, f"HAIKU_API_FAIL: {e} — falling back to CLI")
+            log(prefix, f"HAIKU_API_FAIL: {e}")
 
-    # 2차 폴백: CLI 호출 (OAuth/구독 환경용, timeout 15→5초로 축소)
+    # CLI 폴백 (OAuth/구독 환경용) — socrates 에이전트로 Haiku 모델 사용
     try:
         env = {**os.environ, 'HARNESS_INTERNAL': '1'}
         result = subprocess.run(
             ['claude', '--agent', 'socrates',
              '--print', '--output-format', 'text',
              '-p', prompt_text],
-            env=env,
-            capture_output=True, text=True, timeout=5
+            env=env, capture_output=True, text=True, timeout=10
         )
-        return result.stdout.strip()
+        if result.returncode == 0 and result.stdout.strip():
+            log(prefix, "HAIKU_CLI_OK")
+            return result.stdout.strip()
     except Exception as e:
         log(prefix, f"HAIKU_CLI_FAIL: {e}")
-        return ""
+    return None
 
 
 def extract_intent(prompt, prefix):
-    """
-    PRIMARY 분류기 — Haiku로 유저 의도 추출.
-    반환: GREETING | QUESTION | IMPLEMENTATION | BUG | AMBIGUOUS | GENERIC
-    실패 시: None (호출자에서 AMBIGUOUS 폴백)
-    """
+    """PRIMARY 분류기 — Haiku로 유저 의도 추출."""
     prompt_text = (
-        "소프트웨어 개발 어시스턴트 채팅에서 사용자 메시지를 분류하라.\n"
+        "소프트웨어 개발 어시스턴트 채팅에서 사용자 메시지 의도를 분류하라.\n"
         "먼저: 소프트웨어·코딩과 관련 없으면 → GENERIC 또는 GREETING.\n"
         "다음 중 하나만 출력 (다른 말 금지):\n"
-        "GREETING — 인사·긍정·짧은 반응·감탄 (ㅇㅇ, 응, 좋아, ok, hi, ㅎㅎ, 맞아, 고마워, 알겠어)\n"
+        "GREETING — 인사·긍정·짧은 반응 (ㅇㅇ, 응, 좋아, ok, hi, ㅎㅎ, 맞아, 고마워)\n"
         "GENERIC — 소프트웨어와 무관한 모든 것 (날씨, 음식, 일상, 감상, 짧은 단답)\n"
         "QUESTION — 코드·시스템에 대한 질문 (왜, 어떻게, 설명해줘, ?)\n"
-        "IMPLEMENTATION — 코드 구현·수정 요청 (이슈 번호 포함, 구체적 기능 변경)\n"
+        "IMPLEMENTATION — 코드 구현·수정 요청 (이슈 번호, 고쳐, 만들어, fix)\n"
         "BUG — 버그·오류 보고 (버그, 안돼, 이상해, 깨졌어, 에러)\n"
         "AMBIGUOUS — 소프트웨어 요청인 것 같지만 대상·범위 불명확\n\n"
         f"\"{prompt[:200]}\""
     )
     text = _call_haiku(prompt_text, 20, prefix)
-    for cat in ["IMPLEMENTATION", "BUG", "QUESTION", "GREETING", "AMBIGUOUS", "GENERIC"]:
-        if cat in text.upper():
-            log(prefix, f"INTENT result={cat}")
-            return cat
+    if text:
+        for cat in ["IMPLEMENTATION", "BUG", "QUESTION", "GREETING", "AMBIGUOUS", "GENERIC"]:
+            if cat in text.upper():
+                log(prefix, f"INTENT result={cat}")
+                return cat
     return None
 
 
-def run_interview_turn(history, original_prompt, prefix):
-    """
-    Haiku로 다음 인터뷰 질문 생성 (적응형).
-    - history 비어있으면: 첫 질문 생성
-    - history 있으면: 충분하면 None(DONE), 부족하면 다음 질문 문자열 반환
-    """
+def _run_interview_turn(history, original_prompt, prefix):
+    """Haiku로 다음 인터뷰 질문 생성. DONE이면 None 반환."""
     if not history:
         content = (
             f"사용자 요청: \"{original_prompt}\"\n\n"
@@ -103,188 +120,45 @@ def run_interview_turn(history, original_prompt, prefix):
             "출력 형식: QUESTION: <질문>"
         )
     else:
-        qa_text = "\n".join(
-            f"Q{i+1}: {h['q']}\nA{i+1}: {h['a']}"
-            for i, h in enumerate(history)
-        )
+        qa_text = "\n".join(f"Q{i+1}: {h['q']}\nA{i+1}: {h['a']}" for i, h in enumerate(history))
         content = (
             f"원래 요청: \"{original_prompt}\"\n\n"
             f"지금까지 수집된 요구사항:\n{qa_text}\n\n"
             "구현을 시작하기에 충분한가?\n"
-            "충분하면: DONE\n"
-            "부족하면: QUESTION: <가장 중요한 추가 질문 하나>"
+            "충분하면: DONE\n부족하면: QUESTION: <가장 중요한 추가 질문 하나>"
         )
-
-    try:
-        text = _call_haiku(content, 80, prefix)
-        if 'DONE' in text.upper():
-            log(prefix, "INTERVIEW_DONE")
-            return None
-        if 'QUESTION:' in text:
-            q = text.split('QUESTION:', 1)[1].strip()
-            log(prefix, f"INTERVIEW_Q: {q[:60]}")
-            return q
-    except Exception as e:
-        log(prefix, f"INTERVIEW_FAIL: {e}")
-    return None  # Haiku 실패 → DONE 처리 (static hint fallback으로 이어짐)
-
-
-HARNESS_LOCK_TTL = 120  # seconds — 이 시간 동안 갱신 없으면 stale로 판단
-
-
-def get_harness_sh():
-    """harness-executor.sh 경로 — 프로젝트 로컬 우선, 없으면 글로벌."""
-    local = os.path.join(os.getcwd(), ".claude", "harness-executor.sh")
-    if os.path.exists(local):
-        return local
-    globl = os.path.expanduser("~/.claude/harness-executor.sh")
-    return globl if os.path.exists(globl) else None
-
-
-def _lease_age(lock_path):
-    """JSON lease의 heartbeat 기준 경과 시간(초). 파싱 실패 시 mtime fallback."""
-    try:
-        with open(lock_path) as f:
-            lease = json.load(f)
-        return time.time() - lease["heartbeat"]
-    except (json.JSONDecodeError, KeyError, OSError):
-        return time.time() - os.path.getmtime(lock_path)
-
-
-def try_spawn_harness(mode, harness_sh, prefix, issue_num, extra_args=None):
-    """
-    harness-executor.sh를 백그라운드로 1회만 spawn.
-    - Atomic O_CREAT|O_EXCL: race condition 방지 (OS 커널 보장)
-    - TTL 120s: stale lock 자동 해제 (크래시 후 복구)
-    반환값: log_file 경로(spawn 성공) 또는 None(이미 실행 중)
-    """
-    lock = f"/tmp/{prefix}_harness_active"
-
-    # 0. Spawn rate limiter — 60초 내 3회 초과 시 하드 블록 (재귀 루프 최후 방어)
-    if not _check_spawn_rate(prefix):
-        log(prefix, f"RATE_LIMIT_BLOCK mode={mode} — 60초 내 spawn 3회 초과")
+    text = _call_haiku(content, 80, prefix)
+    if not text:
         return None
-
-    # 1. TTL 체크 — JSON lease heartbeat 기준 120초 초과 시 stale로 판단하고 제거
-    if os.path.exists(lock):
-        age = _lease_age(lock)
-        if age < HARNESS_LOCK_TTL:
-            log(prefix, f"SKIP(already_active age={age:.0f}s) mode={mode}")
-            return None  # 진짜 실행 중 → spawn 금지
-        # stale lock → 제거 후 계속
-        try:
-            os.remove(lock)
-            log(prefix, f"STALE_LOCK_REMOVED age={age:.0f}s mode={mode}")
-        except OSError:
-            return None  # 다른 프로세스가 먼저 제거 중 → 안전하게 skip
-
-    # 2. Atomic create — O_CREAT|O_EXCL: 파일이 이미 있으면 즉시 FileExistsError
-    #    두 UserPromptSubmit이 동시에 도달해도 하나만 통과 (커널 레벨 보장)
-    try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-        os.close(fd)
-    except FileExistsError:
-        log(prefix, f"SKIP(race_lost) mode={mode}")
+    if "DONE" in text.upper():
         return None
+    m = re.search(r'QUESTION:\s*(.+)', text)
+    return m.group(1).strip() if m else None
 
-    # 3. Spawn
-    log_file = f"/tmp/{prefix}_harness_output.log"
-    args = ["bash", harness_sh, mode,
-            "--issue", str(issue_num),
-            "--prefix", prefix]
-    if extra_args:
-        args += extra_args
+
+def _load_interview(path, prefix):
     try:
-        with open(log_file, "w") as lf:
-            subprocess.Popen(
-                args,
-                stdout=lf,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-                cwd=os.getcwd()
-            )
-        log(prefix, f"SPAWNED mode={mode} issue={issue_num} lock={lock}")
-    except Exception as e:
-        # spawn 실패 시 lock 해제
+        with open(path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        log(prefix, f"INTERVIEW_STATE_PARSE_ERROR: {e}")
         try:
-            os.remove(lock)
+            os.remove(path)
         except OSError:
             pass
-        log(prefix, f"SPAWN_FAILED mode={mode} err={e}")
         return None
 
-    return log_file
+
+def _save_interview(path, state):
+    with open(path, 'w') as f:
+        json.dump(state, f)
 
 
-def main():
-    try:
-        _main_inner()
-    except Exception as e:
-        # 어떤 예외든 graceful exit — hook error 방지
-        try:
-            log("?", f"UNCAUGHT: {e}")
-        except Exception:
-            pass
-        sys.exit(0)
-
-def _check_harness_internal_prompt(prompt):
-    """하네스 내부에서 생성된 프롬프트 패턴 — HARNESS_INTERNAL 실패 시 2차 방어선."""
-    patterns = [
-        r'^bug:.*issue:\s*#',           # _agent_call qa: "bug: ... issue: #N"
-        r'^impl:.*issue:\s*#.*task:',   # _agent_call engineer
-        r'^Mode\s+[ABCE]\b',            # architect 호출
-        r'^SPEC_GAP\(',                 # architect SPEC_GAP
-        r'^System Design\(Mode',        # architect Mode A
-        r'^Module Plan\(Mode',          # architect Mode B
-        r'^구현된 파일:',                # test-engineer
-        r'^변경 내용 리뷰:',             # pr-reviewer
-        r'^보안 리뷰 대상',              # security-reviewer
-        r'^Mode\s+[BC]\s*[-—]\s*',     # validator
-    ]
-    return any(re.match(p, prompt.strip(), re.DOTALL | re.IGNORECASE) for p in patterns)
-
-
-def fast_classify(prompt):
-    """
-    2단계 regex 즉시 분류 — LLM 호출 없이 ~0ms.
-    확실한 것만 잡고, 애매한 건 None 반환 → LLM 폴백.
-    키워드 하나가 아니라 조합+위치로 판단한다.
-    """
-    p = prompt.strip()
-
-    # 1. GREETING — 전체가 짧은 반응어 (완전 일치에 가까운 것만)
-    if re.match(r'^(ㅇㅇ|응|네|좋아|좋아요|ok|okay|ㅎㅎ|고마워|감사|알겠어|잘\s*했어|오케이|수고|ㅋ+|ㅎ+|good|great|thanks|thank\s*you|thx|ty|nice|cool|awesome|lgtm|done)[\s!.]*$', p, re.I):
-        return "GREETING"
-
-    # 2. QUESTION — 물음표로 끝나면 무조건 QUESTION
-    if re.search(r'\?\s*$', p):
-        return "QUESTION"
-
-    # 3. BUG — 버그 키워드가 있되, 구현/추가 동사가 없는 경우만
-    if re.search(r'(버그|bug|크래시|crash)', p, re.I) and not re.search(r'(추가|구현|만들)', p):
-        return "BUG"
-    if re.search(r'(안\s*[되돼]고|안\s*[되돼]요|안\s*됨|깨[졌지]|작동.*안|동작.*안)', p):
-        return "BUG"
-
-    # 4. IMPLEMENTATION — 이슈번호 + 명령형 동사 조합
-    if re.search(r'#\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
-        return "IMPLEMENTATION"
-    # 구현/추가/만들어 + 해/해줘 패턴 (의문사가 없을 때만)
-    if re.search(r'(구현|추가|만들어|생성|작성).*해', p) and not re.search(r'^(왜|어떻게|뭐)', p):
-        return "IMPLEMENTATION"
-
-    # 매칭 안 되면 → LLM 폴백
-    return None
-
-
-def _check_spawn_rate(prefix):
-    """
-    Spawn rate limiter — 60초 내 MAX_SPAWNS 초과 시 하드 블록.
-    재귀 루프 폭주 방지용 최후 방어선.
-    """
-    MAX_SPAWNS = 3
-    WINDOW = 60  # seconds
-    rate_file = f"/tmp/{prefix}_spawn_rate.json"
+def _check_invoke_rate(prefix):
+    """훅 호출 빈도 체크 — 60초 내 5회 초과 시 블록."""
+    MAX_INVOKES = 5
+    WINDOW = 60
+    rate_file = f"/tmp/{prefix}_hook_rate.json"
     now = time.time()
     try:
         data = json.load(open(rate_file)) if os.path.exists(rate_file) else {"count": 0, "window_start": now}
@@ -293,9 +167,37 @@ def _check_spawn_rate(prefix):
         data["count"] += 1
         with open(rate_file, "w") as f:
             json.dump(data, f)
-        return data["count"] <= MAX_SPAWNS
+        return data["count"] <= MAX_INVOKES
     except Exception:
-        return True  # 파일 오류 시 허용 (기능 장애보다 과금이 낫다)
+        return True
+
+
+def _check_harness_internal_prompt(prompt):
+    """하네스 내부에서 생성된 프롬프트 패턴 — HARNESS_INTERNAL 실패 시 2차 방어선."""
+    patterns = [
+        r'^bug:.*issue:\s*#',
+        r'^impl:.*issue:\s*#.*task:',
+        r'^Mode\s+[ABCE]\b',
+        r'^SPEC_GAP\(',
+        r'^System Design\(Mode',
+        r'^Module Plan\(Mode',
+        r'^구현된 파일:',
+        r'^변경 내용 리뷰:',
+        r'^보안 리뷰 대상',
+        r'^Mode\s+[BC]\s*[-—]\s*',
+    ]
+    return any(re.match(p, prompt.strip(), re.DOTALL | re.IGNORECASE) for p in patterns)
+
+
+def main():
+    try:
+        _main_inner()
+    except Exception as e:
+        try:
+            log("?", f"UNCAUGHT: {e}")
+        except Exception:
+            pass
+        sys.exit(0)
 
 
 def _main_inner():
@@ -332,22 +234,32 @@ def _main_inner():
     if not prompt or not prompt.strip():
         sys.exit(0)
 
-    # 2차 방어: 하네스 내부 생성 프롬프트 패턴 감지 — HARNESS_INTERNAL 실패 시 백업
+    # Rate Limiter — 60초 내 5회 초과 시 블록
+    if not _check_invoke_rate(prefix):
+        log(prefix, "RATE_LIMIT_BLOCK — 60초 내 훅 호출 5회 초과")
+        sys.exit(0)
+
+    # Kill Switch 체크
+    if os.path.exists(f"/tmp/{prefix}_harness_kill"):
+        log(prefix, "KILL_SWITCH — pass-through")
+        sys.exit(0)
+
+    # 2차 방어: 하네스 내부 생성 프롬프트 패턴 감지
     if _check_harness_internal_prompt(prompt):
-        log(raw_prefix if raw_prefix != "auto" else "?", f"PASS(harness_internal_pattern) prompt={prompt[:60]!r}")
+        log(prefix, f"PASS(harness_internal_pattern) prompt={prompt[:60]!r}")
         sys.exit(0)
 
     # 3차 방어: 붙여넣기 콘텐츠 감지 — 로그/대화 기록을 유저 명령으로 오인 방지
     _PASTE_PATTERNS = [
-        r'^\[\d{2}:\d{2}:\d{2}\]\s+\[\w+\]\s+',   # [HH:MM:SS] [prefix] 로그 라인
-        r'❯\s+\S.*\n\s+⎿',                           # Claude Code UI 대화 기록 (❯ + ⎿)
-        r'\n✶\s',                                      # 어시스턴트 턴 마커
+        r'^\[\d{2}:\d{2}:\d{2}\]\s+\[\w+\]\s+',
+        r'❯\s+\S.*\n\s+⎿',
+        r'\n✶\s',
     ]
     if any(re.search(p, prompt, re.MULTILINE) for p in _PASTE_PATTERNS):
-        log(raw_prefix if raw_prefix != "auto" else "?", f"PASS(pasted_content) prompt={prompt[:60]!r}")
+        log(prefix, f"PASS(pasted_content) prompt={prompt[:60]!r}")
         sys.exit(0)
 
-    # mtime 기반 스태일 designer_ran 감지 (any_active 계산 전)
+    # mtime 기반 스태일 designer_ran 감지
     dr_path = f"/tmp/{prefix}_designer_ran"
     dc_path = f"/tmp/{prefix}_design_critic_passed"
     if os.path.exists(dr_path) and not os.path.exists(dc_path):
@@ -368,8 +280,8 @@ def _main_inner():
     }
     any_active = any(flags.values())
 
-    # ── LLM PRIMARY 분류 ─────────────────────────────────────────────
-    # ≤2자 표현은 API 절약 위해 즉시 GREETING 처리 (ㅇㅇ, 응, 네, ok 등)
+    # ── 분류 ──────────────────────────────────────────────────────────
+    # ≤2자 표현은 API 절약 위해 즉시 GREETING 처리
     interview_path = f"/tmp/{prefix}_interview_state.json"
     if len(prompt.strip()) <= 2:
         cat = "GREETING"
@@ -388,85 +300,76 @@ def _main_inner():
 
     # GREETING → 즉시 통과
     if cat == "GREETING" and not any_active:
-        log(prefix, f"PASS(greeting/llm) prompt={prompt[:60]!r}")
+        log(prefix, f"PASS(greeting) prompt={prompt[:60]!r}")
         sys.exit(0)
 
-    # QUESTION이고 진행 중인 워크플로우 없으면 아무것도 주입 안 함 (버그 감지 시 예외)
+    # QUESTION이고 진행 중인 워크플로우 없으면 통과
     if cat == "QUESTION" and not any_active and not is_bug:
         log(prefix, f"PASS(question/no-active) prompt={prompt[:60]!r}")
         sys.exit(0)
 
-    # AMBIGUOUS + 진행 중 워크플로우 없음 → S18 Adaptive Interview Harness
+    # AMBIGUOUS + 진행 중 워크플로우 없음 → Adaptive Interview
     if cat == "AMBIGUOUS" and not any_active and not is_bug:
         if os.path.exists(interview_path):
-            # 진행 중인 인터뷰 — 이 메시지는 답변
-            try:
-                with open(interview_path) as f:
-                    state = json.load(f)
-            except (json.JSONDecodeError, OSError):
-                try:
-                    os.remove(interview_path)
-                except OSError:
-                    pass
-                state = None
-
+            state = _load_interview(interview_path, prefix)
             if state:
                 state['history'].append({'q': state['current_q'], 'a': prompt})
                 state['turn'] = state.get('turn', 0) + 1
 
-                # max_turn=4 하드캡 — Haiku가 DONE을 안 내도 강제 종료
                 if state['turn'] >= 4:
-                    next_q = None
+                    next_q = None  # max_turn 하드캡
                     log(prefix, "INTERVIEW_MAX_TURN_REACHED")
                 else:
-                    next_q = run_interview_turn(state['history'], state['original'], prefix)
+                    next_q = _run_interview_turn(state['history'], state['original'], prefix)
 
                 if next_q is None:
-                    # 인터뷰 완료 → plan spawn
+                    # 인터뷰 완료 → plan 힌트 주입 (Popen 아님!)
                     try:
                         os.remove(interview_path)
                     except OSError:
                         pass
-                    qa_lines = "\n".join(
-                        f"Q: {h['q']}\nA: {h['a']}" for h in state['history']
-                    )
-                    qa_ctx = f"원래요청: {state['original']}\n\n{qa_lines}"
-                    harness_sh = get_harness_sh()
-                    log_file = (try_spawn_harness("plan", harness_sh, prefix, "N",
-                                                  ["--context", qa_ctx])
-                                if harness_sh else None)
-                    fallback_log = f"/tmp/{prefix}_harness_output.log"
-                    watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
-                    actual_log = log_file or fallback_log
+                    qa_lines = "\n".join(f"Q: {h['q']}\nA: {h['a']}" for h in state['history'])
                     ctx = (
-                        f"✅ [INTERVIEW] 요구사항 수집 완료. 계획 수립 시작.\n"
-                        f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
-                        f"bash {watch_sh} {actual_log}"
+                        f"✅ [INTERVIEW] 요구사항 수집 완료.\n\n"
+                        f"수집된 요구사항:\n{qa_lines}\n\n"
+                        f"→ product-planner 에이전트를 호출하세요 (위 요구사항을 컨텍스트로 전달)\n"
+                        f"→ PRD 완료 후 루프 A 진입"
                     )
-                    log(prefix, f"INJECT(interview/done→plan) prompt={prompt[:60]!r}")
+                    log(prefix, f"INJECT(interview/done→plan-hint) prompt={prompt[:60]!r}")
                 else:
                     state['current_q'] = next_q
-                    with open(interview_path, 'w') as f:
-                        json.dump(state, f)
-                    ctx = f"[HARNESS ROUTER] 아래 질문을 한 글자도 수정하지 말고 그대로 유저에게 전달하라:\n{next_q}"
+                    _save_interview(interview_path, state)
+                    ctx = (
+                        "[HARNESS ROUTER] 아래 질문을 한 글자도 수정하지 말고 "
+                        "그대로 유저에게 전달하라:\n"
+                        f"{next_q}"
+                    )
                     log(prefix, f"INJECT(interview/next_q) prompt={prompt[:60]!r}")
             else:
-                # 파싱 실패 → 첫 질문부터 재시작
                 ctx = "[HARNESS ROUTER] 인터뷰 상태 오류. 요청을 다시 입력해주세요."
                 log(prefix, "INJECT(interview/state_error)")
         else:
             # 첫 진입 — 첫 질문 생성
-            first_q = run_interview_turn([], prompt, prefix)
+            first_q = _run_interview_turn([], prompt, prefix)
             if first_q:
                 state = {'history': [], 'current_q': first_q, 'original': prompt, 'turn': 0}
-                with open(interview_path, 'w') as f:
-                    json.dump(state, f)
-                ctx = f"[HARNESS ROUTER] 아래 질문을 한 글자도 수정하지 말고 그대로 유저에게 전달하라:\n{first_q}"
+                _save_interview(interview_path, state)
+                ctx = (
+                    "[HARNESS ROUTER] 아래 질문을 한 글자도 수정하지 말고 "
+                    "그대로 유저에게 전달하라:\n"
+                    f"{first_q}"
+                )
                 log(prefix, f"INJECT(interview/start) prompt={prompt[:60]!r}")
             else:
-                # Haiku가 질문 못 만들면 소프트웨어 요청 아닌 것 → 그냥 통과
+                # Haiku 실패 → static hint 폴백
+                ctx = (
+                    "[HARNESS ROUTER] 요청이 모호합니다. 루프 진입 전 명확화 필요.\n\n"
+                    "1. 어떤 파일/컴포넌트가 대상인가?\n"
+                    "2. 현재 동작 vs 기대 동작은?\n"
+                    "3. 관련 GitHub 이슈 번호가 있는가?\n\n"
+                    "명확한 요청 없이 구현 루프를 시작하지 마세요."
+                )
                 log(prefix, f"PASS(ambiguous/no-question) prompt={prompt[:60]!r}")
-                sys.exit(0)
 
         print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
         sys.exit(0)
@@ -509,6 +412,7 @@ def _main_inner():
         flag_lines = "\n".join(
             f"  {'OK' if v else 'NG'} {k}" for k, v in flags.items()
         )
+
         # harness-memory Known Failure Patterns 읽기
         memory_patterns = []
         for mf in [
@@ -525,74 +429,48 @@ def _main_inner():
                     if m:
                         patterns = m.group(1).strip()
                         if patterns:
-                            # 최근 20개 항목만 유지 (컨텍스트 낭비 방지)
                             lines = [l for l in patterns.split('\n') if l.strip()][-20:]
                             memory_patterns.append('\n'.join(lines))
                 except Exception:
                     pass
 
-        issue_ref = (current_issue or "N").lstrip("#")
-        harness_sh = get_harness_sh()
-
         if flags["harness_active"]:
-            # 이미 실행 중 → spawn 금지, 로그 확인 안내만
-            log_file = f"/tmp/{prefix}_harness_output.log"
-            watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
             ctx = (
-                f"⏳ [HARNESS] 이미 실행 중입니다. 중복 실행 금지.\n"
-                f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
-                f"bash {watch_sh} {log_file}\n\n"
+                f"⚠️ [HARNESS] harness_active 플래그가 설정되어 있습니다.\n"
+                f"이전 실행이 아직 진행 중이거나 비정상 종료된 것일 수 있습니다.\n"
+                f"중복 실행 전 확인하세요: ls /tmp/{prefix}_harness_active\n\n"
                 f"[현재 플래그]\n{flag_lines}"
             )
-            log(prefix, f"INJECT(impl/already_active) prompt={prompt[:60]!r}")
-        elif harness_sh:
-            # spawn 시도
-            if flags["plan_validation_passed"]:
-                impl_path_file = f"/tmp/{prefix}_impl_path"
-                impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else ""
-                if impl_path:
-                    extra = ["--impl", impl_path]
-                    log_file = try_spawn_harness("impl2", harness_sh, prefix, issue_ref, extra)
-                    mode_label = "impl2"
-                else:
-                    # impl_path 없음 → plan_validation_passed 스테일 → impl로 강등
-                    try:
-                        os.remove(f"/tmp/{prefix}_plan_validation_passed")
-                    except OSError:
-                        pass
-                    log(prefix, "STALE_PLAN_VALIDATION: impl_path missing → downgrade impl")
-                    log_file = try_spawn_harness("impl", harness_sh, prefix, issue_ref)
-                    mode_label = "impl"
-            else:
-                log_file = try_spawn_harness("impl", harness_sh, prefix, issue_ref)
-                mode_label = "impl"
-
-            if log_file:
-                watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
-                ctx = (
-                    f"🔁 [HARNESS] {mode_label} 루프 실행 시작 (issue #{issue_ref})\n"
-                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
-                    f"bash {watch_sh} {log_file}\n"
-                    f"HARNESS_DONE / ESCALATE / PASS 메시지 확인 후 유저에게 결과를 한국어로 보고하라.\n\n"
-                    f"[현재 플래그]\n{flag_lines}"
-                )
-            else:
-                log_file = f"/tmp/{prefix}_harness_output.log"
-                watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
-                ctx = (
-                    f"⏳ [HARNESS] 동시 실행 충돌. 이미 실행 중.\n"
-                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
-                    f"bash {watch_sh} {log_file}"
-                )
-            log(prefix, f"INJECT(impl/{mode_label}) issue={issue_ref} prompt={prompt[:60]!r}")
+            log(prefix, f"INJECT(impl/harness_active_warn) prompt={prompt[:60]!r}")
+        elif flags["plan_validation_passed"]:
+            impl_path_file = f"/tmp/{prefix}_impl_path"
+            impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else "[IMPL_PATH]"
+            issue_ref = current_issue or "N"
+            harness_directive = (
+                f"\n\n🔁 [HARNESS ROUTER] plan_validation_passed OK → 아래 Bash 명령을 즉시 실행하라:\n"
+                f"bash .claude/harness-executor.sh impl2 --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
+                "engineer 직접 호출 금지. 위 스크립트가 루프를 완주한다."
+            )
+            ctx = (
+                "[HARNESS ROUTER] 현재 워크플로우 상태\n"
+                + flag_lines
+                + "\n\n요청 분류: IMPLEMENTATION"
+                + harness_directive
+            )
+            log(prefix, f"INJECT(impl/impl2) issue={current_issue} prompt={prompt[:60]!r}")
         else:
-            # harness_sh 없음 → fallback
             harness_directive = (
                 "\n\n⚠️ src/** 직접 Edit/Write 금지. engineer 에이전트 직접 호출 금지.\n"
-                "harness-executor.sh를 찾을 수 없습니다. 수동으로 실행하세요."
+                f"올바른 순서: Bash로 harness-executor.sh 호출.\n"
+                f"예: bash .claude/harness-executor.sh impl --impl [IMPL_PATH] --issue {current_issue or 'N'} --prefix {prefix}"
             )
-            ctx = "[HARNESS ROUTER] 현재 워크플로우 상태\n" + flag_lines + harness_directive
-            log(prefix, f"INJECT(impl/no-harness-sh) prompt={prompt[:60]!r}")
+            ctx = (
+                "[HARNESS ROUTER] 현재 워크플로우 상태\n"
+                + flag_lines
+                + "\n\n요청 분류: IMPLEMENTATION"
+                + harness_directive
+            )
+            log(prefix, f"INJECT(impl) issue={current_issue} prompt={prompt[:60]!r}")
 
         if memory_patterns:
             ctx += "\n\n[HARNESS MEMORY] Known Failure Patterns:\n" + "\n---\n".join(memory_patterns)
@@ -606,43 +484,15 @@ def _main_inner():
             ctx = "[HARNESS ROUTER] 진행 중인 워크플로우 있음\n" + flag_lines
         log(prefix, f"INJECT(generic/active) prompt={prompt[:60]!r}")
 
-    # 버그/이슈 감지 시 bugfix harness 직접 spawn
-    if is_bug and not flags["harness_active"]:
-        harness_sh = get_harness_sh()
-        issue_match_bug = re.search(r'#(\d+)', prompt)
-        issue_ref = issue_match_bug.group(1) if issue_match_bug else "N"
-        if harness_sh:
-            log_file = try_spawn_harness("bugfix", harness_sh, prefix, issue_ref,
-                                         ["--bug", prompt[:200]])
-            watch_sh = os.path.expanduser("~/.claude/harness-watch.sh")
-            if log_file:
-                ctx = (
-                    f"🐛 [HARNESS] bugfix 루프 실행 시작 (issue #{issue_ref})\n"
-                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
-                    f"bash {watch_sh} {log_file}\n"
-                    f"완료 메시지 확인 후 유저에게 결과를 한국어로 보고하라."
-                )
-            else:
-                log_file = f"/tmp/{prefix}_harness_output.log"
-                ctx = (
-                    f"⏳ [HARNESS] 이미 실행 중.\n"
-                    f"[액션] 지금 즉시 Bash 도구로 실행하라 (timeout=660000):\n"
-                    f"bash {watch_sh} {log_file}"
-                )
-        else:
-            ctx = (
-                "🐛 [HARNESS ROUTER] 버그 감지 — harness-executor.sh 없음.\n"
-                "→ QA 에이전트를 수동으로 호출하세요."
-            )
-        log(prefix, f"INJECT(bugfix) issue={issue_ref} prompt={prompt[:60]!r}")
-        print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
-        sys.exit(0)
-    elif is_bug and flags["harness_active"]:
-        log_file = f"/tmp/{prefix}_harness_output.log"
-        ctx = f"⏳ [HARNESS] 이미 실행 중. 버그 처리 포함됨. 확인: Bash(tail -20 {log_file})"
-        log(prefix, f"INJECT(bugfix/already_active) prompt={prompt[:60]!r}")
-        print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
-        sys.exit(0)
+    # 버그/이슈 감지 시 QA 에이전트 힌트 prepend
+    if is_bug:
+        qa_hint = (
+            "🐛 [HARNESS ROUTER] 버그/이슈 감지\n"
+            "→ QA 에이전트를 먼저 호출하세요: 원인 분석 + 워크플로우 라우팅 추천\n"
+            "→ 원인이 이미 명확하면 QA 생략하고 architect (버그픽스 — Mode B) 직행 가능\n"
+        )
+        ctx = qa_hint + "\n" + ctx
+        log(prefix, f"QA_HINT injected prompt={prompt[:60]!r}")
 
     print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
 
