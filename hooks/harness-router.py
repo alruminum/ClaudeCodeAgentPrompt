@@ -134,7 +134,6 @@ def _main_inner():
 
     # 현재 플래그 상태
     flags = {
-        "harness_active":         os.path.exists(f"/tmp/{prefix}_harness_active"),
         "plan_validation_passed": os.path.exists(f"/tmp/{prefix}_plan_validation_passed"),
         "designer_ran":           os.path.exists(f"/tmp/{prefix}_designer_ran"),
         "design_critic_passed":   os.path.exists(f"/tmp/{prefix}_design_critic_passed"),
@@ -153,7 +152,7 @@ def _main_inner():
     # 의도 분류 (regex 1차)
     impl_kw = r"구현|만들어|추가|수정|변경|바꿔|고쳐|삭제|리팩|implement|fix|add|update|src/|루프돌려|만들어보자|구현루프|시작해"
     q_kw    = r"어떻게|뭐야|왜|뭔가요|하나요|인가요|\?"
-    bug_kw  = r"버그|뻐그|문제(가| 있| 생겼| 발생)|오류|에러|이상해|이상한데|이상하네|안 돼|안돼|안됨|안되네|고장|깨졌|망가|말이 돼|왜 이래|왜이래|이게 뭐야|버그있다|이슈왔다|꿈뻑|깜빡|깜짝|겹쳐|겹침|튐|튀는|버벅|느려|렉|화면.*이상|이상.*화면|두번|중복.*발생|안맞|틀린|wrong|weird"
+    bug_kw  = r"버그|뻐그|문제(가| 있| 생겼| 발생)|오류|에러|이상해|이상한데|이상하네|안 돼|안돼|안됨|안되네|고장|깨졌|망가|말이 돼|왜 이래|왜이래|이게 뭐야|버그있다|이슈왔다"
     plan_kw = r"기획|아이디어|뭘.*만들|무엇을.*만들|플랜|로드맵|PRD|TRD|요구사항|스펙"
     ui_kw   = r"화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이|모달"
     ambiguous = len(prompt.split()) < 5 and not re.search(impl_kw, prompt)
@@ -279,17 +278,6 @@ def _main_inner():
 
     # IMPLEMENTATION
     if cat == "IMPLEMENTATION":
-        # harness 이미 실행 중 → 재spawn 금지
-        if flags["harness_active"]:
-            log_file = f"/tmp/{prefix}_harness_output.log"
-            ctx = (
-                f"⏳ [HARNESS] 이미 실행 중입니다. 중복 spawn 금지.\n"
-                f"Bash(cat {log_file}) 로 진행 상황 확인하세요."
-            )
-            log(prefix, f"SKIP(harness_already_active) prompt={prompt[:60]!r}")
-            print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
-            sys.exit(0)
-
         # harness-memory Known Failure Patterns 읽기
         memory_patterns = []
         for mf in [
