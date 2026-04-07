@@ -75,14 +75,36 @@ def extract_run_info(events):
             info["t_end"] = e.get("t", 0)
             info["elapsed"] = e.get("elapsed", 0)
     if info["t_end"] == 0 and info["t_start"] > 0:
-        # 비정상 종료 — 마지막 이벤트 시각 사용
+        # 비정상 종료 — 마지막 하네스 이벤트 시각 사용 (stream_event 제외)
         for e in reversed(events):
             t = e.get("t", 0)
-            if t > 0:
+            if t > 0 and e.get("type") != "stream_event":
                 info["t_end"] = t
                 info["elapsed"] = t - info["t_start"]
                 break
+        # 그래도 못 찾으면 stream_event에서 message timestamp 추출 시도
+        if info["t_end"] == 0:
+            last_ts = _find_last_timestamp(events)
+            if last_ts > 0:
+                info["t_end"] = last_ts
+                info["elapsed"] = last_ts - info["t_start"]
     return info
+
+
+def _find_last_timestamp(events):
+    """stream_event 내 message.created_at 또는 하네스 이벤트 t 중 마지막 값"""
+    last = 0
+    for e in events:
+        t = e.get("t", 0)
+        if t > last:
+            last = t
+        # stream_event 내 message timestamp
+        if e.get("type") == "stream_event":
+            msg = e.get("event", {}).get("message", {})
+            created = msg.get("created_at", 0)
+            if isinstance(created, (int, float)) and created > last:
+                last = int(created)
+    return last
 
 
 def extract_config(events):
@@ -115,10 +137,20 @@ def extract_timeline(events):
                 "prompt_chars": e.get("prompt_chars", entry.get("prompt_chars", 0)),
             })
             agents.append(entry)
-    # 미완료 에이전트 (타임아웃 등)
+    # 미완료 에이전트 (타임아웃/킬) — elapsed 추정
+    run_end_t = 0
+    for e in events:
+        t = e.get("t", 0)
+        if t > run_end_t and e.get("type") != "stream_event":
+            run_end_t = t
+    if run_end_t == 0:
+        run_end_t = _find_last_timestamp(events)
+
     for agent, entry in pending.items():
-        entry["t_end"] = 0
-        entry["elapsed"] = 0
+        t_start = entry.get("t_start", 0)
+        estimated = run_end_t - t_start if run_end_t > t_start else 0
+        entry["t_end"] = run_end_t
+        entry["elapsed"] = estimated
         entry["exit"] = -1
         entry["cost_usd"] = 0
         entry["status"] = "incomplete"
@@ -239,16 +271,19 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
                 "fix": f"~/.claude/agents/{agent}.md에 'Agent 도구 사용 금지' 추가",
             })
 
-    # WASTE_TIMEOUT: 타임아웃 직전 + 결과 없음
+    # WASTE_TIMEOUT: 타임아웃 직전 + 결과 없음, 또는 incomplete(킬/중단)
     for entry in timeline:
         agent = entry["agent"]
         expected = EXPECTED_ELAPSED.get(agent, 300)
-        if entry["elapsed"] >= expected * 0.9 and entry["exit"] != 0:
+        is_timeout = entry["elapsed"] >= expected * 0.9 and entry["exit"] != 0
+        is_incomplete = entry.get("status") == "incomplete" and entry["elapsed"] > 0
+        if is_timeout or is_incomplete:
+            status = "incomplete(킬/중단)" if is_incomplete else f"exit={entry['exit']}"
             patterns.append({
                 "type": "WASTE_TIMEOUT",
                 "severity": "MEDIUM",
                 "agent": agent,
-                "detail": f"{agent} {entry['elapsed']}s 소요 (한도 {expected}s) exit={entry['exit']}",
+                "detail": f"{agent} {entry['elapsed']}s 소요 (한도 {expected}s) {status}",
                 "fix": f"프롬프트 간결화 또는 타임아웃 조정",
             })
 
@@ -355,10 +390,12 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
         elif stream_tools:
             tools_str = " ".join(f"{k}:{v}" for k, v in stream_tools.items())
         pc_kb = f"{entry.get('prompt_chars', 0) / 1024:.1f}"
+        exit_str = "KILLED" if entry.get("status") == "incomplete" else str(entry["exit"])
+        elapsed_str = f"~{entry['elapsed']}" if entry.get("status") == "incomplete" else str(entry["elapsed"])
         lines.append(
             f"| {fmt_time(entry.get('t_start', 0))} | {agent} "
-            f"| {entry['elapsed']} | {entry.get('cost_usd', 0):.2f} "
-            f"| {entry['exit']} | {pc_kb} | {tools_str} |"
+            f"| {elapsed_str} | {entry.get('cost_usd', 0):.2f} "
+            f"| {exit_str} | {pc_kb} | {tools_str} |"
         )
     lines.append("")
 
