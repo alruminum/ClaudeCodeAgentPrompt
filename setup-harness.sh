@@ -6,12 +6,14 @@
 # UserPromptSubmit / SessionStart 는 ~/.claude/settings.json(전역)에서 관리.
 # 이 스크립트는 프로젝트별 게이트 훅만 생성한다.
 #
-# 설치되는 훅:
-#   PreToolUse(Edit/Write) — docs/* + src/** 에이전트 소유 파일 물리적 차단
-#   PreToolUse(Bash)       — git commit 전 pr-reviewer LGTM 확인 + 규칙↔스크립트 드리프트 감지
-#   PreToolUse(Agent)      — 이슈번호 필수 + 에이전트 실행 순서 6단계 게이트
-#   PostToolUse(Bash)      — commit 성공 후 플래그 정리
-#   PostToolUse(Agent)     — 플래그 생성/삭제 + 문서 신선도/PRD 대조 경고
+# 설치되는 훅 (모두 글로벌 ~/.claude/hooks/*.py 참조 — 업데이트 시 전 프로젝트 즉시 반영):
+#   PreToolUse(Edit/Write) — file-ownership-gate.py + agent-boundary.py
+#   PreToolUse(Bash)       — commit-gate.py + harness-drift-check.py
+#   PreToolUse(Agent)      — agent-gate.py
+#   PostToolUse(Bash)      — post-commit-cleanup.py
+#   PostToolUse(Agent)     — post-agent-flags.py
+#
+# prefix 전달: env.HARNESS_PREFIX → 각 훅에서 os.environ.get("HARNESS_PREFIX")로 읽음
 #
 # 주의: harness-loop.sh / harness-executor.sh는 글로벌(~/.claude/) 전용.
 #       프로젝트에 복사하지 않으며, 기존 낡은 복사본은 자동 삭제.
@@ -76,17 +78,12 @@ doc_name = "${DOC_NAME}"
 
 hooks = {
     "PreToolUse": [
-        # ── Edit: 에이전트 소유 파일 보호 ──────────────────────────────────
+        # ── Edit: 파일 소유권 + 에이전트 경계 (글로벌 훅 참조) ────────────
         {
             "matcher": "Edit",
             "hooks": [
-                # docs/* 설계 문서 차단 (architect/designer/product-planner 소유) — /tmp/{p}_architect_active 플래그 시 통과
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); fp=d.get('tool_input',{{}}).get('file_path',''); pattern=r'(docs/(architecture|game-logic|db-schema|sdk|ui-spec|domain-logic|reference)[^/]*[.]md|(^|/)prd[.]md|(^|/)trd[.]md)'; print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':f'❌ {{fp}} 는 에이전트 소유 파일. 직접 수정 금지 → architect/designer/product-planner 에이전트 호출.'}}}})) if re.search(pattern, fp) and not os.path.exists('/tmp/{p}_architect_active') else None\" 2>/dev/null || true"},
-                # src/** 소스 차단 (engineer 소유), src/__tests__/ 제외, /tmp/{p}_harness_active 시 통과
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); fp=d.get('tool_input',{{}}).get('file_path',''); is_src=bool(re.search(r'(^|/)src/',fp)); is_test=bool(re.search(r'(^|/)src/__tests__/',fp)); harness_active=os.path.exists('/tmp/{p}_harness_active'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ src/** 는 engineer 에이전트 소유. 직접 수정 금지 → architect Mode B → validator Mode A PASS → engineer 순서로 진행.'}}}})) if is_src and not is_test and not harness_active else None\" 2>/dev/null || true"},
-                # 에이전트별 허용 경로 매트릭스 (agent-boundary.py)
+                    "command": "python3 ~/.claude/hooks/file-ownership-gate.py 2>/dev/null || true"},
                 {"type": "command", "timeout": 5,
                     "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
             ]
@@ -96,112 +93,45 @@ hooks = {
             "matcher": "Write",
             "hooks": [
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); fp=d.get('tool_input',{{}}).get('file_path',''); pattern=r'(docs/(architecture|game-logic|db-schema|sdk|ui-spec|domain-logic|reference)[^/]*[.]md|(^|/)prd[.]md|(^|/)trd[.]md)'; print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':f'❌ {{fp}} 는 에이전트 소유 파일. 직접 수정 금지 → architect/designer/product-planner 에이전트 호출.'}}}})) if re.search(pattern, fp) and not os.path.exists('/tmp/{p}_architect_active') else None\" 2>/dev/null || true"},
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); fp=d.get('tool_input',{{}}).get('file_path',''); is_src=bool(re.search(r'(^|/)src/',fp)); is_test=bool(re.search(r'(^|/)src/__tests__/',fp)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ src/** 는 engineer 에이전트 소유. 직접 수정 금지 → architect Mode B → validator Mode A PASS → engineer 순서로 진행.'}}}})) if is_src and not is_test else None\" 2>/dev/null || true"},
-                # 에이전트별 허용 경로 매트릭스 (agent-boundary.py)
+                    "command": "python3 ~/.claude/hooks/file-ownership-gate.py 2>/dev/null || true"},
                 {"type": "command", "timeout": 5,
                     "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
             ]
         },
-        # ── Bash: git commit 전 LGTM 확인 + 드리프트 감지 ─────────────────
+        # ── Bash: 커밋 게이트 + 드리프트 감지 (글로벌 훅 참조) ────────────
         {
             "matcher": "Bash",
             "hooks": [
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os,re,subprocess; d=json.load(sys.stdin); cmd=d.get('tool_input',{{}}).get('command',''); is_commit=bool(re.search(r'git commit',cmd)); staged=subprocess.run(['git','diff','--cached','--name-only'],capture_output=True,text=True).stdout if is_commit else ''; has_src=bool(re.search(r'^src/',staged,re.MULTILINE)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ git commit 전 pr-reviewer LGTM 필요. /tmp/{p}_pr_reviewer_lgtm 없음.'}}}})) if is_commit and has_src and not os.path.exists('/tmp/{p}_pr_reviewer_lgtm') else None\" 2>/dev/null || true"
-                },
+                    "command": "python3 ~/.claude/hooks/commit-gate.py 2>/dev/null || true"},
                 {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/harness-drift-check.py 2>/dev/null || true"
-                }
+                    "command": "python3 ~/.claude/hooks/harness-drift-check.py 2>/dev/null || true"},
             ]
         },
-        # ── Agent: 에이전트 실행 순서 게이트 (6단계) ──────────────────────
+        # ── Agent: 에이전트 순서 게이트 (글로벌 훅 참조) ──────────────────
         {
             "matcher": "Agent",
             "hooks": [
-                # 1. architect/engineer/designer 호출 전 GitHub 이슈 번호 필수
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type'); prompt=t.get('prompt',''); has_issue=bool(re.search('#[0-9]+',prompt)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':f'❌ {{a}} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.'}}}})) if a in ['architect','engineer','designer'] and not has_issue else None\" 2>/dev/null || true"},
-                # 2. architect 호출 시 Mode A/B/C/D/E 명시 필수
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type'); prompt=t.get('prompt',''); r=re.search(r'Mode [A-F]',prompt,re.IGNORECASE); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ architect 호출 시 Mode A/B/C/D/E를 프롬프트에 명시하세요.'}}}})) if a=='architect' and not r else None\" 2>/dev/null || true"},
-                # 3. engineer 전 Plan Validation PASS 필요
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ engineer 전 Plan Validation PASS 필요. /tmp/{p}_plan_validation_passed 없음.'}}}})) if a=='engineer' and not os.path.exists('/tmp/{p}_plan_validation_passed') else None\" 2>/dev/null || true"},
-                # 3b. engineer는 harness-executor.sh 경유 필수 (직접 호출 차단)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); ha=os.path.exists('/tmp/{p}_harness_active'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ engineer는 harness-executor.sh를 통해서만 호출 가능. /tmp/{p}_harness_active 없음. 메인 Claude에서 직접 engineer 호출 금지 — bash .claude/harness-executor.sh impl2로 호출하라.'}}}})) if a=='engineer' and not ha else None\" 2>/dev/null || true"},
-                # 4. designer 실행 후 design-critic PICK 전까지 engineer 차단
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); dr=os.path.exists('/tmp/{p}_designer_ran'); cp=os.path.exists('/tmp/{p}_design_critic_passed'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ designer 실행 후 engineer 바로 불가. 올바른 순서: design-critic PICK → 유저 승인 → architect impl 계획 → validator Mode A PASS → engineer'}}}})) if a=='engineer' and dr and not cp else None\" 2>/dev/null || true"},
-                # 5. validator Mode B 전 test-engineer PASS 필요
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type'); prompt=t.get('prompt',''); mode_b=bool(re.search(r'Mode B',prompt,re.IGNORECASE)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ validator Mode B 전 test-engineer PASS 필요. /tmp/{p}_test_engineer_passed 없음.'}}}})) if a=='validator' and mode_b and not os.path.exists('/tmp/{p}_test_engineer_passed') else None\" 2>/dev/null || true"},
-                # 6. pr-reviewer 전 validator Mode B PASS 필요
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ pr-reviewer 전 validator Mode B PASS 필요. /tmp/{p}_validator_b_passed 없음.'}}}})) if a=='pr-reviewer' and not os.path.exists('/tmp/{p}_validator_b_passed') else None\" 2>/dev/null || true"},
-                # 7. 백그라운드 에이전트 금지 (포그라운드 전용)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); bg=t.get('run_in_background',False); a=t.get('subagent_type','?'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':f'❌ 백그라운드 에이전트 금지. {{a}} 호출 시 run_in_background=false 필수. 포그라운드에서만 실행해야 중단 가능.'}}}})) if bg else None\" 2>/dev/null || true"},
-                # 8. 에이전트 호출 로그 (caller → subagent_type | prompt 앞 80자)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; from datetime import datetime; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type','?'); pr=t.get('prompt','')[:80].replace('\\\\n',' '); caller='harness-executor' if os.path.exists('/tmp/{p}_harness_active') else 'main-claude'; ts=datetime.now().strftime('%H:%M:%S'); line=f'[{{ts}}] {{caller}} → {{a}} | {{pr}}\\\\n'; open('/tmp/{p}-agent-calls.log','a').write(line)\" 2>/dev/null || true"},
-                # 9. 에이전트 활성 플래그 설정 (agent-boundary.py 연동)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type',''); open(f'/tmp/{p}_{{a}}_active','w').close() if a else None\" 2>/dev/null || true"},
+                    "command": "python3 ~/.claude/hooks/agent-gate.py 2>/dev/null || true"},
             ]
         }
     ],
     "PostToolUse": [
-        # ── Bash: commit 성공 후 플래그 정리 ────────────────────────────
+        # ── Bash: commit 성공 후 플래그 정리 (글로벌 훅 참조) ────────────
         {
             "matcher": "Bash",
-            "hooks": [{"type": "command", "timeout": 5,
-                "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); cmd=d.get('tool_input',{{}}).get('command',''); resp=str(d.get('tool_response','')); is_commit=bool(re.search(r'git commit',cmd)); success='error' not in resp.lower() and 'failed' not in resp.lower(); [os.remove(f) for f in ['/tmp/{p}_pr_reviewer_lgtm','/tmp/{p}_test_engineer_passed'] if os.path.exists(f)] if is_commit and success else None\" 2>/dev/null || true"
-            }]
+            "hooks": [
+                {"type": "command", "timeout": 5,
+                    "command": "python3 ~/.claude/hooks/post-commit-cleanup.py 2>/dev/null || true"},
+            ]
         },
-        # ── Agent: 플래그 생성/삭제 + 경고 ──────────────────────────────
+        # ── Agent: 플래그 생성/삭제 + 경고 (글로벌 훅 참조) ──────────────
         {
             "matcher": "Agent",
             "hooks": [
-                # validator PASS → Mode C(Plan Validation)/B 플래그 생성
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); prompt=inp.get('prompt',''); [open('/tmp/{p}_plan_validation_passed','w').close() if re.search(r'Mode C|Plan Validation',prompt,re.IGNORECASE) else None, open('/tmp/{p}_validator_b_passed','w').close() if re.search(r'Mode B',prompt,re.IGNORECASE) else None] if inp.get('subagent_type')=='validator' and 'PASS' in resp else None\" 2>/dev/null || true"},
-                # test-engineer TESTS_PASS → 플래그 생성
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_test_engineer_passed','w').close() if inp.get('subagent_type')=='test-engineer' and 'TESTS_PASS' in resp else None\" 2>/dev/null || true"},
-                # pr-reviewer LGTM → 플래그 생성
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_pr_reviewer_lgtm','w').close() if inp.get('subagent_type')=='pr-reviewer' and 'LGTM' in resp and 'CHANGES_REQUESTED' not in resp else None\" 2>/dev/null || true"},
-                # security-reviewer SECURE → 플래그 생성
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_security_review_passed','w').close() if inp.get('subagent_type')=='security-reviewer' and 'SECURE' in resp and 'VULNERABILITIES_FOUND' not in resp else None\" 2>/dev/null || true"},
-                # architect Mode B 완료 → 전체 플래그 초기화 (새 구현 사이클 시작)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re,os; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); a=inp.get('subagent_type'); prompt=inp.get('prompt',''); mode_b=bool(re.search(r'Mode B',prompt,re.IGNORECASE)); [os.remove(f) for f in ['/tmp/{p}_plan_validation_passed','/tmp/{p}_validator_b_passed','/tmp/{p}_test_engineer_passed','/tmp/{p}_pr_reviewer_lgtm','/tmp/{p}_security_review_passed','/tmp/{p}_designer_ran','/tmp/{p}_design_critic_passed'] if os.path.exists(f)] if a=='architect' and mode_b else None\" 2>/dev/null || true"},
-                # engineer 완료 → test/validator_b/pr 플래그 삭제 (재검증 강제)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove(f) for f in ['/tmp/{p}_test_engineer_passed','/tmp/{p}_pr_reviewer_lgtm','/tmp/{p}_security_review_passed','/tmp/{p}_validator_b_passed'] if os.path.exists(f)] if a=='engineer' else None\" 2>/dev/null || true"},
-                # harness-loop.sh 완료 시 harness_active는 trap EXIT으로 자동 정리됨 (셸 스크립트 방식)
-                # 에이전트 경유 시 하위 호환: harness_active 플래그 삭제
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [os.remove('/tmp/{p}_harness_active') for _ in [1] if os.path.exists('/tmp/{p}_harness_active')] if a in ['harness-executor'] else None\" 2>/dev/null || true"},
-                # 에이전트 완료 → {agent}_active 플래그 삭제 (agent-boundary.py 연동)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type',''); f='/tmp/{p}_'+a+'_active'; os.remove(f) if a and os.path.exists(f) else None\" 2>/dev/null || true"},
-                # architect 완료 후 문서 신선도 경고 (trd.md / docs/test-plan.md / docs/{doc_name}.md)
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os,time,re; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); a=inp.get('subagent_type'); prompt=inp.get('prompt',''); base=os.getcwd(); mode_ac=bool(re.search(r'Mode [AC]',prompt,re.IGNORECASE)); mode_b=bool(re.search(r'Mode B',prompt,re.IGNORECASE)); mode_c=bool(re.search(r'Mode C',prompt,re.IGNORECASE)); warns=[]; trd=os.path.join(base,'trd.md'); tp=os.path.join(base,'docs','test-plan.md'); dd=os.path.join(base,'docs','{doc_name}.md'); trd_age=int(time.time()-os.path.getmtime(trd)) if os.path.exists(trd) else None; tp_age=int(time.time()-os.path.getmtime(tp)) if os.path.exists(tp) else None; dd_age=int(time.time()-os.path.getmtime(dd)) if os.path.exists(dd) else None; warns.append('trd.md 미업데이트('+str(trd_age)+'초 전)') if mode_ac and trd_age and trd_age>120 else None; warns.append('docs/test-plan.md 미업데이트('+str(tp_age)+'초 전)') if mode_b and tp_age and tp_age>120 else None; warns.append('docs/{doc_name}.md 미업데이트('+str(dd_age)+'초 전) — 설계 문서 동기화 필요') if mode_c and dd_age and dd_age>120 else None; print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PostToolUse','additionalContext':'⚠️ [HARNESS] architect 완료 후 문서 미업데이트: '+', '.join(warns)+'. 현행화 규칙 확인.'}}}})) if a=='architect' and warns else None\" 2>/dev/null || true"},
-                # designer 완료 → designer_ran 설정 + 이전 검�� 플래그 초기화
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); [open('/tmp/{p}_designer_ran','w').close(), [os.remove('/tmp/{p}_design_critic_passed') for _ in [1] if os.path.exists('/tmp/{p}_design_critic_passed')], [os.remove('/tmp/{p}_plan_validation_passed') for _ in [1] if os.path.exists('/tmp/{p}_plan_validation_passed')]] if a=='designer' else None\" 2>/dev/null || true"},
-                # design-critic PICK → 플래그 생성
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); open('/tmp/{p}_design_critic_passed','w').close() if inp.get('subagent_type')=='design-critic' and 'PICK' in resp and 'ITERATE' not in resp and 'ESCALATE' not in resp else None\" 2>/dev/null || true"},
-                # designer 결과에 PRD 대조 없으면 경고
-                {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re; d=json.load(sys.stdin); inp=d.get('tool_input',{{}}); resp=str(d.get('tool_response','')); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PostToolUse','additionalContext':'⚠️ [HARNESS] designer 결과에 PRD 대조 없음. PRD 위반 여부 확인 필요 — product-planner 에스컬레이션 고려. (orchestration-rules.md Step 0)'}}}})) if inp.get('subagent_type')=='designer' and not re.search(r'PRD|prd.md|기획자|product.planner',resp,re.IGNORECASE) else None\" 2>/dev/null || true"},
+                    "command": "python3 ~/.claude/hooks/post-agent-flags.py 2>/dev/null || true"},
             ]
         }
     ]
@@ -211,7 +141,12 @@ import os
 settings_path = "$SETTINGS_FILE"
 existing_allowed = ${EXISTING_ALLOWED}
 
+# env 섹션에 HARNESS_PREFIX와 HARNESS_DOC_NAME 주입
 output = {
+    "env": {
+        "HARNESS_PREFIX": prefix,
+        "HARNESS_DOC_NAME": doc_name,
+    },
     "allowedTools": existing_allowed,
     "hooks": hooks
 }
@@ -240,12 +175,12 @@ echo "  플래그 prefix : /tmp/${PREFIX}_*"
 echo "  설정 파일     : $SETTINGS_FILE"
 echo "  config 파일   : $CONFIG_FILE"
 echo ""
-echo "설치된 훅:"
-echo "  PreToolUse(Edit/Write)  — docs/* + src/** 에이전트 소유 파일 보호"
-echo "  PreToolUse(Bash)        — git commit 전 pr-reviewer LGTM 확인 + 규칙↔스크립트 드리프트 감지"
-echo "  PreToolUse(Agent)       — 이슈번호 필수 + 에이전트 실행 순서 6단계 게이트"
-echo "  PostToolUse(Bash)       — commit 성공 후 플래그 정리"
-echo "  PostToolUse(Agent)      — 플래그 관리 + architect 문서 신선도 경고 + designer PRD 대조 경고"
+echo "설치된 훅 (글로벌 ~/.claude/hooks/*.py 참조):"
+echo "  PreToolUse(Edit/Write)  — file-ownership-gate.py + agent-boundary.py"
+echo "  PreToolUse(Bash)        — commit-gate.py + harness-drift-check.py"
+echo "  PreToolUse(Agent)       — agent-gate.py"
+echo "  PostToolUse(Bash)       — post-commit-cleanup.py"
+echo "  PostToolUse(Agent)      — post-agent-flags.py"
 echo ""
 echo "전역 훅(UserPromptSubmit/SessionStart)은 ~/.claude/settings.json에서 자동 적용됨."
 echo ""
