@@ -97,7 +97,7 @@ append_failure() {
       printf -- "- PROMOTED: %s | %s회 반복 | %s | MUST NOT: %s\n" \
         "$pattern_key" "$count" "$date_str" "$err_1line" \
         >> "$MEM_LOCAL"
-      echo "[HARNESS] ⚠️ 실패 패턴 자동 프로모션: $pattern_key ($count회)"
+      echo "[HARNESS] ⚠️ 실패 패턴 자동 프로모션: ${pattern_key} (${count}회)"
     fi
   fi
 

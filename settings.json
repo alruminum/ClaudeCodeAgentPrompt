@@ -1,7 +1,9 @@
 {
   "env": {
     "BASH_DEFAULT_TIMEOUT_MS": "600000",
-    "BASH_MAX_TIMEOUT_MS": "1800000"
+    "BASH_MAX_TIMEOUT_MS": "1800000",
+    "DISABLE_AUTOUPDATER": "1",
+    "DISABLE_AUTO_COMPACT": "1"
   },
   "permissions": {
     "allow": [
@@ -62,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/dc.kim/.claude/hooks/harness-router.py auto 2>/dev/null; exit 0",
+            "command": "python3 /Users/dc.kim/.claude/hooks/harness-router.py auto 2>>/tmp/harness-hook-stderr.log; exit 0",
             "timeout": 30
           }
         ]

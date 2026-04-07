@@ -25,8 +25,17 @@ def log(prefix, msg):
 def fast_classify(prompt):
     """2단계 regex 즉시 분류 — LLM 호출 없이 ~0ms."""
     p = prompt.strip()
+    # 파일 경로만 있는 입력 → QUESTION (파일 확인 요청)
+    if re.match(r'^(/Users/|~/|/tmp/|/var/)', p) and not re.search(r'(구현|수정|만들|해줘)', p):
+        return "QUESTION"
+    # 슬래시 커맨드 → 즉시 통과 (라우팅 불필요)
+    if re.match(r'^/\w', p) and not re.match(r'^/(Users|tmp|var|etc|opt|home)', p):
+        return "GREETING"
     # GREETING — 완전 일치에 가까운 짧은 반응어
     if re.match(r'^(ㅇㅇ|응|네|좋아|좋아요|ok|okay|ㅎㅎ|고마워|감사|알겠어|잘\s*했어|오케이|수고|ㅋ+|ㅎ+|good|great|thanks|thank\s*you|thx|ty|nice|cool|awesome|lgtm|done)[\s!.]*$', p, re.I):
+        return "GREETING"
+    # GREETING — 동의/수락 + 짧은 부가어 ("내가 해볼게", "그래 해보자", "할게")
+    if re.match(r'^(내가\s*.{0,6}|그래|그럼|해볼게|할게|알았어|넵|ㅇㅋ|확인|커밋|푸시|push)[\s!.]*$', p, re.I):
         return "GREETING"
     # BUG — QUESTION보다 먼저 체크 ("수정한거 맞아?" 같은 패턴이 ?로 QUESTION에 빠지는 것 방지)
     if re.search(r'(버그|bug|크래시|crash)', p, re.I) and not re.search(r'(추가|구현|만들)', p):
@@ -42,11 +51,20 @@ def fast_classify(prompt):
     # QUESTION — 물음표로 끝나면 (BUG 패턴에 안 걸린 경우만)
     if re.search(r'\?\s*$', p):
         return "QUESTION"
+    # QUESTION — 한국어 의문형 어미 (니/나/까/가/냐 + 문장 끝)
+    if re.search(r'(할\s*수\s*있[니나]|가능할[까가]|[되될]까|[되될]나|어때|[인건]지|[인건]가|냐)\s*$', p):
+        return "QUESTION"
     # IMPLEMENTATION — 이슈번호 + 명령형 동사 조합
     if re.search(r'#\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
         return "IMPLEMENTATION"
     if re.search(r'(구현|추가|만들어|생성|작성).*해', p) and not re.search(r'^(왜|어떻게|뭐)', p):
         return "IMPLEMENTATION"
+    # IMPLEMENTATION — 명령형 동사 단독 ("실행해봐", "돌려봐", "적용해")
+    if re.search(r'(실행|돌려|재실행|적용|배포|빌드|테스트|커밋|푸시).*(해봐|해줘|하자|해|봐)\s*$', p):
+        return "IMPLEMENTATION"
+    # GENERIC — 짧은 비코딩 응답 (≤15자, 위 패턴 모두 미스)
+    if len(p) <= 15 and not re.search(r'(#\d+|src/|fix|bug|구현|수정)', p, re.I):
+        return "GREETING"
     return None  # → LLM 폴백
 
 
@@ -84,7 +102,7 @@ def _call_haiku(prompt_text, max_tokens, prefix):
             ['claude', '-p', prompt_text,
              '--model', 'claude-haiku-4-5-20251001',
              '--print', '--output-format', 'text'],
-            env=env, capture_output=True, text=True, timeout=10
+            env=env, capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0 and result.stdout.strip():
             log(prefix, "HAIKU_CLI_OK")
@@ -199,8 +217,9 @@ def main():
     try:
         _main_inner()
     except Exception as e:
+        import traceback
         try:
-            log("?", f"UNCAUGHT: {e}")
+            log("?", f"UNCAUGHT: {e}\n{traceback.format_exc()}")
         except Exception:
             pass
         sys.exit(0)

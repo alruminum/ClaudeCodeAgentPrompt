@@ -234,7 +234,7 @@ run_bugfix() {
     local issue_body
     issue_body=$(gh issue view "$ISSUE_NUM" --json body -q .body 2>/dev/null || echo "")
     if echo "$issue_body" | grep -q 'QA_REPORT\|FUNCTIONAL_BUG\|SPEC_ISSUE\|DESIGN_ISSUE'; then
-      echo "[HARNESS] 재진입: GitHub issue #$ISSUE_NUM에 QA 리포트 존재 → QA 스킵"
+      echo "[HARNESS] 재진입: GitHub issue #${ISSUE_NUM}에 QA 리포트 존재 → QA 스킵"
       qa_out="$issue_body"
 
       # 타입 기반 라우팅
