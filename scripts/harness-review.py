@@ -778,6 +778,48 @@ def main():
         if len(files) > 1:
             print("\n" + "=" * 60 + "\n")
 
+    # classify-miss 요약 (라우터 로그가 있을 때만)
+    print(_classify_miss_summary())
+
+
+def _classify_miss_summary():
+    """fast_classify 커버리지 1줄 요약. 라우터 로그 없으면 빈 문자열."""
+    import re as _re
+    log_path = "/tmp/harness-router.log"
+    if not os.path.exists(log_path):
+        return ""
+    try:
+        lines = open(log_path).readlines()
+    except Exception:
+        return ""
+
+    fast = sum(1 for l in lines if "FAST_CLASSIFY result=" in l)
+    haiku = sum(1 for l in lines if "INTENT result=" in l)
+    fail = sum(1 for l in lines if "classify_fail" in l)
+    total = fast + haiku + fail
+    if total == 0:
+        return ""
+
+    pct = fast * 100 // total
+    # Haiku 폴백된 짧은 프롬프트 수 (승격 후보)
+    candidates = []
+    for l in lines:
+        if "INTENT result=" in l:
+            m = _re.search(r"prompt='([^']{1,30})'", l)
+            if m:
+                candidates.append(m.group(1))
+
+    out = f"\n--- fast_classify 커버리지: {pct}% ({fast}/{total})"
+    if haiku > 0:
+        out += f" | Haiku 폴백 {haiku}건"
+    if fail > 0:
+        out += f" | 분류실패 {fail}건"
+    if candidates:
+        out += f" | 승격 후보 {len(candidates)}건"
+    if pct < 70:
+        out += " ⚠️ 커버리지 낮음 — python3 ~/.claude/scripts/classify-miss-report.py 실행 권장"
+    return out
+
 
 if __name__ == "__main__":
     main()
