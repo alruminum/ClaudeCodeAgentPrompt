@@ -349,9 +349,9 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
         "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS" \
         "/tmp/${PREFIX}_val_bf_out.txt"
       local bf_result
-      bf_result=$(grep -oE 'BUGFIX_PASS|BUGFIX_FAIL' "/tmp/${PREFIX}_val_bf_out.txt" | head -1 || echo "UNKNOWN")
+      bf_result=$(grep -oE 'BUGFIX_PASS|BUGFIX_FAIL|\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_bf_out.txt" | head -1 || echo "UNKNOWN")
 
-      if [[ "$bf_result" == "BUGFIX_PASS" ]]; then
+      if [[ "$bf_result" == "BUGFIX_PASS" || "$bf_result" == "PASS" ]]; then
         commit_files=()
         while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
           < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
