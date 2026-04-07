@@ -28,14 +28,20 @@ def fast_classify(prompt):
     # GREETING — 완전 일치에 가까운 짧은 반응어
     if re.match(r'^(ㅇㅇ|응|네|좋아|좋아요|ok|okay|ㅎㅎ|고마워|감사|알겠어|잘\s*했어|오케이|수고|ㅋ+|ㅎ+|good|great|thanks|thank\s*you|thx|ty|nice|cool|awesome|lgtm|done)[\s!.]*$', p, re.I):
         return "GREETING"
-    # QUESTION — 물음표로 끝나면 무조건
-    if re.search(r'\?\s*$', p):
-        return "QUESTION"
-    # BUG — 버그 키워드 있되 구현 동사 없는 경우만
+    # BUG — QUESTION보다 먼저 체크 ("수정한거 맞아?" 같은 패턴이 ?로 QUESTION에 빠지는 것 방지)
     if re.search(r'(버그|bug|크래시|crash)', p, re.I) and not re.search(r'(추가|구현|만들)', p):
         return "BUG"
     if re.search(r'(안\s*[되돼]고|안\s*[되돼]요|안\s*됨|깨[졌지]|작동.*안|동작.*안)', p):
         return "BUG"
+    # BUG — "여전히/아직/또" + 증상/스크린샷 → 수정 후 재발 리포트
+    if re.search(r'(여전히|아직|still|또\s)', p, re.I) and re.search(r'(Image\s*#|스크린샷|보이|나타|표시|노출|남아)', p, re.I):
+        return "BUG"
+    # BUG — 수정 확인 질문 ("수정한거 맞아/고친거 맞아/안 고쳐졌")
+    if re.search(r'(수정|고친|fix).*(맞|됐|안|없)', p, re.I):
+        return "BUG"
+    # QUESTION — 물음표로 끝나면 (BUG 패턴에 안 걸린 경우만)
+    if re.search(r'\?\s*$', p):
+        return "QUESTION"
     # IMPLEMENTATION — 이슈번호 + 명령형 동사 조합
     if re.search(r'#\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
         return "IMPLEMENTATION"
