@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-agent-boundary.py — PreToolUse(Edit/Write) 훅
-에이전트별 Write/Edit 허용 경로 매트릭스를 물리적으로 강제한다.
+agent-boundary.py — PreToolUse(Edit/Write/Read) 훅
+에이전트별 파일 접근 경계를 물리적으로 강제한다.
+
+Write/Edit: 허용 경로 매트릭스 기반 차단.
+Read: 하네스 인프라 파일(.claude/, hooks/, harness-*.sh 등) 접근 차단.
 
 활성 에이전트 감지: /tmp/{prefix}_{agent}_active 플래그 존재 여부.
-허용 경로 외 파일 수정 시 deny.
-에이전트가 활성화되지 않은 상태(메인 Claude)에서는 이 훅은 통과 —
-메인 Claude의 src/** 차단은 기존 훅(setup-harness.sh)이 담당.
+에이전트가 활성화되지 않은 상태(메인 Claude)에서는 이 훅은 통과.
 """
 import sys
 import json
@@ -25,7 +26,16 @@ def get_prefix():
     raw = os.path.basename(os.getcwd()).lower()
     return re.sub(r'[^a-z0-9]', '', raw)[:8] or "proj"
 
-# 에이전트별 허용 경로 패턴 (regex)
+# 하네스 인프라 파일 패턴 — 모든 에이전트에서 Read/Write/Edit 차단
+HARNESS_INFRA_PATTERNS = [
+    r'[./]claude/',
+    r'hooks/',
+    r'harness-(executor|loop|utils)\.sh',
+    r'orchestration-rules\.md',
+    r'setup-(harness|agents)\.sh',
+]
+
+# 에이전트별 허용 경로 패턴 (regex) — Write/Edit용
 # 매치되면 허용, 매치 안 되면 deny
 ALLOW_MATRIX = {
     "engineer": [
@@ -60,6 +70,7 @@ def main():
     except Exception:
         sys.exit(0)
 
+    tool_name = d.get("tool_name", "")
     fp = d.get("tool_input", {}).get("file_path", "")
     if not fp:
         sys.exit(0)
@@ -78,7 +89,26 @@ def main():
     if active_agent is None:
         sys.exit(0)
 
-    # 허용 경로 매트릭스 확인
+    # ── 하네스 인프라 파일 Read/Write/Edit 차단 (모든 에이전트 공통) ──
+    for pattern in HARNESS_INFRA_PATTERNS:
+        if re.search(pattern, fp):
+            print(json.dumps({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        f"❌ [agent-boundary] {active_agent}는 하네스 인프라 파일 접근 금지: "
+                        f"{os.path.basename(fp)}. 프로젝트 소스(src/, docs/)만 분석 대상."
+                    )
+                }
+            }))
+            sys.exit(0)
+
+    # Read 도구는 하네스 인프라만 차단, 나머지 프로젝트 파일은 허용
+    if tool_name == "Read":
+        sys.exit(0)
+
+    # ── 이하 Write/Edit 전용: 허용 경로 매트릭스 확인 ──
     allowed_patterns = ALLOW_MATRIX.get(active_agent, [])
 
     # ReadOnly 에이전트 (빈 리스트) → 모든 Write/Edit deny

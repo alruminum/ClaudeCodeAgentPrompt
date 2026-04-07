@@ -7,6 +7,7 @@
 # 이 스크립트는 프로젝트별 게이트 훅만 생성한다.
 #
 # 설치되는 훅 (모두 글로벌 ~/.claude/hooks/*.py 참조 — 업데이트 시 전 프로젝트 즉시 반영):
+#   PreToolUse(Read)       — agent-boundary.py (하네스 인프라 Read 차단)
 #   PreToolUse(Edit/Write) — file-ownership-gate.py + agent-boundary.py
 #   PreToolUse(Bash)       — commit-gate.py + harness-drift-check.py
 #   PreToolUse(Agent)      — agent-gate.py
@@ -78,6 +79,14 @@ doc_name = "${DOC_NAME}"
 
 hooks = {
     "PreToolUse": [
+        # ── Read: 하네스 인프라 파일 읽기 차단 (에이전트 활성 시) ─────────
+        {
+            "matcher": "Read",
+            "hooks": [
+                {"type": "command", "timeout": 5,
+                    "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
+            ]
+        },
         # ── Edit: 파일 소유권 + 에이전트 경계 (글로벌 훅 참조) ────────────
         {
             "matcher": "Edit",

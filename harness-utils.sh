@@ -55,6 +55,11 @@ _agent_call() {
 
   echo "[HARNESS] ${agent} 호출 중..."
 
+  # 공통 스코프 제한 — 하네스 인프라 탐색 방지
+  local _scope_prefix="[SCOPE] 프로젝트 소스(src/, docs/, 루트 설정)만 분석 대상. .claude/, hooks/, harness-*.sh, orchestration-rules.md 등 하네스 인프라 파일은 읽지도 수정하지도 마라."
+  prompt="${_scope_prefix}
+${prompt}"
+
   # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result + cost 추출 → out_file
   # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
   # NOTE: python3이 result를 out_file에 직접 쓴다 (stdout redirect 대신 파일 직접 쓰기).
