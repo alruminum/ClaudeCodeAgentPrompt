@@ -13,7 +13,7 @@
 | UI 변경 요청 (design_critic_passed 없음) | → **루프 B** |
 | 구현 요청 + READY_FOR_IMPL 확정 | → **루프 C** (`bash .claude/harness-executor.sh impl ...`) |
 | 구현 요청 + plan_validation_passed ✅ | → **루프 C 단축** (`bash .claude/harness-executor.sh impl2 ...`) |
-| 버그 보고 | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) |
+| 버그 보고 | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기 |
 | 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
 | **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 루프 A) |
 

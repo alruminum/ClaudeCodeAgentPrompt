@@ -8,7 +8,7 @@
 #
 # 설치되는 훅:
 #   PreToolUse(Edit/Write) — docs/* + src/** 에이전트 소유 파일 물리적 차단
-#   PreToolUse(Bash)       — git commit 전 pr-reviewer LGTM 확인
+#   PreToolUse(Bash)       — git commit 전 pr-reviewer LGTM 확인 + 규칙↔스크립트 드리프트 감지
 #   PreToolUse(Agent)      — 이슈번호 필수 + 에이전트 실행 순서 6단계 게이트
 #   PostToolUse(Bash)      — commit 성공 후 플래그 정리
 #   PostToolUse(Agent)     — 플래그 생성/삭제 + 문서 신선도/PRD 대조 경고
@@ -104,12 +104,17 @@ hooks = {
                     "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
             ]
         },
-        # ── Bash: git commit 전 LGTM 확인 ────────────────────────────────
+        # ── Bash: git commit 전 LGTM 확인 + 드리프트 감지 ─────────────────
         {
             "matcher": "Bash",
-            "hooks": [{"type": "command", "timeout": 5,
-                "command": f"python3 -c \"import sys,json,os,re,subprocess; d=json.load(sys.stdin); cmd=d.get('tool_input',{{}}).get('command',''); is_commit=bool(re.search(r'git commit',cmd)); staged=subprocess.run(['git','diff','--cached','--name-only'],capture_output=True,text=True).stdout if is_commit else ''; has_src=bool(re.search(r'^src/',staged,re.MULTILINE)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ git commit 전 pr-reviewer LGTM 필요. /tmp/{p}_pr_reviewer_lgtm 없음.'}}}})) if is_commit and has_src and not os.path.exists('/tmp/{p}_pr_reviewer_lgtm') else None\" 2>/dev/null || true"
-            }]
+            "hooks": [
+                {"type": "command", "timeout": 5,
+                    "command": f"python3 -c \"import sys,json,os,re,subprocess; d=json.load(sys.stdin); cmd=d.get('tool_input',{{}}).get('command',''); is_commit=bool(re.search(r'git commit',cmd)); staged=subprocess.run(['git','diff','--cached','--name-only'],capture_output=True,text=True).stdout if is_commit else ''; has_src=bool(re.search(r'^src/',staged,re.MULTILINE)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ git commit 전 pr-reviewer LGTM 필요. /tmp/{p}_pr_reviewer_lgtm 없음.'}}}})) if is_commit and has_src and not os.path.exists('/tmp/{p}_pr_reviewer_lgtm') else None\" 2>/dev/null || true"
+                },
+                {"type": "command", "timeout": 5,
+                    "command": "python3 ~/.claude/hooks/harness-drift-check.py 2>/dev/null || true"
+                }
+            ]
         },
         # ── Agent: 에이전트 실행 순서 게이트 (6단계) ──────────────────────
         {
@@ -120,7 +125,7 @@ hooks = {
                     "command": f"python3 -c \"import sys,json,re; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type'); prompt=t.get('prompt',''); has_issue=bool(re.search('#[0-9]+',prompt)); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':f'❌ {{a}} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.'}}}})) if a in ['architect','engineer','designer'] and not has_issue else None\" 2>/dev/null || true"},
                 # 2. architect 호출 시 Mode A/B/C/D/E 명시 필수
                 {"type": "command", "timeout": 5,
-                    "command": f"python3 -c \"import sys,json,re; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type'); prompt=t.get('prompt',''); r=re.search(r'Mode [A-E]',prompt,re.IGNORECASE); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ architect 호출 시 Mode A/B/C/D/E를 프롬프트에 명시하세요.'}}}})) if a=='architect' and not r else None\" 2>/dev/null || true"},
+                    "command": f"python3 -c \"import sys,json,re; d=json.load(sys.stdin); t=d.get('tool_input',{{}}); a=t.get('subagent_type'); prompt=t.get('prompt',''); r=re.search(r'Mode [A-F]',prompt,re.IGNORECASE); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ architect 호출 시 Mode A/B/C/D/E를 프롬프트에 명시하세요.'}}}})) if a=='architect' and not r else None\" 2>/dev/null || true"},
                 # 3. engineer 전 Plan Validation PASS 필요
                 {"type": "command", "timeout": 5,
                     "command": f"python3 -c \"import sys,json,os; d=json.load(sys.stdin); a=d.get('tool_input',{{}}).get('subagent_type'); print(json.dumps({{'hookSpecificOutput':{{'hookEventName':'PreToolUse','permissionDecision':'deny','permissionDecisionReason':'❌ engineer 전 Plan Validation PASS 필요. /tmp/{p}_plan_validation_passed 없음.'}}}})) if a=='engineer' and not os.path.exists('/tmp/{p}_plan_validation_passed') else None\" 2>/dev/null || true"},
@@ -237,7 +242,7 @@ echo "  config 파일   : $CONFIG_FILE"
 echo ""
 echo "설치된 훅:"
 echo "  PreToolUse(Edit/Write)  — docs/* + src/** 에이전트 소유 파일 보호"
-echo "  PreToolUse(Bash)        — git commit 전 pr-reviewer LGTM 확인"
+echo "  PreToolUse(Bash)        — git commit 전 pr-reviewer LGTM 확인 + 규칙↔스크립트 드리프트 감지"
 echo "  PreToolUse(Agent)       — 이슈번호 필수 + 에이전트 실행 순서 6단계 게이트"
 echo "  PostToolUse(Bash)       — commit 성공 후 플래그 정리"
 echo "  PostToolUse(Agent)      — 플래그 관리 + architect 문서 신선도 경고 + designer PRD 대조 경고"

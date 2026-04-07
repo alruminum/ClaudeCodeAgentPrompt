@@ -121,6 +121,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/harness-drift-check.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
       }
     ]
   },

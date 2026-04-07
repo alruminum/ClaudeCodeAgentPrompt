@@ -10,7 +10,7 @@
 #   impl   — architect → validator Plan Validation → PLAN_VALIDATION_PASS (유저 게이트)
 #   impl2  — harness-loop.sh 위임 (engineer~pr-reviewer 루프)
 #   design — designer → design-critic → DESIGN_DONE
-#   bugfix — qa → architect bugfix → Plan Validation
+#   bugfix — qa 라우팅 기반 4-way 분기 (engineer_direct/architect_full/design/backlog)
 #   plan   — product-planner → architect Mode A → PLAN_DONE
 
 set -euo pipefail
@@ -204,17 +204,135 @@ run_design() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# mode: bugfix (Phase B1 → B2 → Plan Validation)
+# mode: bugfix (Phase B1 → qa 라우팅 기반 4-way 분기)
 # ══════════════════════════════════════════════════════════════════════
 run_bugfix() {
   rotate_harness_logs "$PREFIX" "bugfix"
+
+  # ── Phase B1: qa 분석 ──
   echo "[HARNESS] Phase B1 — qa 호출 중"
   _agent_call "qa" 300 \
     "bug: $BUG_DESC issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_qa_out.txt"
   qa_out=$(cat "/tmp/${PREFIX}_qa_out.txt")
 
-  echo "[HARNESS] Phase B2 — architect bugfix Mode B 호출 중"
+  # ── qa 라우팅 파싱 ──
+  local routing="architect"  # 기본값 (안전)
+  if echo "$qa_out" | grep -qE 'FUNCTIONAL_BUG.*(CRITICAL|HIGH)'; then
+    routing="engineer_direct"
+  elif echo "$qa_out" | grep -q 'REGRESSION'; then
+    routing="engineer_direct"
+  elif echo "$qa_out" | grep -q 'INTEGRATION_ISSUE'; then
+    routing="engineer_direct"
+  elif echo "$qa_out" | grep -q 'DESIGN_ISSUE'; then
+    routing="design"
+  elif echo "$qa_out" | grep -qE 'MEDIUM|LOW'; then
+    routing="backlog"
+  fi
+  echo "[HARNESS] qa routing: $routing"
+
+  case "$routing" in
+    engineer_direct)
+      _run_bugfix_direct
+      ;;
+    design)
+      echo "[HARNESS] DESIGN_ISSUE → 루프 B 전환"
+      run_design
+      ;;
+    backlog)
+      echo "[HARNESS] MEDIUM/LOW → qa가 Bugs 마일스톤 이슈 등록 완료"
+      echo "BACKLOG_REGISTERED"
+      echo "issue: #$ISSUE_NUM"
+      exit 0
+      ;;
+    *)
+      _run_bugfix_full
+      ;;
+  esac
+}
+
+# ── engineer 직접 경로: architect Mode F → engineer → vitest → validator Mode D → commit ──
+_run_bugfix_direct() {
+  echo "[HARNESS] Phase B2 — architect Bugfix Plan(Mode F) 호출 중"
+  _agent_call "architect" 300 \
+    "Bugfix Plan(Mode F) — ${qa_out} issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_arch_out.txt"
+  IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
+
+  if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] Mode F impl 생성 실패 → full 경로로 폴백"
+    _run_bugfix_full
+    return
+  fi
+
+  local attempt=0
+  local MAX_HOTFIX=3
+  while [[ $attempt -lt $MAX_HOTFIX ]]; do
+    attempt=$((attempt + 1))
+    kill_check
+    echo "[HARNESS] engineer 직접 (attempt $attempt/$MAX_HOTFIX)"
+
+    local context
+    context=$(cat "$IMPL_FILE" 2>/dev/null | head -c 30000)
+    local AGENT_EXIT=0
+    _agent_call "engineer" 900 \
+      "impl: $IMPL_FILE
+issue: #$ISSUE_NUM
+task: Bugfix Plan의 버그 수정 이행
+context:
+$context
+constraints:
+$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
+
+    if [[ $AGENT_EXIT -eq 124 ]]; then
+      echo "[HARNESS] engineer timeout — 재시도"
+      continue
+    fi
+
+    # vitest 직접 실행 (test-engineer 스킵)
+    echo "[HARNESS] vitest run (ground truth)"
+    local vitest_exit=0
+    npx vitest run --reporter=verbose 2>&1 | tail -100 > "/tmp/${PREFIX}_vitest_out.txt" || vitest_exit=$?
+
+    if [[ $vitest_exit -eq 0 ]]; then
+      # validator Mode D (Bugfix Validation)
+      echo "[HARNESS] validator Bugfix Validation(Mode D) 호출 중"
+      _agent_call "validator" 300 \
+        "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS" \
+        "/tmp/${PREFIX}_val_bf_out.txt"
+      local bf_result
+      bf_result=$(grep -oE 'BUGFIX_PASS|BUGFIX_FAIL' "/tmp/${PREFIX}_val_bf_out.txt" | head -1 || echo "UNKNOWN")
+
+      if [[ "$bf_result" == "BUGFIX_PASS" ]]; then
+        mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+        if [[ ${#commit_files[@]} -gt 0 ]]; then
+          git add -- "${commit_files[@]}"
+          git commit -m "$(generate_commit_msg) [bugfix-direct]"
+          local commit_hash
+          commit_hash=$(git rev-parse --short HEAD)
+          echo "HARNESS_DONE (engineer_direct)"
+          echo "impl: $IMPL_FILE"
+          echo "issue: #$ISSUE_NUM"
+          echo "commit: $commit_hash"
+          exit 0
+        else
+          echo "[HARNESS] 변경사항 없음"
+          exit 0
+        fi
+      fi
+      echo "[HARNESS] validator BUGFIX_FAIL — engineer 재시도"
+    else
+      echo "[HARNESS] vitest 실패 (exit=$vitest_exit) — engineer 재시도"
+    fi
+  done
+
+  echo "IMPLEMENTATION_ESCALATE (engineer_direct ${MAX_HOTFIX}회 실패)"
+  exit 1
+}
+
+# ── 기존 full 경로: architect Mode B → validator Mode C → 루프 C ──
+_run_bugfix_full() {
+  echo "[HARNESS] Phase B2 — architect bugfix Mode B (full) 호출 중"
   _agent_call "architect" 900 \
     "버그픽스 — Module Plan(Mode B) — ${qa_out} issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_arch_out.txt"
