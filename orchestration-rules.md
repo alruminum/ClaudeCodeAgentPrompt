@@ -334,6 +334,7 @@ DESIGN_REVIEW_ESCALATE        │
 | `SPEC_GAP_FOUND` | engineer / test-engineer | architect SPEC_GAP, counter 리셋 |
 | `SPEC_GAP_RESOLVED` | architect Mode C | engineer 재시도 |
 | `TESTS_PASS` / `TESTS_FAIL` | test-engineer | PASS → vitest / FAIL → retry |
+| `TEST_PLAN_GAP` | test-engineer | TESTS_PASS와 함께 갭 목록 첨부 → architect impl 보강 (별도 태스크) |
 | `PASS` / `FAIL` | validator Mode B | PASS → pr-reviewer / FAIL → retry |
 | `LGTM` / `CHANGES_REQUESTED` | pr-reviewer | LGTM → security-reviewer / CR → retry |
 | `SECURE` / `VULNERABILITIES_FOUND` | security-reviewer | SECURE → commit / VF (HIGH/MEDIUM) → retry |

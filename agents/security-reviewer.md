@@ -81,6 +81,17 @@ LOW만 있으면 `SECURE`로 판정 (리포트 포함).
 
 ---
 
+## pr-reviewer와 범위 경계
+
+| 항목 | security-reviewer | pr-reviewer |
+|---|---|---|
+| 비밀 하드코딩 (API 키, 토큰, 비밀번호) | **전담** | 감지 시 security-reviewer 위임 권고 |
+| 비비밀 하드코딩 (매직 넘버, URL, 설정값) | 범위 외 | **전담** (MUST_FIX/NICE_TO_HAVE) |
+| XSS, injection, CSRF | **전담** | 범위 외 |
+| 코드 패턴, 가독성, 컨벤션 | 범위 외 | **전담** |
+
+---
+
 ## 프로젝트 특화 지침
 
 <!-- 프로젝트별 추가 보안 규칙, 금지 패턴 등을 추가 -->

@@ -76,6 +76,16 @@ KNOWN_ISSUE: [이슈 요약]
 | SPEC_ISSUE | architect 경유 | architect Mode B → validator Mode C → 루프 C |
 | DESIGN_ISSUE | → 루프 B | designer → design-critic → engineer |
 
+### FUNCTIONAL_BUG vs SPEC_ISSUE 분류 기준
+
+| 판별 기준 | FUNCTIONAL_BUG | SPEC_ISSUE |
+|---|---|---|
+| impl 파일에 해당 기능이 명시되어 있는가? | **예** — 명세대로 구현했으나 코드 버그 | **아니오** — 명세 자체가 누락/불완전 |
+| PRD/TRD에 요구사항이 있는가? | PRD에 있고 impl에도 있음 | PRD에 있으나 impl 누락, 또는 PRD에도 없음 |
+| 수정 주체 | engineer (코드 수정) | architect (impl 보강) → engineer |
+
+**판별 순서**: impl 파일을 먼저 확인 → 해당 기능이 impl에 있으면 FUNCTIONAL_BUG, 없으면 SPEC_ISSUE
+
 ### 이슈 등록 규칙
 
 분석 완료 후 **모든 경로에서** `mcp__github__create_issue`로 이슈를 등록한다.

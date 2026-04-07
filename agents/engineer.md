@@ -47,6 +47,11 @@ model: sonnet
 - [ ] 컴포넌트 간 데이터 흐름(props 전달 경로)이 명확한가
 - [ ] 병렬 impl 충돌: 현재 에픽의 다른 impl 파일이 동일한 파일을 수정하는지 확인했는가 (충돌 발견 시 → `SPEC_GAP_FOUND`로 보고 후 architect에게 구현 순서 결정 요청)
 
+**수용 기준 태그 검증** (Phase 1 필수):
+- impl 파일의 `## 수용 기준` 섹션에서 각 항목에 `(TEST)` / `(BROWSER:DOM)` / `(MANUAL)` 태그 존재 확인
+- 태그 없는 항목 발견 시 → `SPEC_GAP_FOUND`로 보고 ("수용 기준 태그 누락")
+- 이 검증은 validator Plan Validation에서도 수행되지만, engineer Phase 1에서 조기 감지하면 루프 재시도를 줄인다
+
 **SPEC_GAP_FOUND 시 출력 형식:**
 ```
 SPEC_GAP_FOUND

@@ -59,6 +59,11 @@ Phase 1 완료 후, 테스트 작성 전에 테스트 플랜과 대조하여 갭
 **판정 원칙**: `TEST_PLAN_GAP`이 있어도 TC를 추가 작성하면 `TESTS_PASS` 발행 가능.
 갭 자체를 FAIL 요인으로 만들지 않는다 — 오래된 플랜이 워크플로우를 블록하는 것을 방지.
 
+**TEST_PLAN_GAP 에스컬레이션 경로**:
+1. `TESTS_PASS` 출력 시 갭 목록을 `## TEST_PLAN_GAP` 섹션에 포함
+2. harness-loop.sh가 이 섹션을 감지하면 architect에게 impl 보강 태스크로 전달 (현재 루프는 블록하지 않음)
+3. 갭이 보안·데이터 무결성 관련이면 `TESTS_FAIL` + 사유에 `CRITICAL_GAP` 태그 → 루프 즉시 중단
+
 ---
 
 ## Phase 2 — 테스트 작성

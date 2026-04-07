@@ -67,6 +67,7 @@
 | **S57** | **훅 간섭 테스트 (dry-run + 실제 시나리오)** | S | ✅ 완료 |
 | **S58** | **append_failure race condition + grep -F + 변수 인용 + 정책 13 추가** | S | ✅ 완료 |
 | **S59** | **_agent_call stdin pipe 전환 (MEDIUM)** | S | ⬜ 보류 |
+| **S60** | **에이전트 명세 정교화 4건 — test-engineer/qa/engineer/security-reviewer** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (루프 C/D 상태 감지 + 재진입 스킵) | S | 🔧 진행 |
