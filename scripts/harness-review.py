@@ -364,6 +364,72 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
                 "fix": "build_smart_context 50KB 캡 확인, impl 파일 정리",
             })
 
+    # WASTE_CONTEXT_EXCESS: 에이전트 역할 대비 과도한 프롬프트
+    # qa/validator/pr-reviewer는 분석 에이전트 — 20KB면 충분
+    # architect는 설계 — 25KB면 충분
+    PROMPT_LIMITS = {
+        "qa": 20000, "validator": 20000, "pr-reviewer": 20000,
+        "design-critic": 15000, "security-reviewer": 20000,
+        "architect": 25000,
+    }
+    for entry in timeline:
+        agent = entry["agent"]
+        pc = entry.get("prompt_chars", 0)
+        limit = PROMPT_LIMITS.get(agent)
+        if limit and pc > limit:
+            ratio = pc / limit
+            patterns.append({
+                "type": "WASTE_CONTEXT_EXCESS",
+                "severity": "HIGH" if ratio > 3 else "MEDIUM",
+                "agent": agent,
+                "detail": f"{agent} prompt_chars={pc:,} (적정 {limit:,}의 {ratio:.1f}배)",
+                "fix": f"harness-executor.sh에서 {agent} 호출 시 전달 컨텍스트 축소 — 전체 소스 대신 관련 부분만 전달",
+            })
+
+    # WASTE_SPARSE_PROMPT: 너무 적은 컨텍스트 → 에이전트가 MCP/Read로 재조회
+    # architect/engineer에 500자 미만 프롬프트 + MCP 또는 Read 3회 이상이면 낭비
+    SPARSE_AGENTS = {"architect", "engineer"}
+    for entry in timeline:
+        agent = entry["agent"]
+        pc = entry.get("prompt_chars", 0)
+        if agent not in SPARSE_AGENTS or pc == 0:
+            continue
+        if pc < 500:
+            # 도구 사용량 확인
+            tools = {}
+            if agent in agent_stats and agent_stats[agent]["tools"]:
+                tools = agent_stats[agent]["tools"]
+            elif stream_tools:
+                tools = stream_tools
+            read_count = tools.get("Read", 0) + tools.get("Grep", 0) + tools.get("Glob", 0)
+            mcp_count = sum(v for k, v in tools.items() if k.startswith("mcp__"))
+            fetch_count = read_count + mcp_count
+            if fetch_count >= 3:
+                patterns.append({
+                    "type": "WASTE_SPARSE_PROMPT",
+                    "severity": "HIGH",
+                    "agent": agent,
+                    "detail": f"{agent} prompt {pc}자인데 Read/MCP {fetch_count}회 호출 — 컨텍스트 부족으로 재조회",
+                    "fix": f"harness-executor.sh에서 {agent} 호출 시 qa_out/impl 내용을 프롬프트에 포함",
+                })
+
+    # WASTE_DUPLICATE_READ: 여러 에이전트가 동일 파일 중복 읽기
+    file_readers = defaultdict(list)
+    for agent, files in all_files.items():
+        for f in files:
+            # 인프라 파일은 이미 WASTE_INFRA_READ에서 잡으므로 제외
+            if not any(p in f for p in INFRA_PATTERNS):
+                file_readers[f].append(agent)
+    for filepath, readers in file_readers.items():
+        if len(readers) >= 3:
+            patterns.append({
+                "type": "WASTE_DUPLICATE_READ",
+                "severity": "MEDIUM",
+                "agent": readers[0],
+                "detail": f"`{os.path.basename(filepath)}` {len(readers)}개 에이전트가 중복 읽기: {', '.join(readers)}",
+                "fix": "이전 에이전트 출력에 파일 내용 요약을 포함해 후속 에이전트의 재읽기 제거",
+            })
+
     return patterns
 
 

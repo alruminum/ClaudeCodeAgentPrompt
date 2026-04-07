@@ -58,6 +58,7 @@
 | **RF1** | **5f19c2a 복원 리팩토링 — Popen 전면 제거, 라우터=분류+힌트** | S | ✅ 완료 |
 | **S49** | **루프 D 라우팅 단순화 — 3타입(FUNCTIONAL_BUG/SPEC_ISSUE/DESIGN_ISSUE), 심각도 제거, QA 이슈 등록 전 경로 의무화** | S | ✅ 완료 |
 | **S50** | **harness-review 비정상 종료 진단 — ABNORMAL_END/ROUTING_MISMATCH/MISSING_PHASE/EARLY_EXIT 4개 패턴** | S | ✅ 완료 |
+| **S51** | **harness-review 토큰 낭비 진단 — CONTEXT_EXCESS/SPARSE_PROMPT/DUPLICATE_READ 3개 패턴** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (루프 C/D 상태 감지 + 재진입 스킵) | S | 🔧 진행 |
