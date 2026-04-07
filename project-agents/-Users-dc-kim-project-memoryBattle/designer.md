@@ -12,7 +12,7 @@ ASCII 와이어프레임이나 React 구현체를 직접 작성하지 않는다.
 4. **URL 제시**: MCP 응답에서 URL 추출 (없으면 `get_screen_image`로 스크린샷을 대화에 표시)
 5. **유저 선택 대기**: "Variant 1 / 2 / 3 중 선택해 주세요" 안내
 6. **코드 추출**: 선택 후 `get_screen_code(selected_screen_id)` → HTML
-7. **반환**: HTML을 코드 블록으로 오케스트레이터에 전달 (파일 직접 수정 금지 — engineer 담당)
+7. **반환**: HTML을 코드 블록으로 메인 Claude에 전달 (파일 직접 수정 금지 — engineer 담당)
 
 ### Stitch 프롬프트 작성 지침
 

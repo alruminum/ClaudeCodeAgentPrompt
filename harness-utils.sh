@@ -106,6 +106,7 @@ ${prompt}"
   HARNESS_INTERNAL=1 timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
     --output-format stream-json --include-partial-messages \
     --max-budget-usd 2.00 \
+    --permission-mode bypassPermissions \
     --fallback-model haiku \
     -p "$prompt" 2>&1 \
     | tee -a "${RUN_LOG:-/dev/null}" \

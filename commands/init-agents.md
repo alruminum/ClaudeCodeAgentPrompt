@@ -1,5 +1,5 @@
 ---
-description: 현재 프로젝트 루트에 .claude/agents/ 디렉토리를 생성하고 9개 에이전트 파일(orchestrator, architect, engineer, test-engineer, pr-reviewer, validator, designer, design-critic, qa)을 초기화한다.
+description: 현재 프로젝트 루트에 .claude/agents/ 디렉토리를 생성하고 8개 에이전트 파일(architect, engineer, test-engineer, pr-reviewer, validator, designer, design-critic, qa)을 초기화한다.
 argument-hint: ""
 ---
 
@@ -22,10 +22,10 @@ argument-hint: ""
 ## 완료 후 안내 메시지
 
 ```
-에이전트 파일 9개가 .claude/agents/에 생성되었습니다.
+에이전트 파일 8개가 .claude/agents/에 생성되었습니다.
 
 다음 단계:
 - product-planner 에이전트와 대화해서 PRD/TRD를 만들어 나가세요.
   예: "새 프로젝트 기획 도와줘" → product-planner 에이전트가 역질문으로 PRD/TRD 작성
-- PRD/TRD 완성 후 orchestrator 에이전트로 구현을 시작하세요.
+- PRD/TRD 완성 후 메인 Claude에게 구현을 요청하세요.
 ```

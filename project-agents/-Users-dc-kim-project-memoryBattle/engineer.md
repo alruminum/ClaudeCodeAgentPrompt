@@ -13,7 +13,7 @@ base의 SPEC_GAP 체크리스트에 아래 항목을 추가로 확인한다:
 
 ## Stitch 시안 반영 규칙
 
-오케스트레이터가 Stitch screen ID를 전달하면:
+메인 Claude가 Stitch screen ID를 전달하면:
 1. `mcp__stitch__get_screen_code(projectId, screenId)`로 직접 HTML 추출
 2. Stitch HTML의 Tailwind 클래스 → 프로젝트 인라인 style 객체로 변환
 3. 색상 매핑: `text-primary-container` → `var(--vb-accent)`, `text-on-surface` → `var(--vb-text)`, `text-on-surface-variant` → `var(--vb-text-dim)`, `bg-surface-container-lowest` → `var(--vb-surface)`, `border-outline-variant` → `var(--vb-border)`, `font-headline` → `var(--vb-font-score)`

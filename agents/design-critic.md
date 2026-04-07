@@ -152,7 +152,7 @@ Playwright 또는 Stitch MCP 호출 실패 시:
 
 ESCALATE를 2회 연속 반환 시, 3번째 심사는 "가장 낮은 리스크" 기준으로 강제 PICK:
 - 출력 마커: `ESCALATE_FORCED_PICK — [variant명]: 3회 순환 방지를 위한 최소 리스크 선택`
-- orchestrator에게 알림: 유저가 이후 단계에서 다른 variant로 변경 가능함을 안내
+- 메인 Claude에게 알림: 유저가 이후 단계에서 다른 variant로 변경 가능함을 안내
 
 ---
 

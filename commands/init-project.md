@@ -15,7 +15,7 @@ argument-hint: ""
 
 ```
 1. GitHub repo URL이 있나요? (예: owner/repo-name)
-   → architect/qa/orchestrator 에이전트와 마일스톤 자동 생성에 사용됩니다.
+   → architect/qa 에이전트와 마일스톤 자동 생성에 사용됩니다.
    → 없으면 엔터 (나중에 수동으로 채울 수 있음)
 
 2. 핵심 설계 문서 이름은 무엇인가요? (예: game-logic, domain-logic, api-spec)
@@ -87,7 +87,7 @@ CLAUDE.md 를 열어 [채우기] 표시된 항목을 이 프로젝트에 맞게 
 
 ### 2. 남은 에이전트 특화 지침 작성
 
-> `orchestrator.md`, `architect.md`, `qa.md`는 repo가 제공되면 자동으로 pre-fill됩니다.
+> `architect.md`, `qa.md`는 repo가 제공되면 자동으로 pre-fill됩니다.
 > 아래는 수동으로 채워야 하는 파일들입니다.
 
 ```
@@ -134,7 +134,6 @@ CLAUDE.md 를 열어 [채우기] 표시된 항목을 이 프로젝트에 맞게 
   .claude/agents/design-critic.md     ← Playwright URL: http://localhost:<PORT>
   .claude/agents/test-engineer.md
   .claude/agents/pr-reviewer.md
-  .claude/agents/orchestrator.md      ← repo pre-filled: <REPO>
   .claude/agents/qa.md                ← repo pre-filled: <REPO>
   .claude/harness-executor.sh
   CLAUDE.md                    — 베이스 템플릿 복사

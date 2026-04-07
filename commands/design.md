@@ -5,7 +5,7 @@ argument-hint: "[대상 화면/컴포넌트] [--figma (Figma 모드)]"
 
 # /design
 
-UI 디자인 워크플로우 오케스트레이터.
+UI 디자인 워크플로우 실행.
 
 **요청 내용:** $ARGUMENTS
 

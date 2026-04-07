@@ -6,7 +6,7 @@
 set -e
 
 # 선택적 인수
-# --repo <owner/repo> : GitHub repo — architect/qa/orchestrator 에이전트에 pre-fill, 마일스톤 자동 생성에 사용
+# --repo <owner/repo> : GitHub repo — architect/qa 에이전트에 pre-fill, 마일스톤 자동 생성에 사용
 REPO=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -71,38 +71,6 @@ tools: Read, Glob, Grep
 - 금지 패턴 (예: any 타입 사용 금지, console.log 잔류 금지)
 - 외부 라이브러리 직접 import 금지 목록 (래퍼 함수 사용 강제)
 - 샌드박스/개발환경 분기 확인 항목
--->
-EOF
-
-# ── orchestrator ──────────────────────────────────────────
-cat > "$AGENTS_DIR/orchestrator.md" << EOF
----
-name: orchestrator
-model: opus
-description: >
-  소프트웨어 프로젝트를 단계별로 오케스트레이션하는 에이전트.
-  아키텍처 승인 → 구현/리뷰 루프 → 완료까지 전 과정을 조율한다.
-  각 단계 완료 후 반드시 유저 확인을 받고 다음 단계로 진행한다.
-tools: Read, Write, Edit, Bash, Glob, Grep, Agent
----
-
-## 공통 지침
-
-<!-- /agent-downSync 실행 시 이 섹션이 채워집니다 -->
-
----
-
-## 프로젝트 특화 지침
-
-- GitHub repo: \`${REPO_DISPLAY}\`
-- GitHub Issues 마일스톤: Story / Bugs / Epics / Feature + 버전 레이블 v01
-- 구현 루프 트리거: src/** 변경이 있는 경우 harness-executor.sh 호출
-- 에스컬레이션 경로: SPEC_GAP → architect Mode C / UI_DESIGN_REQUIRED → designer
-
-<!--
-추가로 채워야 할 내용:
-- 구현 루프 예외 조건 (harness-executor.sh를 쓰지 않는 경우)
-- 에스컬레이션 기준 세부 조건
 -->
 EOF
 
@@ -245,7 +213,7 @@ cat > "$AGENTS_DIR/qa.md" << EOF
 ---
 name: qa
 model: sonnet
-description: 이슈를 접수해 원인을 분석하고 오케스트레이터에게 라우팅 추천을 전달하는 QA 에이전트. 코드를 직접 수정하지 않는다.
+description: 이슈를 접수해 원인을 분석하고 메인 Claude에게 라우팅 추천을 전달하는 QA 에이전트. 코드를 직접 수정하지 않는다.
 tools: Read, Glob, Grep, Agent, mcp__github__create_issue
 ---
 

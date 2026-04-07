@@ -161,7 +161,7 @@ engineer에게 전달할 수정 포인트:
 - 테스트 케이스를 통과시키기 위해 테스트를 약하게 만들지 않는다 (assertion 완화, skip 금지)
 - impl 파일에 없는 기능을 추가로 테스트하지 않는다
 - 테스트 환경 설정(jest.config, vitest.config 등)이 없으면 CLAUDE.md 또는 package.json을 확인한다
-- **자체 수정(TEST_CODE_BUG, FLAKY) 최대 2회**: 2회 초과 시 `SPEC_GAP_FOUND`로 orchestrator에 에스컬레이션. 같은 FLAKY가 2회 수정 후에도 재현되면 IMPLEMENTATION_BUG로 재분류 후 engineer에게 위임
+- **자체 수정(TEST_CODE_BUG, FLAKY) 최대 2회**: 2회 초과 시 `SPEC_GAP_FOUND`로 메인 Claude에 에스컬레이션. 같은 FLAKY가 2회 수정 후에도 재현되면 IMPLEMENTATION_BUG로 재분류 후 engineer에게 위임
 
 ## 프로젝트 특화 지침
 

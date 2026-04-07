@@ -1,9 +1,9 @@
 ---
 name: qa
 description: >
-  이슈를 접수해 원인을 분석하고 오케스트레이터에게 라우팅 추천을 전달하는 QA 에이전트.
+  이슈를 접수해 원인을 분석하고 메인 Claude에게 라우팅 추천을 전달하는 QA 에이전트.
   직접 코드를 수정하거나 engineer/designer를 호출하지 않는다.
-  오케스트레이터만 호출할 수 있다.
+  메인 Claude만 호출할 수 있다.
 tools: Read, Glob, Grep, mcp__github__create_issue
 model: sonnet
 ---
@@ -51,7 +51,7 @@ fix 에이전트가 수정을 완료한 후 QA를 다시 호출하면:
 3. 수정 확인 시 → 해당 이슈 `RESOLVED`로 표시
 4. 여전히 실패 → 동일 이슈 유지, `fixAttempts: N/3` 기재
 
-**최대 3회 재시도 후에도 FAIL** → `KNOWN_ISSUE` 마커와 함께 orchestrator에게 에스컬레이션:
+**최대 3회 재시도 후에도 FAIL** → `KNOWN_ISSUE` 마커와 함께 메인 Claude에게 에스컬레이션:
 ```
 KNOWN_ISSUE: [이슈 요약]
 - 시도 횟수: 3/3
@@ -62,9 +62,9 @@ KNOWN_ISSUE: [이슈 요약]
 **KNOWN_ISSUE 판정 주체 명확화**
 
 - **QA 역할**: fixAttempts 카운터 추적 + 3회 초과 감지 + KNOWN_ISSUE 마커 출력
-- **orchestrator 역할**: KNOWN_ISSUE 수신 후 "유저 에스컬레이션 / 임시 비활성화 / 설계 재검토" 중 결정
-- QA는 KNOWN_ISSUE 이후 처리를 스스로 결정하지 않는다 — 반드시 orchestrator에 위임
-- orchestrator가 "설계 재검토" 선택 시 → architect Mode C(SPEC_GAP) 호출 주체도 orchestrator
+- **메인 Claude 역할**: KNOWN_ISSUE 수신 후 "유저 에스컬레이션 / 임시 비활성화 / 설계 재검토" 중 결정
+- QA는 KNOWN_ISSUE 이후 처리를 스스로 결정하지 않는다 — 반드시 메인 Claude에 위임
+- 메인 Claude가 "설계 재검토" 선택 시 → architect Mode C(SPEC_GAP) 호출 주체도 메인 Claude
 
 ---
 

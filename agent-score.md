@@ -21,15 +21,15 @@
 
 | 순위 | 에이전트 | 점수 | 핵심 미비 |
 |---|---|---|---|
-| 1 | pr-reviewer | 92 | ✅ 개선됨 (78→92). 잔여: NICE TO HAVE 후속 흐름 코멘트 수준, REVIEW_LOOP_ESCALATE 이후 orchestrator 처리 미정 |
+| 1 | pr-reviewer | 92 | ✅ 개선됨 (78→92). 잔여: NICE TO HAVE 후속 흐름 코멘트 수준, REVIEW_LOOP_ESCALATE 이후 메인 Claude 처리 미정 |
 | 2 | architect | 92 | 재시도 한도 없음, Mode A 없이 Mode B 호출 방지 없음 |
 | 3 | product-planner | 90 | 이해관계자 충돌 처리 없음, PRODUCT_PLAN_READY 선언 시점 기준 모호 |
 | 4 | designer | 91 | ✅ 개선됨 (82→91). 잔여: UX 개편 진입 조건 모호, Mode A/B 출력 형식 분리 미완 |
-| 5 | qa | 87 | KNOWN_ISSUE 결정 주체 불명확, 재검증 루프 주체가 orchestrator 의존 |
+| 5 | qa | 87 | KNOWN_ISSUE 결정 주체 불명확, 재검증 루프 주체가 메인 Claude 의존 |
 | 6 | engineer | 87 | CHANGES_REQUESTED 피드백 처리 별도 없음, Figma Mode B 불완전 _(루프 한도 추가로 +1)_ |
 | 7 | test-engineer | 87 | 기존 테스트 파일 처리 없음 _(자체 수정 한도 추가로 +1)_ |
 | 8 | design-critic | 89 | ✅ 개선됨 (85→89). 잔여: ITERATE 피드백 구체성 기준 없음 |
-| 9 | validator | 90 | ✅ 개선됨 (86→90). 잔여: Mode A 저장 실제 보장은 orchestrator 의존 |
+| 9 | validator | 90 | ✅ 개선됨 (86→90). 잔여: Mode A 저장 실제 보장은 메인 Claude 의존 |
 | 10 | qa | 91 | ✅ 개선됨 (87→91). 잔여: 재검증 루프 호출 주체 명시 보완 여지 |
 
 ---
@@ -57,7 +57,7 @@
 | 제약 & 가드레일 | 14/15 | 추측 금지, 결정 근거 필수, PRD 직접 수정 금지, Code-first 예외 명시. **감점**: 게이트 미통과 최대 재시도 횟수 없음 |
 
 **개선 우선순위**
-1. Mode B READY_FOR_IMPL 재시도 최대 3회 → 초과 시 orchestrator 에스컬레이션
+1. Mode B READY_FOR_IMPL 재시도 최대 3회 → 초과 시 메인 Claude 에스컬레이션
 2. Mode B 시작 전 SYSTEM_DESIGN_READY 존재 여부 확인 게이트 추가
 3. 출력 형식 체크리스트 항목 순서 정리
 
@@ -84,14 +84,14 @@
 
 | 카테고리 | 점수 | 세부 내용 |
 |---|---|---|
-| 역할 명확성 | 19/20 | 2축 분류, 경량 RCA, 라우팅 역할, 코드 수정 금지. **감점**: 재검증 루프에서 QA가 직접 재호출 못하고 orchestrator에 의존 |
+| 역할 명확성 | 19/20 | 2축 분류, 경량 RCA, 라우팅 역할, 코드 수정 금지. **감점**: 재검증 루프에서 QA가 직접 재호출 못하고 메인 Claude에 의존 |
 | 워크플로우 완성도 | 22/25 | Step 1~5, 회귀 감지, KNOWN_ISSUE 루프, 라우팅 매트릭스. **감점**: 재검증 루프 주체 모호, CRITICAL 중단 후 다른 이슈 처리 없음 |
 | 엣지케이스 & 충돌 처리 | 16/20 | CRITICAL 즉시 중단, KNOWN_ISSUE 3회, 높은 확신 기준. **감점**: KNOWN_ISSUE 후 결정 주체 불명확, 여러 CRITICAL 동시 우선순위 없음 |
 | 출력 일관성 | 17/20 | BLOCKED/FAIL/PASS 판정 선두, 심각도별 그룹, KNOWN_ISSUE 마커. **감점**: DB 관련 이슈 증거 첨부 방법 구체성 부족 |
-| 제약 & 가드레일 | 13/15 | false positive 원칙, 읽기 전용, orchestrator만 호출. **감점**: 재검증 루프 호출 횟수 한도 없음 |
+| 제약 & 가드레일 | 13/15 | false positive 원칙, 읽기 전용, 메인 Claude만 호출. **감점**: 재검증 루프 호출 횟수 한도 없음 |
 
 **개선 우선순위**
-1. 재검증 루프 주체 명확화: "orchestrator가 qa를 재호출" 절차 명시
+1. 재검증 루프 주체 명확화: "메인 Claude가 qa를 재호출" 절차 명시
 2. CRITICAL 이슈 중단 후 나머지 이슈 처리 여부 규칙 추가
 3. 재검증 루프 최대 3회 → KNOWN_ISSUE 에스컬레이션 명시
 
@@ -110,7 +110,7 @@
 **개선 우선순위**
 1. pr-reviewer CHANGES_REQUESTED 수신 시 처리 절차 별도 섹션 추가
 2. validator FAIL + pr-reviewer CHANGES_REQUESTED 동시 처리 우선순위 규칙
-3. 최대 재시도 횟수(3회) → 초과 시 orchestrator 에스컬레이션
+3. 최대 재시도 횟수(3회) → 초과 시 메인 Claude 에스컬레이션
 
 ---
 
@@ -153,13 +153,13 @@
 | 카테고리 | 점수 | 세부 내용 |
 |---|---|---|
 | 역할 명확성 | 19/20 | Mode A/B 분리, 읽기 전용, 단일 책임(판정만), 증거 기반. **감점**: Mode A 호출 Phase 번호가 README 흐름과 불일치 가능성 |
-| 워크플로우 완성도 | 22/25 | Mode A 3섹션 11항목, Mode B 3계층(A:7/B:5+DB3/C:12), DB 추가 체크, Mode A 결과 보존 요청. **감점**: Mode A 결과 저장이 orchestrator에게 "요청"이라 실제 보장 불가, design-review.md 없을 때 Mode B 처리 없음 |
+| 워크플로우 완성도 | 22/25 | Mode A 3섹션 11항목, Mode B 3계층(A:7/B:5+DB3/C:12), DB 추가 체크, Mode A 결과 보존 요청. **감점**: Mode A 결과 저장이 메인 Claude에게 "요청"이라 실제 보장 불가, design-review.md 없을 때 Mode B 처리 없음 |
 | 엣지케이스 & 충돌 처리 | 15/20 | FAIL 원인 요약, PASS도 권고사항, DB 변경 분기. **감점**: Mode A FAIL 후 재검증 절차 없음, Mode B 계획 파일 없는 경우 처리 없음, 재시도 횟수 한도 없음 |
 | 출력 일관성 | 17/20 | DESIGN_REVIEW_PASS/FAIL, PASS/FAIL 마커, 테이블 형식. **감점**: Mode B 출력 형식에 DB 추가 체크 결과 섹션 없음 |
 | 제약 & 가드레일 | 12/15 | 파일 수정 금지, 수정 제안 금지, 모드 미지정 판단 규칙. **감점**: PARTIAL verdict 금지 없음, 재시도 한도 없음 |
 
 **개선 우선순위**
-1. Mode A 결과 저장을 Write 도구 없이 강제하는 방법 재설계 (orchestrator에게 저장 의무 명시 강화)
+1. Mode A 결과 저장을 Write 도구 없이 강제하는 방법 재설계 (메인 Claude에게 저장 의무 명시 강화)
 2. Mode B 출력 형식에 DB 추가 체크 결과 섹션 추가
 3. PARTIAL verdict 금지 + 최대 재시도 3회 규칙 추가
 
@@ -185,12 +185,12 @@
 
 | 카테고리 | 점수 | 세부 내용 |
 |---|---|---|
-| 역할 명확성 | 19/20 | validator 역할 분리 표, 읽기 전용, LGTM/CHANGES_REQUESTED, MUST FIX/NICE TO HAVE, 재검토 루프 경계 명시. **감점**: REVIEW_LOOP_ESCALATE 이후 orchestrator 흐름 묵시적 |
+| 역할 명확성 | 19/20 | validator 역할 분리 표, 읽기 전용, LGTM/CHANGES_REQUESTED, MUST FIX/NICE TO HAVE, 재검토 루프 경계 명시. **감점**: REVIEW_LOOP_ESCALATE 이후 메인 Claude 흐름 묵시적 |
 | 워크플로우 완성도 | 23/25 | 3단계 작업 순서, A~G 7카테고리, 레거시 처리, 테스트 파일 기준. **감점**: LGTM + NICE TO HAVE 후속 처리 절차 코멘트 수준 |
-| 엣지케이스 & 충돌 처리 | 17/20 | CHANGES_REQUESTED 재검토 절차(수정 파일만, 이전 목록 추적), 루프 3라운드 한도, 레거시 처리. **감점**: REVIEW_LOOP_ESCALATE 이후 orchestrator 처리 흐름 미정 |
+| 엣지케이스 & 충돌 처리 | 17/20 | CHANGES_REQUESTED 재검토 절차(수정 파일만, 이전 목록 추적), 루프 3라운드 한도, 레거시 처리. **감점**: REVIEW_LOOP_ESCALATE 이후 메인 Claude 처리 흐름 미정 |
 | 출력 일관성 | 18/20 | LGTM/CHANGES_REQUESTED 마커, REVIEW_LOOP_ESCALATE 마커, 수정 파일 범위 명시. **감점**: 테스트 파일(G) 리뷰 결과 출력 형식 미정 |
 | 제약 & 가드레일 | 15/15 | 파일 수정 금지, validator 중복 금지, 개인 취향 금지, 루프 한도 이중 명시 완전 |
 
 **잔여 개선 포인트**
-1. REVIEW_LOOP_ESCALATE 수신 후 orchestrator 처리 흐름 명시
+1. REVIEW_LOOP_ESCALATE 수신 후 메인 Claude 처리 흐름 명시
 2. NICE TO HAVE 항목의 tech-debt 에픽 등록 자동화 절차
