@@ -375,6 +375,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     fi
   done
 
+  rm -f "/tmp/${PREFIX}_plan_validation_passed"
   export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
   echo "IMPLEMENTATION_ESCALATE (engineer_direct ${MAX_HOTFIX}회 실패)"
   exit 1

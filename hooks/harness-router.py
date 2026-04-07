@@ -449,7 +449,16 @@ def _main_inner():
                 except Exception:
                     pass
 
-        if flags["harness_active"]:
+        # BUG 감지 시 IMPLEMENTATION 분류여도 bugfix 우선
+        if is_bug:
+            ctx = (
+                "🐛 [HARNESS ROUTER] 버그/이슈 감지 — IMPLEMENTATION 분류지만 BUG 키워드 포함\n"
+                "→ bugfix 루프(QA 우선)로 실행하세요.\n"
+                f"예: bash {executor_path} bugfix --bug \"{{버그 설명}}\" --issue {current_issue or 'N'} --prefix {prefix}\n"
+                "⚠️ impl2 직접 실행 금지 — 이슈는 무조건 QA부터."
+            )
+            log(prefix, f"INJECT(impl→bugfix_override) prompt={prompt[:60]!r}")
+        elif flags["harness_active"]:
             ctx = (
                 f"⚠️ [HARNESS] harness_active 플래그가 설정되어 있습니다.\n"
                 f"이전 실행이 아직 진행 중이거나 비정상 종료된 것일 수 있습니다.\n"

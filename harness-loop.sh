@@ -733,7 +733,8 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
 
   done
 
-  # 3회 모두 실패
+  # 3회 모두 실패 — plan_validation_passed 플래그 정리 (재진입 시 stale 방지)
+  rm -f "/tmp/${PREFIX}_plan_validation_passed"
   export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
   hlog "=== 하네스 루프 종료 (결과=IMPLEMENTATION_ESCALATE, 시도=$MAX) ==="
   echo "IMPLEMENTATION_ESCALATE"
