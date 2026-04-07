@@ -56,6 +56,7 @@
 | **S39** | **agent out_file 가드 — check_agent_output() 5곳 전수 적용** | S | ✅ 완료 |
 | **S40** | **rollback_attempt — 실패 시 git stash로 오염 코드 격리** | S | ✅ 완료 |
 | **RF1** | **5f19c2a 복원 리팩토링 — Popen 전면 제거, 라우터=분류+힌트** | S | ✅ 완료 |
+| **S49** | **루프 D 라우팅 단순화 — 3타입(FUNCTIONAL_BUG/SPEC_ISSUE/DESIGN_ISSUE), 심각도 제거, QA 이슈 등록 전 경로 의무화** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -684,6 +685,24 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - `harness-utils.sh` `_agent_call`에서 out_file 사전 touch (이중 보호)
 
 **변경 파일**: `harness-loop.sh`, `harness-utils.sh`
+
+---
+
+### ✅ S49 — 루프 D 라우팅 단순화
+
+**배경**: 루프 D의 qa 라우팅이 6타입×심각도 조합으로 복잡. FUNCTIONAL_BUG LOW가 backlog로 빠져 유저 의도 무시. QA가 이슈 등록 안 하는 책임 공백.
+
+**변경 내용**:
+- 6타입(FUNCTIONAL_BUG/SPEC_VIOLATION/REGRESSION/INTEGRATION_ISSUE/DESIGN_ISSUE/ARCH_ISSUE) → 3타입(FUNCTIONAL_BUG/SPEC_ISSUE/DESIGN_ISSUE) 통합
+- 심각도(CRITICAL/HIGH/MEDIUM/LOW) 제거 — 경로 분기에 불필요
+- QA가 **모든 경로에서** 이슈 등록 의무화:
+  - FUNCTIONAL_BUG → Bugs 마일스톤
+  - SPEC_ISSUE (PRD 명세 있음) → Feature 마일스톤 + epic 라벨
+  - SPEC_ISSUE (PRD 명세 없음) → Feature 마일스톤
+  - DESIGN_ISSUE → Feature 마일스톤
+- executor backlog 분기 제거 → FUNCTIONAL_BUG도 engineer 직접 경로
+
+**변경 파일**: `orchestration-rules.md`, `harness-executor.sh`, `agents/qa.md`
 
 ---
 

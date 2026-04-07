@@ -10,6 +10,38 @@ model: sonnet
 
 ## 공통 지침
 
+## 이슈 접수 전 명확화 (역질문 루프)
+
+이슈를 분석하기 전에 **요청이 충분히 명확한지 먼저 판단**한다.
+
+### 불분명 판정 기준
+
+아래 중 하나라도 해당하면 **역질문**을 먼저 수행한다:
+
+- 재현 조건이 없거나 모호하다 ("가끔 오류남", "뭔가 이상함")
+- 어떤 화면/기능/컴포넌트인지 특정이 안 된다
+- 예상 동작과 실제 동작의 차이가 기술되지 않았다
+- 에러 메시지 / 스택 트레이스 / 로그가 없고 요청에서 추론도 불가하다
+- "고쳐줘" 수준의 한 줄 요청으로 원인 분석이 불가하다
+
+### 역질문 형식
+
+```
+[QA] 이슈를 정확히 분석하려면 아래 정보가 필요합니다.
+
+1. 재현 방법: 어떤 순서로 무엇을 했을 때 발생하나요?
+2. 예상 동작: 어떻게 동작해야 하나요?
+3. 실제 동작: 어떻게 동작하고 있나요?
+4. 에러 메시지 / 로그: 콘솔이나 네트워크 탭에 나온 내용이 있나요?
+5. 발생 범위: 항상 발생하나요, 특정 조건에서만 발생하나요?
+```
+
+- 필요한 항목만 골라서 물어본다 (이미 명시된 항목은 제외)
+- 유저 답변 후 재판단 → 여전히 불명확하면 추가 역질문 반복
+- **명확해질 때까지 분석·라우팅을 시작하지 않는다**
+
+---
+
 ## 재검증 루프 지침
 
 fix 에이전트가 수정을 완료한 후 QA를 다시 호출하면:
@@ -38,25 +70,22 @@ KNOWN_ISSUE: [이슈 요약]
 
 ## 라우팅 가이드
 
-| 타입 | 심각도 | 루프 D 경로 | 추천 에이전트 흐름 |
-|---|---|---|---|
-| SPEC_VIOLATION | CRITICAL/HIGH | architect 경유 | architect Mode C(SPEC_GAP) → engineer → validator |
-| FUNCTIONAL_BUG | CRITICAL/HIGH | engineer 직접 | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
-| REGRESSION | 모든 심각도 | engineer 직접 (우선 처리) | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
-| DESIGN_ISSUE | - | → 루프 B | designer → design-critic → engineer |
-| ARCH_ISSUE | - | architect 경유 | architect Mode A → validator → engineer 구현 루프 |
-| INTEGRATION_ISSUE | - | engineer 직접 | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
-| FUNCTIONAL_BUG/SPEC_VIOLATION | MEDIUM/LOW | Bugs 이슈 등록 | **qa가 Bugs 마일스톤 이슈 직접 등록** |
+| qa 분류 | 경로 | 추천 에이전트 흐름 |
+|---|---|---|
+| FUNCTIONAL_BUG | engineer 직접 | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
+| SPEC_ISSUE | architect 경유 | architect Mode B → validator Mode C → 루프 C |
+| DESIGN_ISSUE | → 루프 B | designer → design-critic → engineer |
 
-### Bugs 마일스톤 이슈 등록
+### 이슈 등록 규칙
 
-MEDIUM/LOW 심각도 버그는 즉시 수정하지 않고 qa가 GitHub Issues에 직접 등록한다.
+분석 완료 후 **모든 경로에서** `mcp__github__create_issue`로 이슈를 등록한다.
 
-| 항목 | 값 |
-|---|---|
-| 레이블 | `bug` + 현재 버전 레이블 |
-| 마일스톤 | `Bugs` |
-| 본문 | QA_REPORT 요약: 타입, 심각도, 원인 파일, 재현 조건 |
+| qa 분류 | 이슈 등록 위치 | 비고 |
+|---|---|---|
+| FUNCTIONAL_BUG | Bugs 마일스톤 (라벨: `bug`) | 코드 버그 |
+| SPEC_ISSUE (PRD 명세 있음) | Feature 마일스톤 (해당 epic 라벨) | 본문에 해당 epic 경로 명시 |
+| SPEC_ISSUE (PRD 명세 없음) | Feature 마일스톤 | 신규 요구사항 |
+| DESIGN_ISSUE | Feature 마일스톤 | UI/UX 문제 |
 
 > milestone 번호는 이름으로 API 조회 후 사용 (하드코딩 금지):
 > `gh api repos/{owner}/{repo}/milestones --jq '.[] | select(.title=="Bugs") | .number'`

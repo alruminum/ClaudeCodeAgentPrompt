@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-07 (S45+S46+S47+S48)
+> 최종 업데이트: 2026-04-07 (S45+S46+S47+S48+S49)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -139,6 +139,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S46 | /harness-review 스킬 | `scripts/harness-review.py` JSONL 파서 + 8개 WASTE 패턴 진단. `commands/harness-review.md` 스킬. old/new 로그 포맷 호환 | 2026-04-07 |
 | S47 | HARNESS_DONE 후 자동 리뷰 | `orchestration-rules.md` 정책 10 — HARNESS_DONE/ESCALATE/KNOWN_ISSUE 수신 후 /harness-review 자동 실행 | 2026-04-07 |
 | S48 | QA 에이전트 스코프 강화 | `harness-utils.sh` `_agent_call()`에 `{prefix}_{agent}_active` 플래그 세팅/해제 → `agent-boundary.py` 물리적 차단 활성화. `qa.md` Agent/Bash 도구 제거 + 인프라 접근 금지 명시 | 2026-04-07 |
+| S49 | 루프 D 라우팅 단순화 | 6타입→3타입(FUNCTIONAL_BUG/SPEC_ISSUE/DESIGN_ISSUE), 심각도 제거, QA 이슈 등록 전 경로 의무화, backlog 분기 제거 | 2026-04-07 |
 
 ---
 

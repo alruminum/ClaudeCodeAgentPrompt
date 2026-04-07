@@ -191,18 +191,17 @@ FAIL 시 모든 유형을 동일하게 처리하지 않는다. `fail_type`에 �
 진입: bug 레이블 이슈 OR 유저 버그 직접 보고
       │
       ↓
-  qa (원인 분석 + 타입×심각도 분류 + 라우팅 추천)
+  qa (원인 분석 + 타입 분류 + 이슈 등록 + 라우팅 추천)
       │ 원인 특정 3회 실패 → KNOWN_ISSUE → 메인 Claude 보고 후 대기
       │
-  ┌───┴──────────────────────────────────────────────┐
-  ↓                    ↓                              ↓
-architect 경유       engineer 직접               기타 경로
-                     (루프 C 미진입)                   │
-SPEC_VIOLATION       FUNCTIONAL_BUG CRIT/HIGH    ┌────┴────────┐
-  CRIT/HIGH          REGRESSION (모든 심각도)     ↓              ↓
-ARCH_ISSUE           INTEGRATION_ISSUE          DESIGN_ISSUE   MEDIUM/LOW
-                                                → 루프 B       → qa가 Bugs
-  │                    │                                         마일스톤 이슈 등록
+      ↓ qa가 분류 결과에 따라 이슈 등록 (전 경로 공통)
+      │
+  ┌───┴──────────────────────────┐
+  ↓                    ↓          ↓
+architect 경유    engineer 직접   DESIGN_ISSUE
+                  (루프 C 미진입)  → 루프 B
+SPEC_ISSUE        FUNCTIONAL_BUG
+  │                    │
   ↓                    ↓
 architect              architect
 [Module Plan]          [Bugfix Plan(Mode F)]
@@ -223,17 +222,24 @@ validator              engineer (코드 수정)
                  HARNESS_DONE
 ```
 
-### qa 라우팅 → 루프 D 분기 매핑
+### qa 분류 → 루프 D 분기 매핑
 
-| qa 분류 | 심각도 | 루프 D 경로 | 실행 단계 |
-|---------|--------|-------------|----------|
-| SPEC_VIOLATION | CRITICAL/HIGH | architect 경유 | architect Mode B → validator Mode C → 루프 C |
-| ARCH_ISSUE | 모든 심각도 | architect 경유 | architect Mode A → validator → 루프 C |
-| FUNCTIONAL_BUG | CRITICAL/HIGH | engineer 직접 | architect Mode F → engineer → vitest → validator Mode D → commit |
-| REGRESSION | 모든 심각도 | engineer 직접 | architect Mode F → engineer → vitest → validator Mode D → commit |
-| INTEGRATION_ISSUE | 모든 심각도 | engineer 직접 | architect Mode F → engineer → vitest → validator Mode D → commit |
-| DESIGN_ISSUE | - | → 루프 B | designer → design-critic |
-| FUNCTIONAL_BUG/SPEC_VIOLATION | MEDIUM/LOW | Bugs 이슈 등록 | qa가 `mcp__github__create_issue`로 Bugs 마일스톤에 등록 |
+| qa 분류 | 경로 | 실행 단계 |
+|---------|------|----------|
+| FUNCTIONAL_BUG | engineer 직접 | architect Mode F → engineer → vitest → validator Mode D → commit |
+| SPEC_ISSUE | architect 경유 | architect Mode B → validator Mode C → 루프 C |
+| DESIGN_ISSUE | → 루프 B | designer → design-critic |
+
+### qa 이슈 등록 규칙
+
+qa는 분석 완료 후 **모든 경로에서** GitHub 이슈를 등록한다.
+
+| qa 분류 | 이슈 등록 위치 | 비고 |
+|---------|---------------|------|
+| FUNCTIONAL_BUG | Bugs 마일스톤 (라벨: `bug`) | 코드 버그 |
+| SPEC_ISSUE (PRD 명세 있음) | Feature 마일스톤 (해당 epic 라벨) | PRD 명세 누락 구현. 본문에 해당 epic 경로 명시 |
+| SPEC_ISSUE (PRD 명세 없음) | Feature 마일스톤 | 신규 요구사항 |
+| DESIGN_ISSUE | Feature 마일스톤 | UI/UX 문제 |
 
 ---
 

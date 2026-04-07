@@ -212,22 +212,23 @@ run_bugfix() {
   # ── Phase B1: qa 분석 ──
   echo "[HARNESS] Phase B1 — qa 호출 중"
   _agent_call "qa" 300 \
-    "bug: $BUG_DESC issue: #$ISSUE_NUM" \
+    "bug: $BUG_DESC issue: #$ISSUE_NUM
+분석 완료 후 반드시 mcp__github__create_issue로 이슈를 등록하라.
+- FUNCTIONAL_BUG → Bugs 마일스톤 (라벨: bug)
+- SPEC_ISSUE (PRD 명세 있음) → Feature 마일스톤 (해당 epic 라벨, 본문에 epic 경로 명시)
+- SPEC_ISSUE (PRD 명세 없음) → Feature 마일스톤
+- DESIGN_ISSUE → Feature 마일스톤" \
     "/tmp/${PREFIX}_qa_out.txt"
   qa_out=$(cat "/tmp/${PREFIX}_qa_out.txt")
 
-  # ── qa 라우팅 파싱 ──
-  local routing="architect"  # 기본값 (안전)
-  if echo "$qa_out" | grep -qE 'FUNCTIONAL_BUG.*(CRITICAL|HIGH)'; then
-    routing="engineer_direct"
-  elif echo "$qa_out" | grep -q 'REGRESSION'; then
-    routing="engineer_direct"
-  elif echo "$qa_out" | grep -q 'INTEGRATION_ISSUE'; then
+  # ── qa 라우팅 파싱 (타입 기준, 심각도 무관) ──
+  local routing="architect"  # 기본값 (안전 — SPEC_ISSUE)
+  if echo "$qa_out" | grep -q 'FUNCTIONAL_BUG'; then
     routing="engineer_direct"
   elif echo "$qa_out" | grep -q 'DESIGN_ISSUE'; then
     routing="design"
-  elif echo "$qa_out" | grep -qE 'MEDIUM|LOW'; then
-    routing="backlog"
+  elif echo "$qa_out" | grep -q 'SPEC_ISSUE'; then
+    routing="architect"
   fi
   echo "[HARNESS] qa routing: $routing"
 
@@ -238,12 +239,6 @@ run_bugfix() {
     design)
       echo "[HARNESS] DESIGN_ISSUE → 루프 B 전환"
       run_design
-      ;;
-    backlog)
-      echo "[HARNESS] MEDIUM/LOW → qa가 Bugs 마일스톤 이슈 등록 완료"
-      echo "BACKLOG_REGISTERED"
-      echo "issue: #$ISSUE_NUM"
-      exit 0
       ;;
     *)
       _run_bugfix_full
