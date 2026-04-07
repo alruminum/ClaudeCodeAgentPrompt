@@ -49,6 +49,7 @@ _agent_call() {
   local _call_exit=0
 
   echo "0" > "$cost_file"
+  : > "$out_file"  # 파이프라인 실패 시에도 파일 존재 보장
   [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d}\n' \
     "$agent" "$t_start" >> "$RUN_LOG"
 

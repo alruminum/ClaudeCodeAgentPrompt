@@ -483,7 +483,7 @@ $changed_files
     hlog "◀ validator 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo 0)bytes)"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ validator timeout — skip"; fi
     budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
-    val_out=$(cat "/tmp/${PREFIX}_val_out.txt")
+    val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
     if echo "$val_out" | grep -qE "^PASS$"; then
       val_result="PASS"
     elif echo "$val_out" | grep -qE "^FAIL$"; then
@@ -518,7 +518,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
       budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
-      pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt")
+      pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
       if echo "$pr_out" | grep -qE "^LGTM$"; then
         pr_result="PASS"
       elif echo "$pr_out" | grep -qE "^CHANGES_REQUESTED$"; then
@@ -554,7 +554,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       hlog "◀ security-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo 0)bytes)"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ security-reviewer timeout — skip"; fi
       budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
-      sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt")
+      sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo "")
       if echo "$sec_out" | grep -qE "^SECURE$"; then
         sec_result="PASS"
       elif echo "$sec_out" | grep -qE "^VULNERABILITIES_FOUND$"; then
