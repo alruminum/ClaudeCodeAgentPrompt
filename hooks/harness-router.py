@@ -36,8 +36,8 @@ def fast_classify(prompt):
     # BUG — "여전히/아직/또" + 증상/스크린샷 → 수정 후 재발 리포트
     if re.search(r'(여전히|아직|still|또\s)', p, re.I) and re.search(r'(Image\s*#|스크린샷|보이|나타|표시|노출|남아)', p, re.I):
         return "BUG"
-    # BUG — 수정 확인 질문 ("수정한거 맞아/고친거 맞아/안 고쳐졌")
-    if re.search(r'(수정|고친|fix).*(맞|됐|안|없)', p, re.I):
+    # BUG — 수정 확인 질문 ("수정한거 맞아/고친됐나/fix됐어 아직")
+    if re.search(r'(수정|고친|fix)(한거|된거|됐어|됐나|됐어요).*(맞아|맞나|확인|아직|여전)', p, re.I):
         return "BUG"
     # QUESTION — 물음표로 끝나면 (BUG 패턴에 안 걸린 경우만)
     if re.search(r'\?\s*$', p):
