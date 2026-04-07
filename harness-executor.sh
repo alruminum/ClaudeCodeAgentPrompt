@@ -79,9 +79,9 @@ detect_depth() {
   fi
 }
 
-# ── 공통: harness-loop.sh 경로 결정 ─────────────────────────────────
-LOOP_SCRIPT=".claude/harness-loop.sh"
-[[ ! -f "$LOOP_SCRIPT" ]] && LOOP_SCRIPT="${HOME}/.claude/harness-loop.sh"
+# ── 공통: harness-loop.sh 경로 결정 (글로벌 우선 — 인프라는 글로벌 전용) ──
+LOOP_SCRIPT="${HOME}/.claude/harness-loop.sh"
+[[ ! -f "$LOOP_SCRIPT" ]] && LOOP_SCRIPT=".claude/harness-loop.sh"
 
 # ══════════════════════════════════════════════════════════════════════
 # mode: impl (Phase 0.5 → 0.7 → 0.8 → PLAN_VALIDATION_PASS)

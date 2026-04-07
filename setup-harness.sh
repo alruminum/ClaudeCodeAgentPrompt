@@ -12,6 +12,9 @@
 #   PreToolUse(Agent)      — 이슈번호 필수 + 에이전트 실행 순서 6단계 게이트
 #   PostToolUse(Bash)      — commit 성공 후 플래그 정리
 #   PostToolUse(Agent)     — 플래그 생성/삭제 + 문서 신선도/PRD 대조 경고
+#
+# 주의: harness-loop.sh / harness-executor.sh는 글로벌(~/.claude/) 전용.
+#       프로젝트에 복사하지 않으며, 기존 낡은 복사본은 자동 삭제.
 
 set -e
 
@@ -214,26 +217,15 @@ with open(settings_path, "w") as f:
 print(f"✅ {settings_path} 생성 완료 (prefix: {prefix}_)")
 PYEOF
 
-# harness-loop.sh 복사
-LOOP_SRC="$HOME/.claude/harness-loop.sh"
-if [ -f "$LOOP_SRC" ]; then
-  cp "$LOOP_SRC" ".claude/harness-loop.sh"
-  chmod +x ".claude/harness-loop.sh"
-  echo "  harness-loop.sh 복사 완료"
-else
-  echo "⚠️  ~/.claude/harness-loop.sh 없음 — 복사 스킵 (수동으로 추가 필요)"
-fi
-
-# harness-executor.sh 프로젝트 스크립트 복사
-HE_SRC="$HOME/.claude/harness-executor.sh"
-HE_LOCAL=".claude/harness-executor.sh"
-if [ -f "$HE_SRC" ]; then
-  cp "$HE_SRC" "$HE_LOCAL"
-  chmod +x "$HE_LOCAL"
-  echo "  harness-executor.sh 복사 완료"
-else
-  echo "⚠️  ~/.claude/harness-executor.sh 없음 — 복사 스킵 (수동으로 추가 필요)"
-fi
+# harness-loop.sh / harness-executor.sh — 글로벌 전용 (프로젝트에 복사하지 않음)
+# 실행 인프라는 ~/.claude/ 에서만 관리. 프로젝트엔 설정(harness.config.json)만 둔다.
+# 기존 프로젝트에 낡은 복사본이 있으면 삭제
+for old_file in ".claude/harness-loop.sh" ".claude/harness-executor.sh"; do
+  if [ -f "$old_file" ]; then
+    rm -f "$old_file"
+    echo "  🗑 낡은 $old_file 삭제 (글로벌 전용으로 전환)"
+  fi
+done
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
