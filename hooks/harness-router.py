@@ -405,7 +405,9 @@ def _main_inner():
                 )
                 log(prefix, f"PASS(ambiguous/no-question) prompt={prompt[:60]!r}")
 
-        print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
+        _output = json.dumps({"hookSpecificOutput": {"additionalContext": ctx}})
+        log(prefix, f"STDOUT len={len(_output)}")
+        print(_output)
         sys.exit(0)
 
     flag_lines = "\n".join(
@@ -539,7 +541,9 @@ def _main_inner():
         ctx = qa_hint + "\n" + ctx
         log(prefix, f"QA_HINT injected prompt={prompt[:60]!r}")
 
-    print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
+    _output = json.dumps({"hookSpecificOutput": {"additionalContext": ctx}})
+    log(prefix, f"STDOUT len={len(_output)}")
+    print(_output)
 
 
 if __name__ == "__main__":

@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/dc.kim/.claude/hooks/harness-router.py auto 2>>/tmp/harness-hook-stderr.log; exit 0",
+            "command": "python3 ~/.claude/hooks/harness-router.py auto 2>>/tmp/harness-hook-stderr.log; exit 0",
             "timeout": 30
           }
         ]
@@ -101,6 +101,26 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/post-agent-flags.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/post-commit-cleanup.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -110,6 +130,11 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/orch-rules-first.py 2>/dev/null || true",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true",
             "timeout": 5
           }
         ]
@@ -121,6 +146,21 @@
             "type": "command",
             "command": "python3 ~/.claude/hooks/orch-rules-first.py 2>/dev/null || true",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true",
+            "timeout": 5
           }
         ]
       },
@@ -130,6 +170,21 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/harness-drift-check.py 2>/dev/null || true",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/commit-gate.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/agent-gate.py 2>/dev/null || true",
             "timeout": 5
           }
         ]

@@ -37,7 +37,8 @@ def get_project_context(prefix):
     try:
         log = subprocess.check_output(
             ["git", "log", "--oneline", "-3"],
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            timeout=5
         ).decode().strip()
         if log:
             lines.append(f"최근 커밋:\n  " + "\n  ".join(log.splitlines()))

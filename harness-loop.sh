@@ -22,6 +22,8 @@ command -v timeout &>/dev/null || timeout() {
 # shellcheck source=/dev/null
 source "${HOME}/.claude/harness-utils.sh"
 
+export HARNESS_RESULT="unknown"
+
 MODE=${1:-""}; shift || true
 IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; DEPTH="std"
 

@@ -7,23 +7,15 @@ git commit 전 pr-reviewer LGTM 확인.
 prefix는 환경변수 HARNESS_PREFIX로 주입 (기본값: mb).
 """
 import sys
-import json
 import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import json
 import re
 import subprocess
+from harness_common import get_prefix, deny
 
-PREFIX = os.environ.get("HARNESS_PREFIX", "mb")
-
-
-def deny(reason):
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason
-        }
-    }))
-    sys.exit(0)
+PREFIX = get_prefix()
 
 
 def main():

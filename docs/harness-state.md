@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-07 (S45+S46+S47+S48+S49+S50+S12+S51+S52+S53)
+> 최종 업데이트: 2026-04-07 (S54+S55+S56 — PREFIX 통일, 훅 등록, file-ownership 통합)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -39,18 +39,23 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 
 | 파일 | 트리거 | 역할 |
 |---|---|---|
+| `harness_common.py` | (모듈) | `get_prefix()`, `deny()`, `flag_path()` 공유 유틸 (S54) |
 | `harness-router.py` | UserPromptSubmit (global) | fast_classify(regex) → extract_intent(Haiku LLM) → 워크플로우 상태/Adaptive Interview 주입 |
 | `harness-stop-gate.sh` | Stop (global) | harness_active 존재 시 exit 2 → 종료 차단 (S33) |
-| `harness-session-start.py` | SessionStart (global) | `/tmp/{prefix}_*` 플래그 전체 초기화 |
+| `harness-session-start.py` | SessionStart (global) | `/tmp/{prefix}_*` 플래그 전체 초기화 (timeout=5 추가: S56) |
 | `orch-rules-first.py` | PreToolUse(Edit/Write) (global) | `orchestration-rules.md` 선행 수정 물리적 강제 |
-| `agent-boundary.py` | PreToolUse(Edit/Write) (global) | 에이전트별 파일 수정 경로 물리적 제한 |
+| `agent-boundary.py` | PreToolUse(Edit/Write/Read) (global) | 에이전트별 경로 제한 + 메인 Claude file-ownership 차단 통합 (S55) |
+| `agent-gate.py` | PreToolUse(Agent) (global) | 에이전트 실행 순서·조건 검증 (S55) |
+| `commit-gate.py` | PreToolUse(Bash) (global) | git commit 전 pr-reviewer LGTM 확인 (S55) |
+| `post-agent-flags.py` | PostToolUse(Agent) (global) | 에이전트 완료 후 플래그 생성/삭제 + 문서 신선도 경고 (S55) |
+| `post-commit-cleanup.py` | PostToolUse(Bash) (global) | git commit 성공 후 1회성 플래그 삭제 (S55) |
 | `harness-settings-watcher.py` | PostToolUse(Edit) (global) | `settings.json` hooks 변경 감지 → 동기화 리마인드 |
 
 ### 프로젝트별 (`.claude/`, `setup-harness.sh`가 생성)
 
 | 파일 | 역할 |
 |---|---|
-| `settings.json` | PreToolUse(docs/src 보호) + PreToolUse(Bash:git commit 게이트) + PreToolUse(Agent:6단계 게이트) + PostToolUse(Agent:플래그 관리) |
+| `settings.json` | PreToolUse(Edit/Write: orch-rules-first + agent-boundary) + PreToolUse(Read: agent-boundary) + PreToolUse(Bash: drift-check + commit-gate) + PreToolUse(Agent: agent-gate) + PostToolUse(Edit: settings-watcher) + PostToolUse(Bash: post-commit-cleanup) + PostToolUse(Agent: post-agent-flags) |
 | `harness.config.json` | `{"prefix": "xx"}` — 프로젝트별 플래그 prefix (최대 6자) |
 | `harness-executor.sh` | setup-agents.sh가 글로벌에서 복사 |
 | `harness-loop.sh` | setup-agents.sh가 글로벌에서 복사 |

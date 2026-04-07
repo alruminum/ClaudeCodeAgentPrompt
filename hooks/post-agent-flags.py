@@ -8,29 +8,28 @@ prefix는 환경변수 HARNESS_PREFIX로 주입 (기본값: mb).
 doc_name은 환경변수 HARNESS_DOC_NAME으로 주입 (기본값: domain-logic).
 """
 import sys
-import json
 import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import json
 import re
 import time
+from harness_common import get_prefix, flag_path
 
-PREFIX = os.environ.get("HARNESS_PREFIX", "mb")
+PREFIX = get_prefix()
 DOC_NAME = os.environ.get("HARNESS_DOC_NAME", "domain-logic")
-
-
-def flag_path(name):
-    return f"/tmp/{PREFIX}_{name}"
 
 
 def touch(name):
     try:
-        open(flag_path(name), "w").close()
+        open(flag_path(PREFIX, name), "w").close()
     except Exception:
         pass
 
 
 def remove(name):
     try:
-        p = flag_path(name)
+        p = flag_path(PREFIX, name)
         if os.path.exists(p):
             os.remove(p)
     except Exception:

@@ -6,11 +6,14 @@ git commit 성공 후 플래그 정리.
 prefix는 환경변수 HARNESS_PREFIX로 주입 (기본값: mb).
 """
 import sys
-import json
 import os
-import re
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-PREFIX = os.environ.get("HARNESS_PREFIX", "mb")
+import json
+import re
+from harness_common import get_prefix
+
+PREFIX = get_prefix()
 
 
 def main():
