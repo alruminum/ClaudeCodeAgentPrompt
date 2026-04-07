@@ -466,7 +466,12 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 | bugfix engineer_direct 성공 | `HARNESS_DONE` |
 | 크래시/unhandled exit | `HARNESS_CRASH` (write_run_end이 unknown 감지 시 자동 변환) |
 
-**13. 쉘 스크립트 코드 품질 규칙**
+**13. post-commit-scan (선택적)**
+`hooks/post-commit-scan.sh`는 커밋 후 간단한 정적 분석(console.log, any 타입, TODO 잔류)을 수행한다.
+현재 settings.json에 미등록 — 필요 시 PostToolUse(Bash)에 추가하거나 git post-commit 훅으로 직접 사용.
+결과는 `/tmp/{prefix}_scan_report.txt`에 저장.
+
+**14. 쉘 스크립트 코드 품질 규칙**
 하네스 쉘 스크립트(`harness-loop.sh`, `harness-executor.sh`, `harness-utils.sh`) 수정 시:
 - **변수 인용**: `$var` → `"$var"` (for 루프, grep 패턴, 조건식). 예외: `${array[@]}`, `$?`, `$#`
 - **grep 리터럴**: 파이프(`|`) 등 메타문자가 포함된 패턴은 `grep -F` 사용

@@ -18,17 +18,25 @@
 ## 개발 명령어
 
 ```bash
-# [초기화]
+# [초기화] 예: npm install / pnpm install
+npm install
 
-# [개발]
+# [개발] 예: npm run dev / next dev
+npm run dev
 
-# [빌드]
+# [빌드] 예: npm run build / next build
+npm run build
+
+# [테스트] 예: npx vitest run / npm test
+npx vitest run
 ```
 
 ## 환경변수 (`.env`)
 
 ```
-# [키=값]
+# [키=값] 예:
+# DATABASE_URL=postgresql://...
+# NEXT_PUBLIC_API_URL=http://localhost:3000
 ```
 
 ---
