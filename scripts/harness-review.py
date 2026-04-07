@@ -20,7 +20,7 @@ from collections import defaultdict
 
 INFRA_PATTERNS = [
     ".claude/", "harness-", "orchestration-rules", "setup-harness",
-    "hooks/", "settings.json", "harness-utils", "harness-loop",
+    ".claude/hooks/", "settings.json", "harness-utils", "harness-loop",
     "harness-executor",
 ]
 
