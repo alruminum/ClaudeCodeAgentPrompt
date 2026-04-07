@@ -35,6 +35,23 @@ EXPECTED_ELAPSED = {
     "designer": 300,
 }
 
+# 모드별 예상 에이전트 순서 (orchestration-rules.md 기준)
+EXPECTED_SEQUENCE = {
+    "bugfix": {
+        "engineer_direct": ["qa", "architect", "engineer", "validator"],
+        "architect":       ["qa", "architect", "validator", "engineer"],
+        "design":          ["qa", "designer", "design-critic"],
+    },
+    "impl": ["architect", "validator"],
+    "impl2": {
+        "fast": ["engineer"],
+        "std":  ["engineer", "test-engineer", "validator"],
+        "deep": ["engineer", "test-engineer", "validator", "pr-reviewer", "security-reviewer"],
+    },
+    "design": ["designer", "design-critic"],
+    "plan":   ["product-planner", "architect", "validator"],
+}
+
 LOG_DIR = os.path.expanduser("~/.claude/harness-logs")
 
 
@@ -350,6 +367,153 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
     return patterns
 
 
+# ── 흐름 진단 (비정상 종료 / 라우팅 불일치 / 단계 누락) ──────────
+
+
+def detect_flow_issues(run_info, timeline, events):
+    """orchestration-rules 기준으로 실제 흐름의 이상을 진단한다."""
+    issues = []
+    mode = run_info.get("mode", "?")
+    agents_ran = [e["agent"] for e in timeline]
+    has_run_end = any(e.get("event") == "run_end" for e in events)
+    has_done_marker = any(
+        "HARNESS_DONE" in str(e) or "ESCALATE" in str(e) or "KNOWN_ISSUE" in str(e)
+        for e in events if e.get("event") in ("phase", "decision", "run_end")
+    )
+
+    # ABNORMAL_END: run_end 없거나 incomplete agent 존재
+    incomplete = [e for e in timeline if e.get("status") == "incomplete"]
+    if not has_run_end:
+        last_agent = agents_ran[-1] if agents_ran else "?"
+        issues.append({
+            "type": "ABNORMAL_END",
+            "severity": "HIGH",
+            "detail": f"run_end 이벤트 없음 — {last_agent} 단계에서 중단",
+            "diagnosis": _diagnose_abort(last_agent, mode, events),
+        })
+    elif incomplete:
+        for entry in incomplete:
+            issues.append({
+                "type": "ABNORMAL_END",
+                "severity": "HIGH",
+                "detail": f"{entry['agent']} 미완료 (elapsed ~{entry['elapsed']}s)",
+                "diagnosis": _diagnose_abort(entry["agent"], mode, events),
+            })
+
+    # EARLY_EXIT: run_end는 있지만 HARNESS_DONE/ESCALATE 마커 없음
+    if has_run_end and not has_done_marker and mode in ("bugfix", "impl2"):
+        issues.append({
+            "type": "EARLY_EXIT",
+            "severity": "HIGH",
+            "detail": f"모드 {mode} 정상 종료했으나 HARNESS_DONE/ESCALATE 마커 없음",
+            "diagnosis": "조기 exit 0 — 라우팅 분기에서 루프 미진입 가능성",
+        })
+
+    # MISSING_PHASE: 예상 단계 대비 누락
+    expected = _get_expected_agents(mode, events)
+    if expected and agents_ran:
+        missing = [a for a in expected if a not in agents_ran]
+        if missing:
+            issues.append({
+                "type": "MISSING_PHASE",
+                "severity": "MEDIUM",
+                "detail": f"예상 단계 {expected} 중 {missing} 누락",
+                "diagnosis": f"실제 실행: {agents_ran}",
+            })
+
+    # ROUTING_MISMATCH: qa 출력 타입과 실제 다음 agent 불일치 (bugfix 모드)
+    if mode == "bugfix" and len(agents_ran) >= 2 and agents_ran[0] == "qa":
+        qa_type = _extract_qa_type(events)
+        next_agent = agents_ran[1] if len(agents_ran) > 1 else None
+        expected_next = {
+            "FUNCTIONAL_BUG": "architect",  # Mode F
+            "SPEC_ISSUE": "architect",       # Mode B
+            "DESIGN_ISSUE": "designer",
+        }
+        if qa_type and next_agent:
+            exp = expected_next.get(qa_type)
+            if exp and next_agent != exp:
+                issues.append({
+                    "type": "ROUTING_MISMATCH",
+                    "severity": "HIGH",
+                    "detail": f"QA 판정 {qa_type} → 예상 다음 {exp}, 실제 {next_agent}",
+                    "diagnosis": "harness-executor.sh grep 파싱 확인 필요",
+                })
+
+    return issues
+
+
+def _get_expected_agents(mode, events):
+    """모드+설정에서 예상 에이전트 순서를 반환한다."""
+    if mode == "bugfix":
+        # bugfix는 qa 라우팅에 따라 다름 — qa는 무조건 첫 번째
+        return ["qa"]  # 최소한 qa는 있어야 함
+    elif mode == "impl":
+        return EXPECTED_SEQUENCE.get("impl", [])
+    elif mode == "impl2":
+        # depth 감지
+        depth = "std"
+        for e in events:
+            if e.get("event") == "config":
+                depth = e.get("depth", "std")
+                break
+        seq = EXPECTED_SEQUENCE.get("impl2", {})
+        return seq.get(depth, seq.get("std", []))
+    elif mode == "design":
+        return EXPECTED_SEQUENCE.get("design", [])
+    elif mode == "plan":
+        return EXPECTED_SEQUENCE.get("plan", [])
+    return []
+
+
+def _extract_qa_type(events):
+    """stream_event에서 QA 출력의 타입 분류를 추출한다."""
+    # agent_end 직후의 qa 출력, 또는 stream에서 QA_REPORT 패턴 탐색
+    qa_text = ""
+    in_qa = False
+    for e in events:
+        if e.get("event") == "agent_start" and e.get("agent") == "qa":
+            in_qa = True
+        elif e.get("event") == "agent_end" and e.get("agent") == "qa":
+            in_qa = False
+        elif in_qa and e.get("type") == "stream_event":
+            se = e.get("event", {})
+            if se.get("type") == "content_block_delta":
+                delta = se.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    qa_text += delta.get("text", "")
+
+    for t in ("FUNCTIONAL_BUG", "SPEC_ISSUE", "DESIGN_ISSUE"):
+        if t in qa_text:
+            return t
+    return None
+
+
+def _diagnose_abort(agent, mode, events):
+    """중단된 에이전트와 모드를 기반으로 가능한 원인을 추론한다."""
+    hints = []
+    if agent == "qa":
+        hints.append("QA 분석 중 중단 — 타임아웃 또는 mcp__github__create_issue 실패 가능")
+        hints.append("확인: agents/qa.md 이슈 등록 규칙, mcp 도구 권한")
+    elif agent == "architect":
+        hints.append("architect 중단 — impl 파일 생성 실패 또는 타임아웃")
+        hints.append("확인: agents/architect.md Mode F/B 프롬프트")
+    elif agent == "engineer":
+        hints.append("engineer 중단 — 코드 수정 중 타임아웃 또는 agent-boundary 차단")
+        hints.append("확인: /tmp/{prefix}_engineer_active 플래그, agent-boundary.py 로그")
+    elif agent == "validator":
+        hints.append("validator 중단 — 검증 중 타임아웃")
+    elif agent == "designer":
+        hints.append("designer 중단 — variant 생성 중 타임아웃")
+    else:
+        hints.append(f"{agent} 중단 — agents/{agent}.md 제약 사항 확인")
+
+    if mode == "bugfix":
+        hints.append("루프 D 흐름: qa → (FUNCTIONAL_BUG: architect Mode F → engineer) / (SPEC_ISSUE: architect Mode B → validator → 루프 C)")
+
+    return " | ".join(hints)
+
+
 # ── 리포트 생성 ──────────────────────────────────────────────────────
 
 def fmt_time(ts):
@@ -359,7 +523,8 @@ def fmt_time(ts):
 
 
 def generate_report(filepath, run_info, config, timeline, agent_stats,
-                    stream_tools, stream_files, waste, decisions, phases, contexts):
+                    stream_tools, stream_files, waste, decisions, phases, contexts,
+                    flow_issues=None):
     lines = []
     basename = os.path.basename(filepath)
 
@@ -465,6 +630,18 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
         lines.append("## WASTE 패턴 없음")
         lines.append("")
 
+    # 흐름 진단
+    if flow_issues:
+        lines.append("## 흐름 진단")
+        for i, fi in enumerate(flow_issues, 1):
+            sev = fi["severity"]
+            lines.append(f"{i}. **{fi['type']}** [{sev}] — {fi['detail']}")
+            lines.append(f"   진단: {fi['diagnosis']}")
+        lines.append("")
+    else:
+        lines.append("## 흐름 정상")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -490,10 +667,12 @@ def analyze_file(filepath):
         stream_tools, stream_files = {}, []
 
     waste = detect_waste(timeline, agent_stats_data, stream_tools, stream_files, decisions)
+    flow_issues = detect_flow_issues(run_info, timeline, events)
 
     return generate_report(
         filepath, run_info, config, timeline, agent_stats_data,
         stream_tools, stream_files, waste, decisions, phases_data, contexts,
+        flow_issues=flow_issues,
     )
 
 

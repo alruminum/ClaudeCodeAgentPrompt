@@ -57,6 +57,7 @@
 | **S40** | **rollback_attempt — 실패 시 git stash로 오염 코드 격리** | S | ✅ 완료 |
 | **RF1** | **5f19c2a 복원 리팩토링 — Popen 전면 제거, 라우터=분류+힌트** | S | ✅ 완료 |
 | **S49** | **루프 D 라우팅 단순화 — 3타입(FUNCTIONAL_BUG/SPEC_ISSUE/DESIGN_ISSUE), 심각도 제거, QA 이슈 등록 전 경로 의무화** | S | ✅ 완료 |
+| **S50** | **harness-review 비정상 종료 진단 — ABNORMAL_END/ROUTING_MISMATCH/MISSING_PHASE/EARLY_EXIT 4개 패턴** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
@@ -685,6 +686,24 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - `harness-utils.sh` `_agent_call`에서 out_file 사전 touch (이중 보호)
 
 **변경 파일**: `harness-loop.sh`, `harness-utils.sh`
+
+---
+
+### ✅ S50 — harness-review 비정상 종료 진단
+
+**배경**: harness-review가 WASTE 패턴(낭비)만 보고, "왜 끊겼는지"는 진단하지 않았다. 비정상 종료나 조기 exit 시 원인 추적 불가.
+
+**변경 내용**:
+- 4개 흐름 진단 패턴 추가:
+  - `ABNORMAL_END` — run_end 없거나 incomplete agent 존재
+  - `EARLY_EXIT` — run_end 있지만 HARNESS_DONE/ESCALATE 마커 없음
+  - `MISSING_PHASE` — orchestration-rules 예상 단계 대비 누락
+  - `ROUTING_MISMATCH` — QA 출력 타입과 실제 다음 agent 불일치
+- 모드별 예상 에이전트 순서(`EXPECTED_SEQUENCE`) 정의
+- QA 출력에서 타입 분류 자동 추출(`_extract_qa_type`)
+- 에이전트별 중단 원인 힌트(`_diagnose_abort`)
+
+**변경 파일**: `scripts/harness-review.py`
 
 ---
 
