@@ -373,10 +373,10 @@ READY_FOR_IMPL
 순서 위반(backlog 없이 수정, state 나중에 안 하는 것) 금지.
 물리적 강제: 현재는 written policy. 향후 `orch-rules-first.py` 확장으로 물리적 차단 예정.
 
-**10. Stop hook — 물리적 종료 차단**
-Claude가 작업 완료를 선언하려 할 때, Stop hook이 `/tmp/{prefix}_harness_active`를 체크한다.
-파일이 존재하면 `exit 2`로 종료를 차단하고 Claude는 계속 작업한다.
-`harness_active`는 harness-executor.sh 시작 시 생성, 종료 시 삭제.
+**10. 하네스 Bash 포어그라운드 강제**
+메인 Claude가 `harness-executor.sh` / `harness-loop.sh`를 Bash로 실행할 때
+**반드시 포어그라운드**(기본값)로 실행한다. `run_in_background` 금지.
+포어그라운드면 Bash 완료까지 Claude가 블로킹되므로 Stop 트리거 자체가 발생하지 않는다.
 
 유저는 `/cancel` 또는 `/harness-kill`로 언제든 중단 가능.
 

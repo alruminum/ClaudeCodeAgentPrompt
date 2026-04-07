@@ -454,7 +454,8 @@ def _main_inner():
             harness_directive = (
                 f"\n\n🔁 [HARNESS ROUTER] plan_validation_passed OK → 아래 Bash 명령을 즉시 실행하라:\n"
                 f"bash {executor_path} impl2 --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
-                "engineer 직접 호출 금지. 위 스크립트가 루프를 완주한다."
+                "engineer 직접 호출 금지. 위 스크립트가 루프를 완주한다.\n"
+                "⚠️ 반드시 포어그라운드로 실행 (run_in_background 금지)."
             )
             ctx = (
                 "[HARNESS ROUTER] 현재 워크플로우 상태\n"
@@ -467,7 +468,8 @@ def _main_inner():
             harness_directive = (
                 "\n\n⚠️ src/** 직접 Edit/Write 금지. engineer 에이전트 직접 호출 금지.\n"
                 f"올바른 순서: Bash로 harness-executor.sh 호출.\n"
-                f"예: bash {executor_path} impl --impl [IMPL_PATH] --issue {current_issue or 'N'} --prefix {prefix}"
+                f"예: bash {executor_path} impl --impl [IMPL_PATH] --issue {current_issue or 'N'} --prefix {prefix}\n"
+                "⚠️ 반드시 포어그라운드로 실행 (run_in_background 금지)."
             )
             ctx = (
                 "[HARNESS ROUTER] 현재 워크플로우 상태\n"
