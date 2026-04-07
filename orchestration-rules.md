@@ -465,6 +465,13 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 | bugfix engineer_direct 성공 | `HARNESS_DONE` |
 | 크래시/unhandled exit | `HARNESS_CRASH` (write_run_end이 unknown 감지 시 자동 변환) |
 
+**13. 쉘 스크립트 코드 품질 규칙**
+하네스 쉘 스크립트(`harness-loop.sh`, `harness-executor.sh`, `harness-utils.sh`) 수정 시:
+- **변수 인용**: `$var` → `"$var"` (for 루프, grep 패턴, 조건식). 예외: `${array[@]}`, `$?`, `$#`
+- **grep 리터럴**: 파이프(`|`) 등 메타문자가 포함된 패턴은 `grep -F` 사용
+- **원자적 쓰기**: 공유 파일(harness-memory.md 등) append 시 `mktemp` → `cat >> target` → `rm` 패턴 사용
+- **for 루프**: 파일 경로 목록 순회 시 `for f in $var` 대신 `while IFS= read -r f` 사용
+
 **11. 하네스 Bash 포어그라운드 강제**
 메인 Claude가 `harness-executor.sh` / `harness-loop.sh`를 Bash로 실행할 때
 **반드시 포어그라운드**(기본값)로 실행한다. `run_in_background` 금지.

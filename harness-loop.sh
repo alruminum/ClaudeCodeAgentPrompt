@@ -82,23 +82,31 @@ append_failure() {
   local date_str; date_str=$(date +%Y-%m-%d)
   local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
   local err_1line; err_1line=$(echo "$err" | head -1 | cut -c1-100)
+
+  # 원자적 쓰기: temp 파일에 기록 후 append (race condition 방지)
+  local tmp_entry; tmp_entry=$(mktemp)
   printf -- "- %s | %s | %s | %s\n" \
     "$date_str" "$impl_name" "$type" "$err_1line" \
-    >> "$MEM_LOCAL"
+    > "$tmp_entry"
+  cat "$tmp_entry" >> "$MEM_LOCAL"
+  rm -f "$tmp_entry"
 
   # ── B2: 실패 패턴 자동 프로모션 (같은 impl+type 3회 → Auto-Promoted Rules) ──
   local pattern_key="${impl_name}|${type}"
-  local count; count=$(grep -c "$pattern_key" "$MEM_LOCAL" 2>/dev/null) || count=0
+  local count; count=$(grep -Fc "$pattern_key" "$MEM_LOCAL" 2>/dev/null) || count=0
   if [[ $count -ge 3 ]]; then
     # Auto-Promoted Rules 섹션이 없으면 생성
-    if ! grep -q "## Auto-Promoted Rules" "$MEM_LOCAL" 2>/dev/null; then
+    if ! grep -Fq "## Auto-Promoted Rules" "$MEM_LOCAL" 2>/dev/null; then
       printf "\n## Auto-Promoted Rules\n\n" >> "$MEM_LOCAL"
     fi
     # 중복 프로모션 방지: 이미 프로모션된 패턴인지 확인
-    if ! grep -q "PROMOTED: $pattern_key" "$MEM_LOCAL" 2>/dev/null; then
+    if ! grep -Fq "PROMOTED: $pattern_key" "$MEM_LOCAL" 2>/dev/null; then
+      local tmp_promo; tmp_promo=$(mktemp)
       printf -- "- PROMOTED: %s | %s회 반복 | %s | MUST NOT: %s\n" \
         "$pattern_key" "$count" "$date_str" "$err_1line" \
-        >> "$MEM_LOCAL"
+        > "$tmp_promo"
+      cat "$tmp_promo" >> "$MEM_LOCAL"
+      rm -f "$tmp_promo"
       echo "[HARNESS] ⚠️ 실패 패턴 자동 프로모션: ${pattern_key} (${count}회)"
     fi
   fi
@@ -106,7 +114,7 @@ append_failure() {
   # ── P1: Memory 후보 파일 기록 (HARNESS_DONE 후 유저에게 제안) ─────────────
   local candidate_file="/tmp/${PREFIX}_memory_candidate.md"
   # 같은 루프 내 중복 기록 방지
-  if ! grep -q "$pattern_key" "$candidate_file" 2>/dev/null; then
+  if ! grep -Fq "$pattern_key" "$candidate_file" 2>/dev/null; then
     cat >> "$candidate_file" <<CANDIDATE
 ---
 date: $date_str
@@ -141,9 +149,12 @@ append_success() {
   local attempt_num="$1"
   local date_str; date_str=$(date +%Y-%m-%d)
   local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
+  local tmp_entry; tmp_entry=$(mktemp)
   printf -- "- %s | %s | success | attempt %s\n" \
     "$date_str" "$impl_name" "$attempt_num" \
-    >> "$MEM_LOCAL"
+    > "$tmp_entry"
+  cat "$tmp_entry" >> "$MEM_LOCAL"
+  rm -f "$tmp_entry"
 }
 
 extract_files_from_error() {
@@ -160,25 +171,25 @@ build_smart_context() {
     # impl 파일 자체
     ctx=$(cat "$impl")
     # impl에서 언급된 소스 파일 내용 추가 (각 파일 3KB 캡)
-    local mentioned
-    mentioned=$(grep -oE 'src/[^ `"'"'"']+\.(ts|tsx)' "$impl" 2>/dev/null | sort -u | head -5)
-    for f in $mentioned; do
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
       if [[ -f "$f" ]]; then
         ctx="${ctx}
 === ${f} ===
 $(head -c 3000 "$f")"
       fi
-    done
+    done < <(grep -oE 'src/[^ `"'"'"']+\.(ts|tsx)' "$impl" 2>/dev/null | sort -u | head -5)
   else
     # 재시도: error trace에서 관련 파일만
     local failed_files
     failed_files=$(extract_files_from_error "$err_trace")
     if [[ -n "$failed_files" ]]; then
-      for f in $failed_files; do
+      while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
         [[ -f "$f" ]] && ctx="${ctx}
 === ${f} ===
 $(cat "$f")"
-      done
+      done <<< "$failed_files"
     else
       ctx=$(cat "$impl")
     fi
@@ -213,13 +224,14 @@ run_automated_checks() {
   local protected_files
   protected_files=$(grep -oE '\(PROTECTED\)[[:space:]]+[^[:space:]]+' "$impl_file" 2>/dev/null \
     | awk '{print $NF}' || true)
-  for pf in $protected_files; do
+  while IFS= read -r pf; do
+    [[ -z "$pf" ]] && continue
     if git diff HEAD -- "$pf" 2>/dev/null | grep -qE "^[-+]"; then
       echo "file_unchanged: 변경 금지 파일 수정됨: $pf" > "$out_file"
       echo "AUTOMATED_CHECKS_FAIL: file_unchanged ($pf)"
       return 1
     fi
-  done
+  done <<< "$protected_files"
 
   echo "AUTOMATED_CHECKS_PASS"
   return 0

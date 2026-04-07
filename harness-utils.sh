@@ -28,7 +28,7 @@ rotate_harness_logs() {
     "$prefix" "$mode" "$_HARNESS_RUN_START" > "$RUN_LOG"
 
   echo "[HARNESS] 실행 로그: $RUN_LOG"
-  echo "[HARNESS] 실시간 확인: tail -f $RUN_LOG"
+  echo "[HARNESS] 실시간 확인: tail -f \"$RUN_LOG\""
 }
 
 # ── run_end 이벤트 기록 ───────────────────────────────────────────────
