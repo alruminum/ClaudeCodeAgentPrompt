@@ -38,15 +38,28 @@ KNOWN_ISSUE: [이슈 요약]
 
 ## 라우팅 가이드
 
-| 타입 | 심각도 | 추천 에이전트 흐름 |
-|---|---|---|
-| SPEC_VIOLATION | CRITICAL/HIGH | architect Mode C(SPEC_GAP) → engineer → validator |
-| FUNCTIONAL_BUG | CRITICAL/HIGH | engineer → test-engineer → validator |
-| REGRESSION | 모든 심각도 | engineer → test-engineer → validator (우선 처리) |
-| DESIGN_ISSUE | - | designer → design-critic → engineer |
-| ARCH_ISSUE | - | architect Mode A → validator → engineer 구현 루프 |
-| INTEGRATION_ISSUE | - | engineer (sdk.md/db-schema.md 참고) → validator |
-| FUNCTIONAL_BUG/SPEC_VIOLATION | MEDIUM/LOW | 백로그 등록 후 다음 에픽에서 처리 |
+| 타입 | 심각도 | 루프 D 경로 | 추천 에이전트 흐름 |
+|---|---|---|---|
+| SPEC_VIOLATION | CRITICAL/HIGH | architect 경유 | architect Mode C(SPEC_GAP) → engineer → validator |
+| FUNCTIONAL_BUG | CRITICAL/HIGH | engineer 직접 | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
+| REGRESSION | 모든 심각도 | engineer 직접 (우선 처리) | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
+| DESIGN_ISSUE | - | → 루프 B | designer → design-critic → engineer |
+| ARCH_ISSUE | - | architect 경유 | architect Mode A → validator → engineer 구현 루프 |
+| INTEGRATION_ISSUE | - | engineer 직접 | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
+| FUNCTIONAL_BUG/SPEC_VIOLATION | MEDIUM/LOW | Bugs 이슈 등록 | **qa가 Bugs 마일스톤 이슈 직접 등록** |
+
+### Bugs 마일스톤 이슈 등록
+
+MEDIUM/LOW 심각도 버그는 즉시 수정하지 않고 qa가 GitHub Issues에 직접 등록한다.
+
+| 항목 | 값 |
+|---|---|
+| 레이블 | `bug` + 현재 버전 레이블 |
+| 마일스톤 | `Bugs` |
+| 본문 | QA_REPORT 요약: 타입, 심각도, 원인 파일, 재현 조건 |
+
+> milestone 번호는 이름으로 API 조회 후 사용 (하드코딩 금지):
+> `gh api repos/{owner}/{repo}/milestones --jq '.[] | select(.title=="Bugs") | .number'`
 
 ---
 
