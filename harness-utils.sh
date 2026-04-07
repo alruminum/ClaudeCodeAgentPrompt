@@ -34,9 +34,10 @@ rotate_harness_logs() {
 # ── run_end 이벤트 기록 ───────────────────────────────────────────────
 write_run_end() {
   [[ -z "$RUN_LOG" || ! -f "$RUN_LOG" ]] && return
+  local result="${HARNESS_RESULT:-unknown}"
   local t_end; t_end=$(date +%s)
-  printf '{"event":"run_end","t":%d,"elapsed":%d}\n' \
-    "$t_end" "$((t_end - _HARNESS_RUN_START))" >> "$RUN_LOG"
+  printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s"}\n' \
+    "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" >> "$RUN_LOG"
 }
 
 # ── 에이전트 호출 래퍼 ────────────────────────────────────────────────

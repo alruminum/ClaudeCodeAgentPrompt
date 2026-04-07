@@ -314,6 +314,7 @@ kill_check() {
   if [ -f "/tmp/${PREFIX}_harness_kill" ]; then
     hlog "🛑 킬 스위치 감지 — 즉시 중단"
     rm -f "/tmp/${PREFIX}_harness_active" "/tmp/${PREFIX}_harness_kill"
+    export HARNESS_RESULT="HARNESS_KILLED"
     echo "HARNESS_KILLED: 사용자 요청으로 중단됨"
     exit 0
   fi
@@ -328,6 +329,7 @@ budget_check() {
   hlog "💰 ${agent_name} 비용: \$${agent_cost} | 누적: \$${TOTAL_COST}/${MAX_TOTAL_COST}"
   if [ "$(echo "$TOTAL_COST > $MAX_TOTAL_COST" | bc 2>/dev/null)" = "1" ]; then
     hlog "🚨 비용 상한 초과 (\$${TOTAL_COST} > \$${MAX_TOTAL_COST}) — 즉시 중단"
+    export HARNESS_RESULT="HARNESS_BUDGET_EXCEEDED"
     echo "HARNESS_BUDGET_EXCEEDED: \$${TOTAL_COST} spent, limit \$${MAX_TOTAL_COST}"
     rm -f "/tmp/${PREFIX}_harness_active"
     exit 1
@@ -372,6 +374,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
       git add -- "${commit_files[@]}"
       git commit -m "$(generate_commit_msg) [fast-mode]"
       commit_hash=$(git rev-parse --short HEAD)
+      export HARNESS_RESULT="HARNESS_DONE"
       echo "HARNESS_DONE (fast)"
       echo "impl: $IMPL_FILE"
       echo "issue: #$ISSUE_NUM"
@@ -703,6 +706,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
     # ── S7: last_issue 저장 (다음 세션 컨텍스트 브리지용) ───────────────
     echo "$ISSUE_NUM" > "/tmp/${PREFIX}_last_issue"
 
+    export HARNESS_RESULT="HARNESS_DONE"
     hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=$((attempt+1))) ==="
     echo "HARNESS_DONE"
     echo "impl: $IMPL_FILE"
@@ -730,6 +734,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
   done
 
   # 3회 모두 실패
+  export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
   hlog "=== 하네스 루프 종료 (결과=IMPLEMENTATION_ESCALATE, 시도=$MAX) ==="
   echo "IMPLEMENTATION_ESCALATE"
   echo "attempts: $MAX"

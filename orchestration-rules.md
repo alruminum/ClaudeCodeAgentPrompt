@@ -445,6 +445,19 @@ HARNESS_DONE / IMPLEMENTATION_ESCALATE / KNOWN_ISSUE 수신 후,
 리뷰 결과에 WASTE 패턴이 발견되면 유저에게 개선 제안을 포함해 보고한다.
 유저 보고 전 리뷰 완료를 기다린다 (블로킹).
 
+**12. JSONL run_end에 결과 마커 기록**
+`write_run_end()` 호출 시 `HARNESS_RESULT` 환경변수의 값을 `run_end` 이벤트의 `result` 필드에 기록한다.
+각 종료 경로에서 `HARNESS_RESULT`를 설정해야 한다:
+
+| 종료 경로 | HARNESS_RESULT 값 |
+|---|---|
+| 정상 완료 (commit 성공) | `HARNESS_DONE` |
+| 3회 실패 | `IMPLEMENTATION_ESCALATE` |
+| 킬 스위치 | `HARNESS_KILLED` |
+| 비용 상한 초과 | `HARNESS_BUDGET_EXCEEDED` |
+| bugfix engineer_direct 성공 | `HARNESS_DONE` |
+| 미설정 시 | `unknown` |
+
 **11. 하네스 Bash 포어그라운드 강제**
 메인 Claude가 `harness-executor.sh` / `harness-loop.sh`를 Bash로 실행할 때
 **반드시 포어그라운드**(기본값)로 실행한다. `run_in_background` 금지.

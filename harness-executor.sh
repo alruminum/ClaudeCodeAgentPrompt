@@ -358,6 +358,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
           git commit -m "$(generate_commit_msg) [bugfix-direct]"
           local commit_hash
           commit_hash=$(git rev-parse --short HEAD)
+          export HARNESS_RESULT="HARNESS_DONE"
           echo "HARNESS_DONE (engineer_direct)"
           echo "impl: $IMPL_FILE"
           echo "issue: #$ISSUE_NUM"
@@ -374,6 +375,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     fi
   done
 
+  export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
   echo "IMPLEMENTATION_ESCALATE (engineer_direct ${MAX_HOTFIX}회 실패)"
   exit 1
 }

@@ -442,9 +442,17 @@ def detect_flow_issues(run_info, timeline, events):
     mode = run_info.get("mode", "?")
     agents_ran = [e["agent"] for e in timeline]
     has_run_end = any(e.get("event") == "run_end" for e in events)
-    has_done_marker = any(
+    # run_end.result 필드 체크 (S52) + 기존 문자열 매칭 폴백
+    run_end_result = ""
+    for e in events:
+        if e.get("event") == "run_end":
+            run_end_result = e.get("result", "")
+    has_done_marker = run_end_result in (
+        "HARNESS_DONE", "IMPLEMENTATION_ESCALATE", "HARNESS_KILLED",
+        "HARNESS_BUDGET_EXCEEDED", "KNOWN_ISSUE",
+    ) or any(
         "HARNESS_DONE" in str(e) or "ESCALATE" in str(e) or "KNOWN_ISSUE" in str(e)
-        for e in events if e.get("event") in ("phase", "decision", "run_end")
+        for e in events if e.get("event") in ("phase", "decision")
     )
 
     # ABNORMAL_END: run_end 없거나 incomplete agent 존재
