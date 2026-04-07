@@ -57,7 +57,7 @@ CONSTRAINTS=""
 # Auto-Promoted Rules 우선 로드 (자동 프로모션된 규칙이 최우선)
 for mf in "$MEM_GLOBAL" "$MEM_LOCAL"; do
   if [[ -f "$mf" ]]; then
-    promoted=$(sed -n '/^## Auto-Promoted Rules/,/^##/p' "$mf" 2>/dev/null | grep "^- PROMOTED:" | head -10)
+    promoted=$(sed -n '/^## Auto-Promoted Rules/,/^##/p' "$mf" 2>/dev/null | grep "^- PROMOTED:" | head -10 || true)
     [[ -n "$promoted" ]] && CONSTRAINTS="${CONSTRAINTS}
 [AUTO-PROMOTED RULES — 반복 실패 패턴, 반드시 회피]:
 ${promoted}"
@@ -144,7 +144,7 @@ append_success() {
 
 extract_files_from_error() {
   # errorTrace에서 "src/..." 패턴 역추적
-  echo "$1" | grep -oE 'src/[^ :()]+\.(ts|tsx|js|jsx)' | sort -u | head -5
+  echo "$1" | grep -oE 'src/[^ :()]+\.(ts|tsx|js|jsx)' | sort -u | head -5 || true
 }
 
 build_smart_context() {
@@ -535,7 +535,7 @@ $changed_files
     fi
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 결과: $val_result"
     if [[ "$val_result" != "PASS" ]]; then
-      error_trace=$(echo "$val_out" | grep -A5 "FAIL" | head -6)
+      error_trace=$(echo "$val_out" | grep -A5 "FAIL" | head -6 || true)
       [[ -z "$error_trace" ]] && error_trace=$(echo "$val_out" | tail -6)
       fail_type="validator_fail"
       append_failure "validator_fail" "$error_trace"
@@ -581,7 +581,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       fi
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
       if [[ "$pr_result" != "PASS" ]]; then
-        error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10)
+        error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10 || true)
         [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
         fail_type="pr_fail"
         append_failure "pr_fail" "$error_trace"
@@ -595,7 +595,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
       hlog "▶ security-reviewer 시작 (deep only, timeout=180s)"
       kill_check
-      changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ')
+      changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ' || true)
       AGENT_EXIT=0
       _agent_call "security-reviewer" 180 \
         "보안 리뷰 대상 파일:
@@ -629,7 +629,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
       if [[ "$sec_result" != "PASS" ]]; then
         # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 FAIL 도달 시 HIGH/MEDIUM 존재
-        error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10)
+        error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10 || true)
         [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
         fail_type="security_fail"
         append_failure "security_fail" "$error_trace"
