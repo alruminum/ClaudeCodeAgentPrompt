@@ -35,9 +35,20 @@ rotate_harness_logs() {
 write_run_end() {
   [[ -z "$RUN_LOG" || ! -f "$RUN_LOG" ]] && return
   local result="${HARNESS_RESULT:-unknown}"
+  # 미설정(unknown) = 크래시/unhandled exit → HARNESS_CRASH로 마킹
+  if [[ "$result" == "unknown" ]]; then
+    result="HARNESS_CRASH"
+  fi
   local t_end; t_end=$(date +%s)
   printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s"}\n' \
     "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" >> "$RUN_LOG"
+  # 크래시/실패 시 자동 리뷰 트리거 (백그라운드 — 하네스 종료를 블로킹하지 않음)
+  if [[ "$result" == "HARNESS_CRASH" || "$result" == "IMPLEMENTATION_ESCALATE" ]]; then
+    local review_script="${HOME}/.claude/scripts/harness-review.py"
+    if [[ -f "$review_script" ]]; then
+      python3 "$review_script" "$RUN_LOG" > "${RUN_LOG%.jsonl}_review.txt" 2>&1 &
+    fi
+  fi
 }
 
 # ── 킬 스위치 체크 (executor + loop 양쪽에서 사용) ────────────────────

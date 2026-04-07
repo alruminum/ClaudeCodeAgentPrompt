@@ -86,7 +86,7 @@ append_failure() {
 
   # ── B2: 실패 패턴 자동 프로모션 (같은 impl+type 3회 → Auto-Promoted Rules) ──
   local pattern_key="${impl_name}|${type}"
-  local count; count=$(grep -c "$pattern_key" "$MEM_LOCAL" 2>/dev/null || echo 0)
+  local count; count=$(grep -c "$pattern_key" "$MEM_LOCAL" 2>/dev/null) || count=0
   if [[ $count -ge 3 ]]; then
     # Auto-Promoted Rules 섹션이 없으면 생성
     if ! grep -q "## Auto-Promoted Rules" "$MEM_LOCAL" 2>/dev/null; then
@@ -361,7 +361,9 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
-    mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+    commit_files=()
+    while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
+      < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
     if [[ ${#commit_files[@]} -gt 0 ]]; then
       git add -- "${commit_files[@]}"
       git commit -m "$(generate_commit_msg) [fast-mode]"
@@ -679,7 +681,9 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
     # ── git commit ────────────────────────────────────────────────
     # test-engineer가 테스트 파일 추가했을 수 있으므로 commit 직전 재계산
     # 배열로 관리해 파일명 공백 이슈 방지
-    mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+    commit_files=()
+    while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
+      < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
     if [[ ${#commit_files[@]} -gt 0 ]]; then
       git add -- "${commit_files[@]}"
     else

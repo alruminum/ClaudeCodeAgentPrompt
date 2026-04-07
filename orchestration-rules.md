@@ -445,8 +445,10 @@ READY_FOR_IMPL
 물리적 강제: 현재는 written policy. 향후 `orch-rules-first.py` 확장으로 물리적 차단 예정.
 
 **10. 하네스 완료 후 자동 리뷰**
-HARNESS_DONE / IMPLEMENTATION_ESCALATE / KNOWN_ISSUE 수신 후,
+HARNESS_DONE / IMPLEMENTATION_ESCALATE / HARNESS_CRASH / KNOWN_ISSUE 수신 후,
 메인 Claude는 `/harness-review`를 자동 실행한다.
+HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동 트리거하므로,
+결과 파일(`*_review.txt`)이 이미 존재할 수 있다.
 리뷰 결과에 WASTE 패턴이 발견되면 유저에게 개선 제안을 포함해 보고한다.
 유저 보고 전 리뷰 완료를 기다린다 (블로킹).
 
@@ -461,7 +463,7 @@ HARNESS_DONE / IMPLEMENTATION_ESCALATE / KNOWN_ISSUE 수신 후,
 | 킬 스위치 | `HARNESS_KILLED` |
 | 비용 상한 초과 | `HARNESS_BUDGET_EXCEEDED` |
 | bugfix engineer_direct 성공 | `HARNESS_DONE` |
-| 미설정 시 | `unknown` |
+| 크래시/unhandled exit | `HARNESS_CRASH` (write_run_end이 unknown 감지 시 자동 변환) |
 
 **11. 하네스 Bash 포어그라운드 강제**
 메인 Claude가 `harness-executor.sh` / `harness-loop.sh`를 Bash로 실행할 때

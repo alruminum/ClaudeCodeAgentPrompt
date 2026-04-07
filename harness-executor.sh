@@ -24,7 +24,7 @@ command -v timeout &>/dev/null || timeout() {
 source "${HOME}/.claude/harness-utils.sh"
 
 MODE=${1:-""}; shift || true
-IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; BUG_DESC=""; CONTEXT=""; DEPTH="auto"
+IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; BUG_DESC=""; CONTEXT=""; DEPTH="auto"; CONSTRAINTS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -352,7 +352,9 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
       bf_result=$(grep -oE 'BUGFIX_PASS|BUGFIX_FAIL' "/tmp/${PREFIX}_val_bf_out.txt" | head -1 || echo "UNKNOWN")
 
       if [[ "$bf_result" == "BUGFIX_PASS" ]]; then
-        mapfile -t commit_files < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+        commit_files=()
+        while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
+          < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
         if [[ ${#commit_files[@]} -gt 0 ]]; then
           git add -- "${commit_files[@]}"
           git commit -m "$(generate_commit_msg) [bugfix-direct]"
