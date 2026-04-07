@@ -123,6 +123,16 @@ rollback_attempt() {
   hlog "ROLLBACK attempt=${attempt_num} — stashed"
 }
 
+check_agent_output() {
+  local agent_name="$1" out_file="$2"
+  if [[ ! -s "$out_file" ]]; then
+    hlog "⚠️ ${agent_name} 출력 파일 없음 또는 비어있음 — agent 호출 실패"
+    echo "[HARNESS] ⚠️ ${agent_name} agent가 출력을 생성하지 못함"
+    return 1
+  fi
+  return 0
+}
+
 append_success() {
   local attempt_num="$1"
   local date_str; date_str=$(date +%Y-%m-%d)
@@ -425,6 +435,16 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
+    # ── S39: engineer 출력 가드 ──────────────────────────────────────
+    if ! check_agent_output "engineer" "/tmp/${PREFIX}_eng_out.txt"; then
+      fail_type="autocheck_fail"
+      error_trace="engineer agent produced no output (exit=${AGENT_EXIT})"
+      append_failure "$fail_type" "$error_trace"
+      rollback_attempt $attempt
+      attempt=$((attempt+1))
+      continue
+    fi
+
     # ── S17-2: pre-evaluator automated_checks ────────────────────────
     if ! run_automated_checks "$IMPL_FILE"; then
       error_trace=$(cat "/tmp/${PREFIX}_autocheck_fail.txt" 2>/dev/null || echo "automated_checks FAIL")
@@ -450,6 +470,16 @@ $changed_files
     hlog "◀ test-engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_te_out.txt" 2>/dev/null || echo 0)bytes)"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ test-engineer timeout — skip"; fi
     budget_check "test-engineer" "/tmp/${PREFIX}_te_out.txt"
+
+    # ── S39: test-engineer 출력 가드 ─────────────────────────────────
+    if ! check_agent_output "test-engineer" "/tmp/${PREFIX}_te_out.txt"; then
+      fail_type="test_fail"
+      error_trace="test-engineer agent produced no output (exit=${AGENT_EXIT})"
+      append_failure "$fail_type" "$error_trace"
+      rollback_attempt $attempt
+      attempt=$((attempt+1))
+      continue
+    fi
 
     # ── Ground truth: 실제 테스트 실행 (LLM 주장과 독립) ──────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — npx vitest run"
@@ -483,6 +513,17 @@ $changed_files
     hlog "◀ validator 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo 0)bytes)"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ validator timeout — skip"; fi
     budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
+
+    # ── S39: validator 출력 가드 ─────────────────────────────────────
+    if ! check_agent_output "validator" "/tmp/${PREFIX}_val_out.txt"; then
+      fail_type="validator_fail"
+      error_trace="validator agent produced no output (exit=${AGENT_EXIT})"
+      append_failure "$fail_type" "$error_trace"
+      rollback_attempt $attempt
+      attempt=$((attempt+1))
+      continue
+    fi
+
     val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
     if echo "$val_out" | grep -qE "^PASS$"; then
       val_result="PASS"
@@ -518,6 +559,17 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
       budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
+
+      # ── S39: pr-reviewer 출력 가드 ───────────────────────────────────
+      if ! check_agent_output "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"; then
+        fail_type="pr_fail"
+        error_trace="pr-reviewer agent produced no output (exit=${AGENT_EXIT})"
+        append_failure "$fail_type" "$error_trace"
+        rollback_attempt $attempt
+        attempt=$((attempt+1))
+        continue
+      fi
+
       pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
       if echo "$pr_out" | grep -qE "^LGTM$"; then
         pr_result="PASS"
@@ -554,6 +606,17 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       hlog "◀ security-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo 0)bytes)"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ security-reviewer timeout — skip"; fi
       budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
+
+      # ── S39: security-reviewer 출력 가드 ─────────────────────────────
+      if ! check_agent_output "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"; then
+        fail_type="security_fail"
+        error_trace="security-reviewer agent produced no output (exit=${AGENT_EXIT})"
+        append_failure "$fail_type" "$error_trace"
+        rollback_attempt $attempt
+        attempt=$((attempt+1))
+        continue
+      fi
+
       sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo "")
       if echo "$sec_out" | grep -qE "^SECURE$"; then
         sec_result="PASS"
