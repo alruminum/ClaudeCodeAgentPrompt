@@ -57,6 +57,8 @@ _agent_call() {
 
   # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result + cost 추출 → out_file
   # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
+  # NOTE: python3이 result를 out_file에 직접 쓴다 (stdout redirect 대신 파일 직접 쓰기).
+  #       macOS에서 파이프라인 SIGPIPE/signal로 stdout flush가 안 되는 문제 방지.
   HARNESS_INTERNAL=1 timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
     --output-format stream-json --include-partial-messages \
     --max-budget-usd 2.00 \
@@ -67,6 +69,7 @@ import sys, json
 result = ""
 cost = 0.0
 cost_file = sys.argv[1] if len(sys.argv) > 1 else "/dev/null"
+out_file = sys.argv[2] if len(sys.argv) > 2 else "/dev/null"
 for line in sys.stdin:
     line = line.strip()
     if not line: continue
@@ -82,8 +85,12 @@ try:
         f.write(str(cost))
 except Exception:
     pass
-print(result, end="")
-' "$cost_file" > "$out_file" 2>&1 || _call_exit=$?
+try:
+    with open(out_file, "w") as f:
+        f.write(result)
+except Exception:
+    pass
+' "$cost_file" "$out_file" 2>/dev/null || _call_exit=$?
 
   local t_end; t_end=$(date +%s)
   local agent_cost; agent_cost=$(cat "$cost_file" 2>/dev/null || echo "0")
