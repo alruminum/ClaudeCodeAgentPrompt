@@ -15,3 +15,7 @@ ide/
 stats-cache.json
 mcp-needs-auth-cache.json
 *.jsonl
+.DS_Store
+image-cache/
+tasks/
+agents/archive/
