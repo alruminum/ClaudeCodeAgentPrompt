@@ -60,7 +60,7 @@
 | **S50** | **harness-review 비정상 종료 진단 — ABNORMAL_END/ROUTING_MISMATCH/MISSING_PHASE/EARLY_EXIT 4개 패턴** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
-| S12 | 루프 체크포인트 재개 (세션 중단 후 이어받기) | S | ⬜ 보류 |
+| S12 | 루프 체크포인트 재개 (루프 C/D 상태 감지 + 재진입 스킵) | S | 🔧 진행 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
 | S14 | 커버리지 게이트 신규파일 60% | S | ⬜ 보류 |
 | S15 | BROWSER:DOM 자동 검증 (opt-in Playwright) | S | ⬜ 보류 |
@@ -334,18 +334,24 @@ attempt 2 → context = prev_attempt_summary + new_error_trace  ← 신규
 
 ---
 
-### ⬜ S12 — 루프 체크포인트 재개
+### ✅ S12 — 루프 C/D 상태 감지 + 재진입
 
-세션 만료로 루프 중단 시 처음부터 재시작하는 비용 제거.
+**배경**: 루프 중단 후 재진입 시 처음부터 재시작하는 비용 제거. JSON 체크포인트 대신 기존 시그널(impl 파일, GitHub issue, 플래그)을 활용한 경량 감지.
 
-```json
-/tmp/{p}_loop_state.json
-{ "attempt": 2, "last_stage": "test-engineer", "fail_type": "validator_fail" }
-→ 세션 재시작 시 해당 stage부터 재개
-```
+**루프 D (bugfix) 재진입**:
+1. impl 파일 존재 → QA + architect 스킵 → engineer 직접
+2. GitHub issue에 QA 리포트 → QA 스킵 → architect부터
+3. 둘 다 없음 → QA부터 (기본)
 
-**재검토 트리거**: 세션 중단으로 실제 손해 경험 시
-**변경**: `harness-executor.sh`, `harness-loop.sh`
+**루프 C (impl) 재진입**:
+1. `plan_validation_passed` 플래그 + impl 존재 → impl2로 전환
+2. impl 존재 → architect 스킵 → validator Plan Validation
+3. 둘 다 없음 → architect부터 (기본 — Phase 0.7이 이미 처리)
+
+**`_run_bugfix_direct()` 개선**:
+- impl 파일이 이미 있으면 architect Mode F 스킵
+
+**변경 파일**: `orchestration-rules.md`, `harness-executor.sh`
 
 ---
 

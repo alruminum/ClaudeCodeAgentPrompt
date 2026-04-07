@@ -87,6 +87,16 @@ LOOP_SCRIPT="${HOME}/.claude/harness-loop.sh"
 # mode: impl (Phase 0.5 → 0.7 → 0.8 → PLAN_VALIDATION_PASS)
 # ══════════════════════════════════════════════════════════════════════
 run_impl() {
+  # ── 재진입 상태 감지 ──
+  # plan_validation_passed 플래그 + impl 파일 있으면 → impl2로 바로 전환
+  if [[ -f "/tmp/${PREFIX}_plan_validation_passed" && -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] 재진입: plan_validation_passed + impl 존재 → impl2 전환"
+    [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
+    echo "[HARNESS] depth: $DEPTH"
+    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH"
+    return
+  fi
+
   # Phase 0.5 — UI 키워드 감지
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     ui_kw=$(grep -iE "화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이" "$IMPL_FILE" || true)
@@ -209,6 +219,44 @@ run_design() {
 run_bugfix() {
   rotate_harness_logs "$PREFIX" "bugfix"
 
+  # ── 재진입 상태 감지 (역순 체크) ──
+
+  # 1. impl 파일 있으면 → QA + architect 스킵, engineer 직접
+  if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] 재진입: impl 존재 ($IMPL_FILE) → engineer 직접"
+    qa_out="[재진입 — impl 파일 기반. QA 스킵]"
+    _run_bugfix_direct
+    return
+  fi
+
+  # 2. GitHub issue에 QA 리포트 있으면 → QA 스킵, architect부터
+  if [[ -n "$ISSUE_NUM" && "$ISSUE_NUM" != "N" ]]; then
+    local issue_body
+    issue_body=$(gh issue view "$ISSUE_NUM" --json body -q .body 2>/dev/null || echo "")
+    if echo "$issue_body" | grep -q 'QA_REPORT\|FUNCTIONAL_BUG\|SPEC_ISSUE\|DESIGN_ISSUE'; then
+      echo "[HARNESS] 재진입: GitHub issue #$ISSUE_NUM에 QA 리포트 존재 → QA 스킵"
+      qa_out="$issue_body"
+
+      # 타입 기반 라우팅
+      local routing="architect"
+      if echo "$qa_out" | grep -q 'FUNCTIONAL_BUG'; then
+        routing="engineer_direct"
+      elif echo "$qa_out" | grep -q 'DESIGN_ISSUE'; then
+        routing="design"
+      fi
+      echo "[HARNESS] 재진입 routing: $routing"
+
+      case "$routing" in
+        engineer_direct) _run_bugfix_direct ;;
+        design) run_design ;;
+        *) _run_bugfix_full ;;
+      esac
+      return
+    fi
+  fi
+
+  # 3. 신규 — QA부터 시작
+
   # ── Phase B1: qa 분석 ──
   echo "[HARNESS] Phase B1 — qa 호출 중"
   _agent_call "qa" 300 \
@@ -248,16 +296,21 @@ run_bugfix() {
 
 # ── engineer 직접 경로: architect Mode F → engineer → vitest → validator Mode D → commit ──
 _run_bugfix_direct() {
-  echo "[HARNESS] Phase B2 — architect Bugfix Plan(Mode F) 호출 중"
-  _agent_call "architect" 300 \
-    "Bugfix Plan(Mode F) — ${qa_out} issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_arch_out.txt"
-  IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
+  # impl 파일이 이미 있으면 architect 스킵
+  if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] impl 존재 ($IMPL_FILE) → architect 스킵"
+  else
+    echo "[HARNESS] Phase B2 — architect Bugfix Plan(Mode F) 호출 중"
+    _agent_call "architect" 300 \
+      "Bugfix Plan(Mode F) — ${qa_out} issue: #$ISSUE_NUM" \
+      "/tmp/${PREFIX}_arch_out.txt"
+    IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
 
-  if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
-    echo "[HARNESS] Mode F impl 생성 실패 → full 경로로 폴백"
-    _run_bugfix_full
-    return
+    if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
+      echo "[HARNESS] Mode F impl 생성 실패 → full 경로로 폴백"
+      _run_bugfix_full
+      return
+    fi
   fi
 
   local attempt=0
