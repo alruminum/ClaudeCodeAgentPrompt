@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-07 (RF1 — 5f19c2a 복원 리팩토링 + Stop hook)
+> 최종 업데이트: 2026-04-07 (S34+S35+S39+S40)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -130,6 +130,10 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S28 | _call_haiku() API 직접 호출 | `harness-router.py` _call_haiku() — urllib API 직접(5s) + claude --agent socrates CLI 폴백(10s) | 2026-04-07 |
 | S33 | Stop hook 종료 차단 | `hooks/harness-stop-gate.sh` — harness_active 존재 시 exit 2. kill switch 시 즉시 허용. `settings.json` Stop hook 등록 | 2026-04-07 |
 | RF1 | 5f19c2a 복원 리팩토링 | Popen 전면 제거. 라우터=분류+힌트, Claude=판단+실행 원칙 복원. S27/S28/S18/Rate Limiter/Kill Switch 선별 병합 | 2026-04-07 |
+| S34 | Bash timeout 환경변수 | `settings.json` env: `BASH_DEFAULT_TIMEOUT_MS=600000`(10분), `BASH_MAX_TIMEOUT_MS=1800000`(30분) | 2026-04-07 |
+| S35 | executor 경로 폴백 | `harness-router.py` — 프로젝트 `.claude/harness-executor.sh` 먼저, 없으면 `~/.claude/` 폴백 | 2026-04-07 |
+| S39 | agent out_file 가드 | `harness-loop.sh` `check_agent_output()` — 5곳 전수 적용. `harness-utils.sh` out_file 사전 touch | 2026-04-07 |
+| S40 | rollback_attempt | `harness-loop.sh` `rollback_attempt()` — 실패 시 `git stash push --include-untracked`. 5곳 실패 분기 적용 | 2026-04-07 |
 
 ---
 

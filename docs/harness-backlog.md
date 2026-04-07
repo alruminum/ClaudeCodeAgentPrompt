@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-07 (5f19c2a 복원 리팩토링 + Stop hook)
+> 최종 업데이트: 2026-04-07 (S34+S35+S39 + rollback_attempt)
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -47,6 +47,10 @@
 | **S27** | **fast_classify() — regex 2단계 즉시 분류** | S | ✅ 완료 |
 | **S28** | **_call_haiku() — urllib API 직접 + CLI(socrates) 폴백** | S | ✅ 완료 |
 | **S33** | **Stop hook — harness_active 물리적 종료 차단** | S | ✅ 완료 |
+| **S34** | **Bash timeout 환경변수 (10분 기본 / 30분 상한)** | S | ✅ 완료 |
+| **S35** | **executor 경로 폴백 (프로젝트 → 글로벌)** | S | ✅ 완료 |
+| **S39** | **agent out_file 가드 — check_agent_output() 5곳 전수 적용** | S | ✅ 완료 |
+| **S40** | **rollback_attempt — 실패 시 git stash로 오염 코드 격리** | S | ✅ 완료 |
 | **RF1** | **5f19c2a 복원 리팩토링 — Popen 전면 제거, 라우터=분류+힌트** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
@@ -636,3 +640,56 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 **제거된 것**: Popen spawn, Atomic Lock, JSON Lease, heartbeat, try_spawn_harness(), run_harness(), get_harness_sh()
 
 **변경 파일**: `hooks/harness-router.py`, `orchestration-rules.md`, `hooks/harness-stop-gate.sh`, `settings.json`
+
+---
+
+### ✅ S34 — Bash timeout 환경변수
+
+**배경**: Claude Code 내부 Bash 기본 timeout 2분. 하네스 루프에서 engineer가 2분 넘기면 강제 종료.
+
+**구현 내용**:
+- `~/.claude/settings.json` 최상위 `env` 키 추가
+- `BASH_DEFAULT_TIMEOUT_MS=600000` (10분 기본)
+- `BASH_MAX_TIMEOUT_MS=1800000` (30분 상한)
+
+**변경 파일**: `settings.json`
+
+---
+
+### ✅ S35 — executor 경로 폴백
+
+**배경**: 프로젝트 `.claude/harness-executor.sh`가 없으면 `bash: No such file or directory` 에러.
+
+**구현 내용**:
+- `harness-router.py`에서 executor 경로 자동 감지
+- 프로젝트 `.claude/harness-executor.sh` 먼저, 없으면 `~/.claude/harness-executor.sh` 폴백
+- 디렉티브 3곳 모두 동적 경로 사용
+
+**변경 파일**: `hooks/harness-router.py`
+
+---
+
+### ✅ S39 — agent out_file 가드
+
+**배경**: `_agent_call`이 출력 없이 실패하면 out_file 미생성 → `cat`에서 `set -e` 크래시.
+
+**구현 내용**:
+- `check_agent_output()` 헬퍼 — 파일 미존재 또는 비어있으면 return 1
+- 5곳 전수 적용: engineer → test-engineer → validator → pr-reviewer → security-reviewer
+- 실패 시 graceful retry (append_failure → rollback_attempt → continue)
+- `harness-utils.sh` `_agent_call`에서 out_file 사전 touch (이중 보호)
+
+**변경 파일**: `harness-loop.sh`, `harness-utils.sh`
+
+---
+
+### ✅ S40 — rollback_attempt (실패 시 git stash 격리)
+
+**배경**: 실패한 attempt의 변경사항이 다음 attempt에 오염.
+
+**구현 내용**:
+- `rollback_attempt()` 헬퍼 — `git stash push --include-untracked -m "harness-failed-attempt-N"`
+- 5곳 실패 분기(autocheck/test/validator/pr/security) continue 직전에 호출
+- 스태시는 `git stash list`로 확인/복구 가능
+
+**변경 파일**: `harness-loop.sh`
