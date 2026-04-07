@@ -159,6 +159,7 @@ src/** 변경 있음?
     통과                                               │
       ↓  ←─────────────────────────────────────────────┘
   validator [Code Validation]
+    마커 파싱: 출력에서 PASS/FAIL 포함 여부로 판정 (공백·설명 텍스트 허용)
     FAIL ────────────────────────────────────────── → FAIL
     PASS
       ↓
@@ -472,7 +473,7 @@ HARNESS_DONE / IMPLEMENTATION_ESCALATE / KNOWN_ISSUE 수신 후,
 | 에이전트 | 담당 | 절대 금지 |
 |----------|------|-----------|
 | architect | 설계 문서 · impl 파일 작성 | src/** 수정 |
-| engineer | 소스 코드 구현 | 설계 문서 수정 |
+| engineer | 소스 코드 구현 | 설계 문서 수정, Agent 도구 사용 |
 | validator | PASS/FAIL 판정 리포트 | 파일 수정 |
 | designer | variant 3개 생성 | src/** 수정 |
 | design-critic | PICK/ITERATE/ESCALATE 판정 | 파일 수정 |

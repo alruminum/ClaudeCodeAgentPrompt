@@ -60,6 +60,7 @@
 | **S50** | **harness-review 비정상 종료 진단 — ABNORMAL_END/ROUTING_MISMATCH/MISSING_PHASE/EARLY_EXIT 4개 패턴** | S | ✅ 완료 |
 | **S51** | **harness-review 토큰 낭비 진단 — CONTEXT_EXCESS/SPARSE_PROMPT/DUPLICATE_READ 3개 패턴** | S | ✅ 완료 |
 | **S52** | **run_end에 result 마커 기록 — EARLY_EXIT 오탐 수정** | S | ✅ 완료 |
+| **S53** | **로그 #8/#10 분석 기반 5건 수정 — validator 파싱/test-engineer timeout/engineer Agent 금지/prompt 축소** | S | ✅ 완료 |
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (루프 C/D 상태 감지 + 재진입 스킵) | S | 🔧 진행 |

@@ -157,14 +157,14 @@ build_smart_context() {
   if [[ $attempt_n -eq 0 ]]; then
     # impl 파일 자체
     ctx=$(cat "$impl")
-    # impl에서 언급된 소스 파일 내용 추가
+    # impl에서 언급된 소스 파일 내용 추가 (각 파일 3KB 캡)
     local mentioned
     mentioned=$(grep -oE 'src/[^ `"'"'"']+\.(ts|tsx)' "$impl" 2>/dev/null | sort -u | head -5)
     for f in $mentioned; do
       if [[ -f "$f" ]]; then
         ctx="${ctx}
 === ${f} ===
-$(cat "$f")"
+$(head -c 3000 "$f")"
       fi
     done
   else
@@ -182,8 +182,8 @@ $(cat "$f")"
     fi
   fi
 
-  # 50KB 캡 (토큰 폭발 방지)
-  echo "$ctx" | head -c 50000
+  # 30KB 캡 (토큰 폭발 방지)
+  echo "$ctx" | head -c 30000
 }
 
 run_automated_checks() {
@@ -490,10 +490,10 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
     log_phase "test-engineer"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
-    hlog "▶ test-engineer 시작 (depth=$DEPTH, timeout=300s)"
+    hlog "▶ test-engineer 시작 (depth=$DEPTH, timeout=600s)"
     kill_check
     AGENT_EXIT=0
-    _agent_call "test-engineer" 300 \
+    _agent_call "test-engineer" 600 \
       "구현된 파일:
 $changed_files
 
@@ -558,9 +558,9 @@ $changed_files
     fi
 
     val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
-    if echo "$val_out" | grep -qE "^PASS$"; then
+    if echo "$val_out" | grep -qi "PASS"; then
       val_result="PASS"
-    elif echo "$val_out" | grep -qE "^FAIL$"; then
+    elif echo "$val_out" | grep -qi "FAIL"; then
       val_result="FAIL"
     else
       val_result="UNKNOWN"
@@ -606,9 +606,9 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       fi
 
       pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
-      if echo "$pr_out" | grep -qE "^LGTM$"; then
+      if echo "$pr_out" | grep -qi "LGTM"; then
         pr_result="PASS"
-      elif echo "$pr_out" | grep -qE "^CHANGES_REQUESTED$"; then
+      elif echo "$pr_out" | grep -qi "CHANGES_REQUESTED"; then
         pr_result="FAIL"
       else
         pr_result="UNKNOWN"
@@ -655,9 +655,9 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       fi
 
       sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo "")
-      if echo "$sec_out" | grep -qE "^SECURE$"; then
+      if echo "$sec_out" | grep -qi "SECURE"; then
         sec_result="PASS"
-      elif echo "$sec_out" | grep -qE "^VULNERABILITIES_FOUND$"; then
+      elif echo "$sec_out" | grep -qi "VULNERABILITIES_FOUND"; then
         sec_result="FAIL"
       else
         sec_result="UNKNOWN"

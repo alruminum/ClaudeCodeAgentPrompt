@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-07 (S45+S46+S47+S48+S49+S50+S12+S51+S52)
+> 최종 업데이트: 2026-04-07 (S45+S46+S47+S48+S49+S50+S12+S51+S52+S53)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -144,6 +144,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S12 | 루프 C/D 재진입 상태 감지 | run_bugfix: impl→engineer직접, issue QA리포트→architect. run_impl: plan_validation_passed→impl2. _run_bugfix_direct: impl 있으면 architect 스킵 | 2026-04-07 |
 | S51 | harness-review 토큰 낭비 진단 | WASTE_CONTEXT_EXCESS(역할별 프롬프트 상한), WASTE_SPARSE_PROMPT(컨텍스트 부족→재조회), WASTE_DUPLICATE_READ(3+에이전트 동일파일) | 2026-04-07 |
 | S52 | run_end result 마커 기록 | HARNESS_RESULT 환경변수 → write_run_end() result 필드. 6개 종료 경로 전수 설정. harness-review EARLY_EXIT 오탐 수정 | 2026-04-07 |
+| S53 | 로그 분석 기반 5건 수정 | validator/pr/security 마커 파싱 완화(`grep -qi`), test-engineer timeout 300→600s, engineer Agent 금지, build_smart_context 소스파일 3KB캡+전체 30KB캡 | 2026-04-07 |
 
 ---
 

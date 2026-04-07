@@ -26,7 +26,7 @@ INFRA_PATTERNS = [
 
 EXPECTED_ELAPSED = {
     "engineer": 900,
-    "test-engineer": 300,
+    "test-engineer": 600,
     "validator": 300,
     "pr-reviewer": 180,
     "security-reviewer": 180,
