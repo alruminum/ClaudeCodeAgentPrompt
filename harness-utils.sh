@@ -40,6 +40,16 @@ write_run_end() {
     "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" >> "$RUN_LOG"
 }
 
+# ── 킬 스위치 체크 (executor + loop 양쪽에서 사용) ────────────────────
+kill_check() {
+  if [ -f "/tmp/${PREFIX}_harness_kill" ]; then
+    rm -f "/tmp/${PREFIX}_harness_active" "/tmp/${PREFIX}_harness_kill"
+    export HARNESS_RESULT="HARNESS_KILLED"
+    echo "HARNESS_KILLED: 사용자 요청으로 중단됨"
+    exit 0
+  fi
+}
+
 # ── 에이전트 호출 래퍼 ────────────────────────────────────────────────
 # 사용법: _agent_call <agent> <timeout_secs> <prompt> <out_file>
 # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result 텍스트 추출 → out_file

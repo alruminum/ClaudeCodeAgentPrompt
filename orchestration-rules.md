@@ -432,6 +432,10 @@ validator [수용 기준 메타데이터 감사]  ← 정책 8 게이트
 READY_FOR_IMPL
 ```
 
+**9a. kill_check 공용화**
+`kill_check()` 함수는 `harness-loop.sh`와 `harness-executor.sh` 양쪽에서 사용한다.
+`harness-utils.sh`에 정의하여 양쪽에서 source로 공유한다.
+
 **9. 하네스 관련 수정 순서**
 `harness-executor.sh` / `harness-loop.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` / 에이전트 파일 변경 시:
 1. **먼저** `docs/harness-backlog.md` — 해당 항목 상태 업데이트 또는 신규 항목 추가

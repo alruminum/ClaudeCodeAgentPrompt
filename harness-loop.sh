@@ -310,15 +310,7 @@ trap cleanup EXIT
 TOTAL_COST=0
 MAX_TOTAL_COST=10  # 달러 — 전체 루프 비용 상한
 
-kill_check() {
-  if [ -f "/tmp/${PREFIX}_harness_kill" ]; then
-    hlog "🛑 킬 스위치 감지 — 즉시 중단"
-    rm -f "/tmp/${PREFIX}_harness_active" "/tmp/${PREFIX}_harness_kill"
-    export HARNESS_RESULT="HARNESS_KILLED"
-    echo "HARNESS_KILLED: 사용자 요청으로 중단됨"
-    exit 0
-  fi
-}
+# kill_check() → harness-utils.sh로 이동 (executor와 공유)
 
 budget_check() {
   local agent_name="$1" out_file="$2"
