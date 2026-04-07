@@ -402,7 +402,13 @@ READY_FOR_IMPL
 순서 위반(backlog 없이 수정, state 나중에 안 하는 것) 금지.
 물리적 강제: 현재는 written policy. 향후 `orch-rules-first.py` 확장으로 물리적 차단 예정.
 
-**10. 하네스 Bash 포어그라운드 강제**
+**10. 하네스 완료 후 자동 리뷰**
+HARNESS_DONE / IMPLEMENTATION_ESCALATE / KNOWN_ISSUE 수신 후,
+메인 Claude는 `/harness-review`를 자동 실행한다.
+리뷰 결과에 WASTE 패턴이 발견되면 유저에게 개선 제안을 포함해 보고한다.
+유저 보고 전 리뷰 완료를 기다린다 (블로킹).
+
+**11. 하네스 Bash 포어그라운드 강제**
 메인 Claude가 `harness-executor.sh` / `harness-loop.sh`를 Bash로 실행할 때
 **반드시 포어그라운드**(기본값)로 실행한다. `run_in_background` 금지.
 포어그라운드면 Bash 완료까지 Claude가 블로킹되므로 Stop 트리거 자체가 발생하지 않는다.

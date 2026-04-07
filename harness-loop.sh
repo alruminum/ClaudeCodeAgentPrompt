@@ -120,6 +120,8 @@ rollback_attempt() {
   local attempt_num="$1"
   git stash push --include-untracked \
     -m "harness-failed-attempt-${attempt_num}" 2>/dev/null || true
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"rollback","attempt":%d,"t":%d}\n' \
+    "$attempt_num" "$(date +%s)" >> "$RUN_LOG"
   hlog "ROLLBACK attempt=${attempt_num} — stashed"
 }
 
@@ -285,6 +287,18 @@ HLOG="/tmp/${PREFIX}-harness-debug.log"
 ATTEMPT=0
 hlog() { echo "[$(date +%H:%M:%S)] [attempt=${ATTEMPT}] $*" | tee -a "$HLOG"; }
 
+# ── 구조화 이벤트 로그 (JSONL) ────────────────────────────────────────
+log_decision() {
+  local key="$1" value="$2" reason="$3"
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"decision","key":"%s","value":"%s","reason":"%s","t":%d,"attempt":%d}\n' \
+    "$key" "$value" "$reason" "$(date +%s)" "$ATTEMPT" >> "$RUN_LOG"
+}
+log_phase() {
+  local phase="$1"
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"phase","name":"%s","t":%d,"attempt":%d}\n' \
+    "$phase" "$(date +%s)" "$ATTEMPT" >> "$RUN_LOG"
+}
+
 # ── harness_active 플래그 정리 (성공/실패 모두) ────────────────────────
 cleanup() {
   rm -f "/tmp/${PREFIX}_harness_active"
@@ -332,7 +346,10 @@ if [[ "$MODE" == "impl2" ]]; then
   # ── fast mode: engineer → commit (테스트·리뷰·보안 스킵) ─────────────
   if [[ "$DEPTH" == "fast" ]]; then
     hlog "=== 하네스 루프 시작 (depth=fast) ==="
+    [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"fast","max_retries":1,"constraints_chars":%d}\n' \
+      "$IMPL_FILE" "$ISSUE_NUM" "${#CONSTRAINTS}" >> "$RUN_LOG"
     kill_check
+    log_phase "engineer"
     echo "[HARNESS/fast] engineer 호출 중 (테스트·리뷰·보안 스킵)"
     context=$(cat "$IMPL_FILE" | head -c 30000)
     hlog "▶ engineer 시작 (depth=fast, timeout=900s)"
@@ -373,6 +390,10 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
   error_trace=""
   fail_type=""
   hlog "=== 하네스 루프 시작 (depth=$DEPTH, max_retries=$MAX) ==="
+
+  # config 이벤트: 루프 설정 스냅샷
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"%s","max_retries":%d,"constraints_chars":%d}\n' \
+    "$IMPL_FILE" "$ISSUE_NUM" "$DEPTH" "$MAX" "${#CONSTRAINTS}" >> "$RUN_LOG"
 
   while [[ $attempt -lt $MAX ]]; do
     ATTEMPT=$attempt
@@ -417,7 +438,12 @@ ${error_1line}
       esac
     fi
 
+    # ── context 크기 기록 ──────────────────────────────────────────
+    [[ -n "$RUN_LOG" ]] && printf '{"event":"context","chars":%d,"attempt":%d}\n' \
+      "${#context}" "$attempt" >> "$RUN_LOG"
+
     # ── 워커 1: engineer ──────────────────────────────────────────
+    log_phase "engineer"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 호출 중"
     hlog "▶ engineer 시작 (depth=$DEPTH, timeout=900s)"
     kill_check
@@ -449,6 +475,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     if ! run_automated_checks "$IMPL_FILE"; then
       error_trace=$(cat "/tmp/${PREFIX}_autocheck_fail.txt" 2>/dev/null || echo "automated_checks FAIL")
       fail_type="autocheck_fail"
+      log_decision "fail_type" "$fail_type" "automated_checks failed"
       append_failure "autocheck_fail" "$error_trace"
       rollback_attempt $attempt
       attempt=$((attempt+1))
@@ -458,6 +485,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
 
     # ── 워커 2: test-engineer ─────────────────────────────────────
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
+    log_phase "test-engineer"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
     hlog "▶ test-engineer 시작 (depth=$DEPTH, timeout=300s)"
     kill_check
@@ -494,6 +522,7 @@ $changed_files
       echo "[HARNESS] TESTS_FAIL"
       error_trace=$(cat "/tmp/${PREFIX}_test_out.txt")
       fail_type="test_fail"
+      log_decision "fail_type" "$fail_type" "vitest exit=$test_exit"
       append_failure "test_fail" "$error_trace"
       rollback_attempt $attempt
       attempt=$((attempt+1))
@@ -503,6 +532,7 @@ $changed_files
     echo "[HARNESS] TESTS_PASS"
 
     # ── 워커 3: validator Mode B ──────────────────────────────────
+    log_phase "validator"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
     hlog "▶ validator 시작 (depth=$DEPTH, timeout=300s)"
     kill_check
@@ -538,6 +568,7 @@ $changed_files
       error_trace=$(echo "$val_out" | grep -A5 "FAIL" | head -6 || true)
       [[ -z "$error_trace" ]] && error_trace=$(echo "$val_out" | tail -6)
       fail_type="validator_fail"
+      log_decision "fail_type" "$fail_type" "validator result=$val_result"
       append_failure "validator_fail" "$error_trace"
       rollback_attempt $attempt
       attempt=$((attempt+1))
@@ -549,6 +580,7 @@ $changed_files
     if [[ "$DEPTH" == "deep" ]]; then
       git add -A
       diff_out=$(git diff HEAD 2>&1 | head -300)
+      log_phase "pr-reviewer"
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
       hlog "▶ pr-reviewer 시작 (deep only, timeout=180s)"
       kill_check
@@ -584,6 +616,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
         error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10 || true)
         [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
         fail_type="pr_fail"
+        log_decision "fail_type" "$fail_type" "pr-reviewer result=$pr_result"
         append_failure "pr_fail" "$error_trace"
         rollback_attempt $attempt
         attempt=$((attempt+1))
@@ -592,6 +625,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
       echo "[HARNESS] LGTM"
 
+      log_phase "security-reviewer"
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
       hlog "▶ security-reviewer 시작 (deep only, timeout=180s)"
       kill_check
@@ -632,6 +666,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
         error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10 || true)
         [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
         fail_type="security_fail"
+        log_decision "fail_type" "$fail_type" "security result=$sec_result"
         append_failure "security_fail" "$error_trace"
         rollback_attempt $attempt
         attempt=$((attempt+1))
@@ -657,6 +692,8 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
     fi
     git commit -m "$(generate_commit_msg)"
     commit_hash=$(git rev-parse --short HEAD)
+    [[ -n "$RUN_LOG" ]] && printf '{"event":"commit","hash":"%s","attempt":%d,"t":%d}\n' \
+      "$commit_hash" "$((attempt+1))" "$(date +%s)" >> "$RUN_LOG"
 
     # ── G6: PR body 생성 ─────────────────────────────────────────
     generate_pr_body $((attempt+1)) > "/tmp/${PREFIX}_pr_body.txt" 2>/dev/null || true

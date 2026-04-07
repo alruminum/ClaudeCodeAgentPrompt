@@ -30,6 +30,10 @@
 | S7 | 세션 컨텍스트 브리지 (새 세션 상태 자동 주입) | S | ✅ 완료 |
 | S8 | 하네스 smoke test (/harness-test) | S | ✅ 완료 |
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
+| **S45** | **JSONL 로그 보강 — agent_stats/decision/phase/context/config/rollback/commit 이벤트** | S | ✅ 완료 |
+| **S46** | **/harness-review 스킬 — JSONL 파서 + 8개 WASTE 패턴 진단** | S | ✅ 완료 |
+| **S47** | **HARNESS_DONE 후 자동 /harness-review 트리거 (정책 10)** | S | ✅ 완료 |
+| **S48** | **QA 에이전트 스코프 강화 — 인프라 탐색·Agent·Bash 금지 + agent_active 플래그 세팅** | S | ✅ 완료 |
 | **S16** | **~~Router spawn 안전화~~** → Popen 제거, Rate Limiter(5/60s) 유지 | S | ✅ 리팩 |
 | **S17** | **~~Gorchera 패턴~~** → JSON Lease 제거, pre-evaluator 유지 | S | ✅ 리팩 |
 | **S18** | **Adaptive Interview — AMBIGUOUS → Haiku Q&A → additionalContext 힌트** | S | ✅ 리팩 |

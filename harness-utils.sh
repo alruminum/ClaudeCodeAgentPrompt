@@ -45,13 +45,30 @@ write_run_end() {
 _agent_call() {
   local agent="$1" timeout_secs="$2" prompt="$3" out_file="$4"
   local cost_file="${out_file%.txt}_cost.txt"
+  local stats_file="${out_file%.txt}_stats.json"
   local t_start; t_start=$(date +%s)
   local _call_exit=0
 
   echo "0" > "$cost_file"
+  echo "{}" > "$stats_file"
   : > "$out_file"  # 파이프라인 실패 시에도 파일 존재 보장
-  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d}\n' \
-    "$agent" "$t_start" >> "$RUN_LOG"
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d,"prompt_chars":%d}\n' \
+    "$agent" "$t_start" "${#prompt}" >> "$RUN_LOG"
+
+  # 에이전트별 active 플래그 — agent-boundary.py가 이 플래그로 경로 제한 적용
+  local _prefix_for_flag=""
+  _prefix_for_flag=$(python3 -c '
+import json, os, re
+cp = os.path.join(os.getcwd(), ".claude", "harness.config.json")
+if os.path.exists(cp):
+    try:
+        print(json.load(open(cp)).get("prefix","proj"))
+    except: print("proj")
+else:
+    raw = os.path.basename(os.getcwd()).lower()
+    print(re.sub(r"[^a-z0-9]","",raw)[:8] or "proj")
+' 2>/dev/null || echo "proj")
+  touch "/tmp/${_prefix_for_flag}_${agent}_active"
 
   echo "[HARNESS] ${agent} 호출 중..."
 
@@ -60,7 +77,7 @@ _agent_call() {
   prompt="${_scope_prefix}
 ${prompt}"
 
-  # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result + cost 추출 → out_file
+  # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result + cost + stats 추출
   # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
   # NOTE: python3이 result를 out_file에 직접 쓴다 (stdout redirect 대신 파일 직접 쓰기).
   #       macOS에서 파이프라인 SIGPIPE/signal로 stdout flush가 안 되는 문제 방지.
@@ -71,36 +88,95 @@ ${prompt}"
     | tee -a "${RUN_LOG:-/dev/null}" \
     | python3 -c '
 import sys, json
+
 result = ""
 cost = 0.0
 cost_file = sys.argv[1] if len(sys.argv) > 1 else "/dev/null"
 out_file = sys.argv[2] if len(sys.argv) > 2 else "/dev/null"
+stats_file = sys.argv[3] if len(sys.argv) > 3 else "/dev/null"
+
+# Tool usage tracking
+tools = {}
+files_read = []
+cur_tool = ""
+cur_input = ""
+
 for line in sys.stdin:
     line = line.strip()
     if not line: continue
     try:
         o = json.loads(line)
-        if o.get("type") == "result":
+        t = o.get("type", "")
+
+        if t == "result":
             result = o.get("result", "")
             cost = float(o.get("total_cost_usd", 0) or 0)
+
+        elif t == "stream_event":
+            e = o.get("event", {})
+            et = e.get("type", "")
+
+            if et == "content_block_start":
+                cb = e.get("content_block", {})
+                if cb.get("type") == "tool_use":
+                    name = cb.get("name", "unknown")
+                    tools[name] = tools.get(name, 0) + 1
+                    cur_tool = name
+                    cur_input = ""
+
+            elif et == "content_block_delta":
+                d = e.get("delta", {})
+                if d.get("type") == "input_json_delta" and cur_tool in ("Read", "Glob", "Grep"):
+                    cur_input += d.get("partial_json", "")
+
+            elif et == "content_block_stop":
+                if cur_tool in ("Read", "Glob") and cur_input:
+                    try:
+                        inp = json.loads(cur_input)
+                        fp = inp.get("file_path", "") or inp.get("pattern", "")
+                        if fp:
+                            files_read.append(fp)
+                    except Exception:
+                        pass
+                cur_tool = ""
+                cur_input = ""
     except Exception:
         pass
-try:
-    with open(cost_file, "w") as f:
-        f.write(str(cost))
-except Exception:
-    pass
-try:
-    with open(out_file, "w") as f:
-        f.write(result)
-except Exception:
-    pass
-' "$cost_file" "$out_file" 2>/dev/null || _call_exit=$?
+
+for f in [
+    (cost_file, lambda fh: fh.write(str(cost))),
+    (out_file, lambda fh: fh.write(result)),
+    (stats_file, lambda fh: json.dump({"tools": tools, "files_read": files_read[:50]}, fh)),
+]:
+    try:
+        with open(f[0], "w") as fh:
+            f[1](fh)
+    except Exception:
+        pass
+' "$cost_file" "$out_file" "$stats_file" 2>/dev/null || _call_exit=$?
 
   local t_end; t_end=$(date +%s)
   local agent_cost; agent_cost=$(cat "$cost_file" 2>/dev/null || echo "0")
-  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"elapsed":%d,"exit":%d,"cost_usd":%s}\n' \
-    "$agent" "$t_end" "$((t_end - t_start))" "$_call_exit" "$agent_cost" >> "$RUN_LOG"
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"elapsed":%d,"exit":%d,"cost_usd":%s,"prompt_chars":%d}\n' \
+    "$agent" "$t_end" "$((t_end - t_start))" "$_call_exit" "$agent_cost" "${#prompt}" >> "$RUN_LOG"
+
+  # agent_stats: 도구 사용 요약 + Read한 파일 목록 (별도 이벤트)
+  if [[ -f "$stats_file" && -n "$RUN_LOG" ]]; then
+    python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        s = json.load(f)
+    s["event"] = "agent_stats"
+    s["agent"] = sys.argv[2]
+    print(json.dumps(s, ensure_ascii=False))
+except Exception:
+    pass
+' "$stats_file" "$agent" >> "$RUN_LOG" 2>/dev/null
+  fi
+
+  # 에이전트 active 플래그 해제
+  rm -f "/tmp/${_prefix_for_flag}_${agent}_active" 2>/dev/null
 
   echo "[HARNESS] ${agent} 완료 ($((t_end - t_start))s, exit=${_call_exit})"
 

@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-07 (S34+S35+S39+S40)
+> 최종 업데이트: 2026-04-07 (S45+S46+S47+S48)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -33,6 +33,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `setup-agents.sh` | 프로젝트별 에이전트 파일 초기화 (9개) + GitHub milestone/label 생성 | - |
 | `harness-memory.md` | 크로스 프로젝트 실패/성공 패턴 저장 (S5 반자동: FAIL 시 초안 생성 → 유저 승인) | harness-loop.sh (CONSTRAINTS 로드) |
 | `orchestration-rules.md` | **마스터 규칙 단일 소스** — 루프 A~E, 마커, 정책 | 모든 스크립트/에이전트 |
+| `scripts/harness-review.py` | JSONL 로그 파서 — 타임라인·도구사용·WASTE 패턴 8종 진단 | `/harness-review` 스킬 |
 
 ### 글로벌 훅 (`~/.claude/hooks/`)
 
@@ -71,7 +72,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `{p}_security_review_passed` | security-reviewer (SECURE) | harness-loop.sh | 보안 감사 통과 |
 | `{p}_designer_ran` | harness-executor.sh (design mode) | harness-executor.sh | designer 실행 완료 |
 | `{p}_design_critic_passed` | design-critic (PICK) | harness-executor.sh | 디자인 승인 |
-| `{p}_{agent}_active` | harness-loop.sh (에이전트 호출 전) | agent-boundary.py | 에이전트 경계 검사용 |
+| `{p}_{agent}_active` | `harness-utils.sh` `_agent_call()` (호출 전 touch / 종료 후 rm) | agent-boundary.py | 에이전트 경계 검사용 |
 | `{p}_pr_body.txt` | harness-loop.sh (HARNESS_DONE) | 메인 Claude (PR 생성 시 활용) | PR 본문 자동 생성 |
 | `{p}_memory_candidate.md` | harness-loop.sh (FAIL 시) | 메인 Claude (유저 승인 후 harness-memory.md에 기록) | 실패 패턴 초안 (S5) |
 | `{p}-agent-calls.log` | harness-loop.sh | - | 에이전트 호출 로그 |
@@ -134,6 +135,10 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S35 | executor 경로 폴백 | `harness-router.py` — 프로젝트 `.claude/harness-executor.sh` 먼저, 없으면 `~/.claude/` 폴백 | 2026-04-07 |
 | S39 | agent out_file 가드 | `harness-loop.sh` `check_agent_output()` — 5곳 전수 적용. `harness-utils.sh` out_file 사전 touch | 2026-04-07 |
 | S40 | rollback_attempt | `harness-loop.sh` `rollback_attempt()` — 실패 시 `git stash push --include-untracked`. 5곳 실패 분기 적용 | 2026-04-07 |
+| S45 | JSONL 로그 보강 | `harness-utils.sh` agent_stats(tools/files_read) + `harness-loop.sh` decision/phase/context/config/rollback/commit 이벤트. prompt_chars 추적 | 2026-04-07 |
+| S46 | /harness-review 스킬 | `scripts/harness-review.py` JSONL 파서 + 8개 WASTE 패턴 진단. `commands/harness-review.md` 스킬. old/new 로그 포맷 호환 | 2026-04-07 |
+| S47 | HARNESS_DONE 후 자동 리뷰 | `orchestration-rules.md` 정책 10 — HARNESS_DONE/ESCALATE/KNOWN_ISSUE 수신 후 /harness-review 자동 실행 | 2026-04-07 |
+| S48 | QA 에이전트 스코프 강화 | `harness-utils.sh` `_agent_call()`에 `{prefix}_{agent}_active` 플래그 세팅/해제 → `agent-boundary.py` 물리적 차단 활성화. `qa.md` Agent/Bash 도구 제거 + 인프라 접근 금지 명시 | 2026-04-07 |
 
 ---
 
