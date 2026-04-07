@@ -77,13 +77,13 @@ def _call_haiku(prompt_text, max_tokens, prefix):
         except Exception as e:
             log(prefix, f"HAIKU_API_FAIL: {e}")
 
-    # CLI 폴백 (OAuth/구독 환경용) — socrates 에이전트로 Haiku 모델 사용
+    # CLI 폴백 (OAuth/구독 환경용) — 모델 직접 호출 (에이전트 로드 오버헤드 제거)
     try:
         env = {**os.environ, 'HARNESS_INTERNAL': '1'}
         result = subprocess.run(
-            ['claude', '--agent', 'socrates',
-             '--print', '--output-format', 'text',
-             '-p', prompt_text],
+            ['claude', '-p', prompt_text,
+             '--model', 'claude-haiku-4-5-20251001',
+             '--print', '--output-format', 'text'],
             env=env, capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -301,7 +301,11 @@ def _main_inner():
         if cat:
             log(prefix, f"FAST_CLASSIFY result={cat} prompt={prompt[:60]!r}")
         else:
-            cat = extract_intent(prompt, prefix) or "AMBIGUOUS"
+            cat = extract_intent(prompt, prefix)
+            if not cat:
+                # LLM 분류 실패 (타임아웃 등) → 블로킹 대신 즉시 통과
+                log(prefix, f"PASS(classify_fail) prompt={prompt[:60]!r}")
+                sys.exit(0)
 
     is_bug = (cat == "BUG")
 
