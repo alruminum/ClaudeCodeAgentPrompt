@@ -355,7 +355,7 @@ if [[ "$MODE" == "impl2" ]]; then
     echo "[HARNESS/fast] engineer 호출 중"
     context=$(cat "$IMPL_FILE" | head -c 30000)
     hlog "▶ engineer 시작 (depth=fast, timeout=900s)"
-    local head_before; head_before=$(git rev-parse HEAD)
+    head_before=$(git rev-parse HEAD)
     AGENT_EXIT=0
     _agent_call "engineer" 900 \
       "impl: $IMPL_FILE
@@ -370,8 +370,8 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
     # engineer가 커밋했는지 + 미커밋 변경이 있는지 확인
-    local head_after; head_after=$(git rev-parse HEAD)
-    local engineer_committed=false
+    head_after=$(git rev-parse HEAD)
+    engineer_committed=false
     [[ "$head_before" != "$head_after" ]] && engineer_committed=true
 
     commit_files=()
@@ -442,22 +442,25 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     fi
 
     # ── merge to main ──────────────────────────────────────────
-    commit_hash=$(git rev-parse --short HEAD)
+    impl_commit=$(git rev-parse --short HEAD)
     if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "fast" "$PREFIX"; then
       export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
       echo "MERGE_CONFLICT_ESCALATE"
       echo "branch: $FEATURE_BRANCH"
-      echo "impl_commit: $commit_hash"
+      echo "impl_commit: $impl_commit"
       hlog "=== merge conflict ==="
       exit 1
     fi
+    merge_commit=$(git rev-parse --short HEAD)
+    [[ -n "$RUN_LOG" ]] && printf '{"event":"branch_merge","branch":"%s","impl_commit":"%s","merge_commit":"%s","t":%d}\n' \
+      "$FEATURE_BRANCH" "$impl_commit" "$merge_commit" "$(date +%s)" >> "$RUN_LOG"
 
     # ── 완료 ─────────────────────────────────────────────────────
     export HARNESS_RESULT="HARNESS_DONE"
     echo "HARNESS_DONE (fast)"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
-    echo "commit: $commit_hash"
+    echo "commit: $merge_commit"
     echo "⚠️ fast mode: 테스트·보안 검사 스킵됨. 중요 변경엔 --depth=std 사용."
     hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=1) ==="
     exit 0
@@ -485,7 +488,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
       # ── C1: 실패 유형별 수정 전략 ────────────────────────────────
       error_1line=$(echo "$error_trace" | head -1 | cut -c1-200)
       # working tree 컨텍스트 prefix (feature branch에서 이전 변경 유지)
-      local wt_prefix="[주의] 이전 attempt의 변경이 working tree에 남아있음. 추가 수정으로 해결하라 (stash/reset 금지).
+      wt_prefix="[주의] 이전 attempt의 변경이 working tree에 남아있음. 추가 수정으로 해결하라 (stash/reset 금지).
 "
       case "$fail_type" in
         autocheck_fail)
@@ -775,19 +778,22 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       git add -u
     fi
     git commit -m "$(generate_commit_msg)"
-    commit_hash=$(git rev-parse --short HEAD)
+    impl_commit=$(git rev-parse --short HEAD)
     [[ -n "$RUN_LOG" ]] && printf '{"event":"commit","hash":"%s","attempt":%d,"t":%d}\n' \
-      "$commit_hash" "$((attempt+1))" "$(date +%s)" >> "$RUN_LOG"
+      "$impl_commit" "$((attempt+1))" "$(date +%s)" >> "$RUN_LOG"
 
     # ── merge to main ────────────────────────────────────────────
     if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "$DEPTH" "$PREFIX"; then
       export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
       echo "MERGE_CONFLICT_ESCALATE"
       echo "branch: $FEATURE_BRANCH"
-      echo "impl_commit: $commit_hash"
+      echo "impl_commit: $impl_commit"
       hlog "=== merge conflict ==="
       exit 1
     fi
+    merge_commit=$(git rev-parse --short HEAD)
+    [[ -n "$RUN_LOG" ]] && printf '{"event":"branch_merge","branch":"%s","impl_commit":"%s","merge_commit":"%s","t":%d}\n' \
+      "$FEATURE_BRANCH" "$impl_commit" "$merge_commit" "$(date +%s)" >> "$RUN_LOG"
 
     # ── G6: PR body 생성 ─────────────────────────────────────────
     generate_pr_body $((attempt+1)) > "/tmp/${PREFIX}_pr_body.txt" 2>/dev/null || true
@@ -803,11 +809,11 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
     echo "attempts: $((attempt+1))"
-    echo "commit: $commit_hash"
+    echo "commit: $merge_commit"
     echo "pr_body: /tmp/${PREFIX}_pr_body.txt"
 
     # ── P1: Memory 후보 존재 시 유저에게 기록 제안 ───────────────────────
-    local candidate_file="/tmp/${PREFIX}_memory_candidate.md"
+    candidate_file="/tmp/${PREFIX}_memory_candidate.md"
     if [[ -f "$candidate_file" ]]; then
       echo ""
       echo "💾 [HARNESS MEMORY] 이번 루프에서 실패 패턴이 감지됐습니다."

@@ -385,21 +385,22 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
         if [[ ${#commit_files[@]} -gt 0 ]]; then
           git add -- "${commit_files[@]}"
           git commit -m "$(generate_commit_msg) [bugfix-direct]"
-          local commit_hash
-          commit_hash=$(git rev-parse --short HEAD)
+          local impl_commit merge_commit
+          impl_commit=$(git rev-parse --short HEAD)
           # ── merge to main ──────────────────────────────────────
           if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "bugfix" "$PREFIX"; then
             export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
             echo "MERGE_CONFLICT_ESCALATE"
             echo "branch: $FEATURE_BRANCH"
-            echo "impl_commit: $commit_hash"
+            echo "impl_commit: $impl_commit"
             exit 1
           fi
+          merge_commit=$(git rev-parse --short HEAD)
           export HARNESS_RESULT="HARNESS_DONE"
           echo "HARNESS_DONE (engineer_direct)"
           echo "impl: $IMPL_FILE"
           echo "issue: #$ISSUE_NUM"
-          echo "commit: $commit_hash"
+          echo "commit: $merge_commit"
           exit 0
         else
           echo "[HARNESS] 변경사항 없음"
