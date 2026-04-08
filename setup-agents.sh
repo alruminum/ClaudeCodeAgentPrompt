@@ -244,15 +244,15 @@ if [ -f "$SR_SRC" ] && [ ! -f "$SR_LOCAL" ]; then
   echo "📄 security-reviewer.md 복사 완료"
 fi
 
-# ── harness-executor.sh (셸 스크립트 복사) ───────────────
-HE_SRC="$HOME/.claude/harness-executor.sh"
-HE_LOCAL="$AGENTS_DIR/../harness-executor.sh"
+# ── harness/executor.sh (셸 스크립트 복사) ───────────────
+HE_SRC="$HOME/.claude/harness/executor.sh"
+HE_LOCAL="$AGENTS_DIR/../harness/executor.sh"
 if [ -f "$HE_SRC" ]; then
   cp "$HE_SRC" "$HE_LOCAL"
   chmod +x "$HE_LOCAL"
-  echo "📄 harness-executor.sh 복사 완료"
+  echo "📄 harness/executor.sh 복사 완료"
 else
-  echo "⚠️  ~/.claude/harness-executor.sh 없음 — 복사 스킵"
+  echo "⚠️  ~/.claude/harness/executor.sh 없음 — 복사 스킵"
 fi
 
 # ── CLAUDE.md 베이스 복사 ────────────────────────────────

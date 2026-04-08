@@ -33,13 +33,13 @@ bash ~/.claude/setup-agents.sh --repo owner/repo
 
 ```bash
 # 구현 루프
-bash .claude/harness-executor.sh impl --impl docs/impl/01-module.md --issue 42 --prefix proj
+bash .claude/harness/executor.sh impl --impl docs/impl/01-module.md --issue 42 --prefix proj
 
 # 버그픽스 루프
-bash .claude/harness-executor.sh bugfix --bug "설명" --issue 42 --prefix proj
+bash .claude/harness/executor.sh bugfix --bug "설명" --issue 42 --prefix proj
 
 # 디자인 루프
-bash .claude/harness-executor.sh design --impl docs/impl/01-module.md --issue 42 --prefix proj
+bash .claude/harness/executor.sh design --impl docs/impl/01-module.md --issue 42 --prefix proj
 ```
 
 ## 핵심 파일
@@ -47,8 +47,9 @@ bash .claude/harness-executor.sh design --impl docs/impl/01-module.md --issue 42
 | 파일 | 역할 |
 |------|------|
 | `orchestration-rules.md` | 마스터 규칙 (루프, 마커, 정책) |
-| `harness-executor.sh` | 5가지 모드 라우터 |
-| `harness-loop.sh` | 구현 루프 엔진 (fast/std/deep) |
+| `harness/executor.sh` | 순수 라우터 + 공유 인프라 |
+| `harness/{impl,design,bugfix,plan}.sh` | 모드별 로직 |
+| `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep) |
 | `hooks/harness_common.py` | 훅 공유 유틸 (get_prefix, deny) |
 | `hooks/*.py` | PreToolUse/PostToolUse 게이트 (11개) |
 | `agents/*.md` | 에이전트 정의 파일 |

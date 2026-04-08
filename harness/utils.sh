@@ -1,6 +1,6 @@
 #!/bin/bash
-# ~/.claude/harness-utils.sh
-# 하네스 공용 유틸 — harness-executor.sh + harness-loop.sh에서 source
+# ~/.claude/harness/utils.sh
+# 하네스 공용 유틸 — harness/executor.sh + harness/impl-process.sh에서 source
 
 HARNESS_LOG_DIR="${HOME}/.claude/harness-logs"
 RUN_LOG=""          # rotate_harness_logs() 호출 후 설정
@@ -160,7 +160,7 @@ merge_to_main() {
 }
 
 # ── 커밋 메시지 생성 ─────────────────────────────────────────────────
-# IMPL_FILE, ISSUE_NUM 전역변수 의존 (harness-loop.sh, harness-executor.sh에서 설정)
+# IMPL_FILE, ISSUE_NUM 전역변수 의존 (harness/impl-process.sh, harness/executor.sh에서 설정)
 generate_commit_msg() {
   local impl_name
   if [[ -n "$IMPL_FILE" ]]; then

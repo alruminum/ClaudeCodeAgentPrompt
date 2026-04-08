@@ -1,8 +1,68 @@
 #!/bin/bash
-# ~/.claude/harness-bugfix.sh
-# bugfix 전용 함수 라이브러리 — harness-executor.sh에서 source
-# Issue A 반영: QA_SUMMARY 파싱 + 폴백 라우팅을 여기서 수행
-# Issue B 반영: GitHub issue 재진입 경로 명시
+# ~/.claude/harness/bugfix.sh
+# bugfix 모드: qa 라우팅 기반 4-way 분기 (engineer_direct/architect_full/design/backlog)
+#
+# harness/executor.sh에서 source — 전역변수(PREFIX, IMPL_FILE, ISSUE_NUM 등) 사용
+
+# ══════════════════════════════════════════════════════════════════════
+# run_bugfix — bugfix 모드 진입점
+# ══════════════════════════════════════════════════════════════════════
+run_bugfix() {
+  rotate_harness_logs "$PREFIX" "bugfix"
+
+  # ── 필수 파라미터 검증: bugfix는 --bug 또는 --issue 필요 ──
+  if [[ -z "$BUG_DESC" && ( -z "$ISSUE_NUM" || "$ISSUE_NUM" == "N" ) ]]; then
+    export HARNESS_RESULT="HARNESS_CRASH"
+    echo "[HARNESS] 오류: bugfix 모드는 --bug 또는 --issue가 필요합니다"
+    echo "사용법: harness/executor.sh bugfix --bug <설명> --issue <번호>"
+    exit 1
+  fi
+
+  # ── 재진입 상태 감지 (역순 체크) ──
+
+  # 1. impl 파일 있으면 → QA + architect 스킵, engineer 직접
+  if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] 재진입: impl 존재 ($IMPL_FILE) → engineer 직접"
+    echo "[재진입 — impl 파일 기반. QA 스킵]" > "/tmp/${PREFIX}_qa_out.txt"
+    _bugfix_direct "/tmp/${PREFIX}_qa_out.txt"
+    return
+  fi
+
+  # 2. GitHub issue에 QA 리포트 있으면 → QA 스킵, bugfix_run으로 라우팅
+  if [[ -n "$ISSUE_NUM" && "$ISSUE_NUM" != "N" ]]; then
+    local issue_body
+    issue_body=$(gh issue view "$ISSUE_NUM" --json body -q .body 2>/dev/null || echo "")
+    if echo "$issue_body" | grep -q 'QA_REPORT\|QA_SUMMARY\|FUNCTIONAL_BUG\|SPEC_ISSUE\|DESIGN_ISSUE'; then
+      echo "[HARNESS] 재진입: GitHub issue #${ISSUE_NUM}에 QA 리포트 존재 → QA 스킵"
+      echo "$issue_body" > "/tmp/${PREFIX}_qa_out.txt"
+      bugfix_run  # QA_SUMMARY 파싱 + 폴백 라우팅
+      return
+    fi
+  fi
+
+  # 3. 신규 — QA부터 시작
+
+  # ── Phase B1: qa 분석 ──
+  echo "[HARNESS] Phase B1 — qa 호출 중"
+  _agent_call "qa" 300 \
+    "bug: $BUG_DESC issue: #$ISSUE_NUM
+탐색 범위: 이슈에 직접 관련된 파일만 분석하라. 전체 코드베이스 스캔 금지.
+- 이슈 설명에서 언급된 파일/컴포넌트부터 시작
+- 연관 파일은 import 체인 1단계까지만
+- Glob 최대 2회, Read 최대 10회
+분석 완료 후 반드시 mcp__github__create_issue로 이슈를 등록하라.
+- FUNCTIONAL_BUG → Bugs 마일스톤 (라벨: bug)
+- SPEC_ISSUE (PRD 명세 있음) → Feature 마일스톤 (해당 epic 라벨, 본문에 epic 경로 명시)
+- SPEC_ISSUE (PRD 명세 없음) → Feature 마일스톤
+- DESIGN_ISSUE → Feature 마일스톤" \
+    "/tmp/${PREFIX}_qa_out.txt"
+
+  bugfix_run  # harness/bugfix.sh 함수
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# 이하 bugfix 헬퍼 함수
+# ══════════════════════════════════════════════════════════════════════
 
 # ── QA_SUMMARY 파싱: footer 우선, 기존 grep 폴백 ───────────────────
 _parse_qa_summary() {

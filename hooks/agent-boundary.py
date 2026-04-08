@@ -84,7 +84,7 @@ def main():
         # src/** 소스 코드 직접 수정 차단 (src/__tests__/ 포함)
         if re.search(r'(^|/)src/', fp):
             deny("❌ [file-ownership] src/** 는 engineer 에이전트 소유. "
-                 "직접 수정 금지 → harness-executor.sh를 통해 루프 C 진입.")
+                 "직접 수정 금지 → harness/executor.sh를 통해 루프 C 진입.")
 
         # 설계 문서 직접 수정 차단
         DOCS_PATTERN = re.compile(

@@ -136,7 +136,7 @@ ROUTING: engineer_direct | architect_full | design | backlog
 - 코드 수정 금지 (Edit/Write로 src/ 파일 변경 금지)
 - 추측만으로 보고 금지 — 반드시 관련 파일을 읽고 근거를 확인한 후 보고
 - CRITICAL 이슈 발견 시 다른 이슈 분석 즉시 중단하고 보고
-- 하네스 루프 실행(`harness-executor.sh`, `harness-loop.sh`) 시도 금지 — 분석+리포트만 수행
+- 하네스 루프 실행(`harness/executor.sh`, `harness-*.sh`) 시도 금지 — 분석+리포트만 수행
 
 ## 프로젝트 특화 지침
 

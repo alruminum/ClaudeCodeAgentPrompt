@@ -114,9 +114,9 @@
 
 | 기능 | 구현체 |
 |---|---|
-| 결정론적 게이트 4모드 (impl/design/bugfix/plan) | `harness-executor.sh` |
+| 결정론적 게이트 4모드 (impl/design/bugfix/plan) | `harness/executor.sh` |
 | 플래그 기반 상태머신 | `/tmp/{prefix}_*` 13개 |
-| Ground truth 테스트 (LLM 독립) | `npx vitest run` in `harness-loop.sh` |
+| Ground truth 테스트 (LLM 독립) | `npx vitest run` in `harness/impl-process.sh` |
 | 에이전트 도구 경계 물리적 차단 | `agent-boundary.py` |
 | 보안 감사 게이트 | `security-reviewer` OWASP+WebView |
 | Smart Context 50KB 캡 | `build_smart_context()` |
@@ -124,7 +124,7 @@
 | 실패 패턴 자동 프로모션 | 3회 누적 → Auto-Promoted Rules |
 | 단일 소스 원칙 물리적 강제 | `orch-rules-first.py` |
 | 의도 분류 라우터 | regex + LLM 하이브리드 (`harness-router.py`) |
-| 루프 A~E 5종 | `orchestration-rules.md` + `harness-executor.sh` |
+| 루프 A~E 5종 | `orchestration-rules.md` + `harness/executor.sh` |
 
 ---
 
@@ -147,7 +147,7 @@ validator Plan Validation에서 태그 없는 항목 → `PLAN_VALIDATION_FAIL`.
 HARNESS_DONE 후 `/tmp/{p}_pr_body.txt` 자동 생성.
 What/Why + 테스트 결과 + 위험도 + 리뷰 포커스 포함.
 
-**변경**: `harness-loop.sh` (`generate_pr_body()`)
+**변경**: `harness/impl-process.sh` (`generate_pr_body()`)
 
 ---
 
@@ -170,7 +170,7 @@ What/Why + 테스트 결과 + 위험도 + 리뷰 포커스 포함.
 | `std` | 전체 루프 (기본값) | 일반 구현 |
 | `deep` | std + S14·S15 (미구현 stub) | impl에 `(BROWSER:DOM)` 있을 때 |
 
-**변경**: `harness-executor.sh` (`detect_depth()`), `harness-loop.sh` (fast 분기)
+**변경**: `harness/executor.sh` (`detect_depth()`), `harness/impl-process.sh` (fast 분기)
 
 ---
 
@@ -179,7 +179,7 @@ What/Why + 테스트 결과 + 위험도 + 리뷰 포커스 포함.
 루프 FAIL 시 `/tmp/{p}_memory_candidate.md`에 실패 패턴 초안 자동 작성.
 HARNESS_DONE 후 메인 Claude가 "기록할까요?" 제안 → 유저 Y/N.
 
-**변경**: `harness-loop.sh` (`append_failure()` + HARNESS_DONE 출력)
+**변경**: `harness/impl-process.sh` (`append_failure()` + HARNESS_DONE 출력)
 
 ---
 
@@ -240,9 +240,9 @@ fixture impl로 플래그 흐름만 dry-run.
 
 **배경**: Gorchera 분석에서 발견한 패턴 중 JSON Lease는 Popen 전제 → RF1에서 제거.
 
-**잔존 기능**: pre-evaluator automated_checks (has_changes/no_new_deps/file_unchanged) — `harness-loop.sh`에서 유지.
+**잔존 기능**: pre-evaluator automated_checks (has_changes/no_new_deps/file_unchanged) — `harness/impl-process.sh`에서 유지.
 
-**변경 파일**: `harness-loop.sh`
+**변경 파일**: `harness/impl-process.sh`
 
 ---
 
@@ -267,7 +267,7 @@ fixture impl로 플래그 흐름만 dry-run.
 `tail -f`로 실시간 확인 + 실행 후 분석용 JSONL 아카이브 필요.
 
 **구현 내용**:
-- `harness-utils.sh` 신규 — `rotate_harness_logs()` + `write_run_end()` + `_agent_call()` 공용 유틸
+- `harness/utils.sh` 신규 — `rotate_harness_logs()` + `write_run_end()` + `_agent_call()` 공용 유틸
 - `_agent_call()`: `--output-format stream-json --include-partial-messages` → `tee`로 JSONL 실시간 기록 + `python3`으로 result 텍스트 추출
 - FIFO 로테이션: prefix별 최신 10개 유지 (`ls -t | tail -n +10 | xargs rm`)
 - 모든 에이전트(architect/engineer/validator/test-engineer/pr-reviewer/security-reviewer/designer/design-critic/qa/product-planner) 대상
@@ -281,7 +281,7 @@ tail -f ~/.claude/harness-logs/mb/$(ls -t ~/.claude/harness-logs/mb/ | head -1)
 
 **per-agent timeout**: architect/engineer=900s, validator/test-engineer/designer/design-critic/qa/product-planner=300s, pr-reviewer/security-reviewer=180s
 
-**변경 파일**: `harness-utils.sh` (신규), `harness-executor.sh`, `harness-loop.sh`
+**변경 파일**: `harness/utils.sh` (신규), `harness/executor.sh`, `harness/impl-process.sh`
 
 ---
 
@@ -296,7 +296,7 @@ impl 진입 시 → 변경 대상 파일 목록 파싱
 → 유저 결정: 무시 / 순서 조정
 ```
 
-**변경**: `harness-executor.sh` + `architect.md` (변경 파일 목록 섹션 필수화)
+**변경**: `harness/executor.sh` + `architect.md` (변경 파일 목록 섹션 필수화)
 
 ---
 
@@ -341,7 +341,7 @@ attempt 2 → context = prev_attempt_summary + new_error_trace  ← 신규
 ```
 
 **재검토 트리거**: 에픽 3개+ 프로젝트 시작 시
-**변경**: `harness-loop.sh` (`build_smart_context()`)
+**변경**: `harness/impl-process.sh` (`build_smart_context()`)
 
 ---
 
@@ -362,7 +362,7 @@ attempt 2 → context = prev_attempt_summary + new_error_trace  ← 신규
 **`_run_bugfix_direct()` 개선**:
 - impl 파일이 이미 있으면 architect Mode F 스킵
 
-**변경 파일**: `orchestration-rules.md`, `harness-executor.sh`
+**변경 파일**: `orchestration-rules.md`, `harness/executor.sh`
 
 ---
 
@@ -387,7 +387,7 @@ attempt 2 → context = prev_attempt_summary + new_error_trace  ← 신규
 
 **재검토 트리거**: test-engineer 품질 반복 하락 시
 **선행 작업**: `npm install -D @vitest/coverage-v8`
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -398,7 +398,7 @@ attempt 2 → context = prev_attempt_summary + new_error_trace  ← 신규
 
 **재검토 트리거**: UI 버그가 vitest 통과 후 반복 발견 시
 **선행 작업**: S14 완료
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -408,7 +408,7 @@ auth/api/db 파일 변경 시 Haiku로 세컨드 오피니언.
 전체 PR 적용은 토큰 과다 → 보안 파일만.
 
 **재검토 트리거**: 팀 합류 또는 보안 사고
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -418,7 +418,7 @@ auth/api/db 파일 변경 시 Haiku로 세컨드 오피니언.
 eslint-plugin-sonarjs + import 정렬 규칙.
 
 **재검토 트리거**: 코드베이스 10파일+ + 중복 로직 반복
-**변경**: `.eslintrc`, `harness-loop.sh`
+**변경**: `.eslintrc`, `harness/impl-process.sh`
 
 ---
 
@@ -438,7 +438,7 @@ eslint-plugin-sonarjs + import 정렬 규칙.
 `/tmp/{p}_observability/` 파일 로그. Web UI 없음.
 
 **재검토 트리거**: 프로덕션 트래픽 발생
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -447,7 +447,7 @@ eslint-plugin-sonarjs + import 정렬 규칙.
 S14(신규 파일 60%) → 전체 파일 70%로 기준 상향.
 
 **전제**: S14 완료
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -457,7 +457,7 @@ S14(신규 파일 60%) → 전체 파일 70%로 기준 상향.
 각 루프를 별도 worktree에서 실행, 성공 시만 메인 병합.
 
 **전제**: feature branch 전략 확립
-**변경**: `harness-executor.sh`, `harness-loop.sh`
+**변경**: `harness/executor.sh`, `harness/impl-process.sh`
 
 ---
 
@@ -466,7 +466,7 @@ S14(신규 파일 60%) → 전체 파일 70%로 기준 상향.
 테스트가 통과해도 실제로 버그를 잡는지 검증 (stryker-js).
 
 **재검토 트리거**: 테스트 신뢰도 문제 반복 + 토큰 예산 여유
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -475,7 +475,7 @@ S14(신규 파일 60%) → 전체 파일 70%로 기준 상향.
 M1(보안 파일 한정) → 전체 PR로 확장.
 
 **전제**: M1 완료 + 토큰 예산 충분
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -484,14 +484,14 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 **배경**: 하네스 루프 진입 후 어디서 멈추는지 알 수 없었다. `agent-calls.log`만으로는 부족.
 
 **구현 내용**:
-- `harness-loop.sh` 상단에 `HLOG`/`hlog()` 함수 정의
+- `harness/impl-process.sh` 상단에 `HLOG`/`hlog()` 함수 정의
 - `HLOG="/tmp/${PREFIX}-harness-debug.log"`, `hlog()` = `[HH:MM:SS] [attempt=N] 메시지`
 - 루프 시작/종료, 에이전트 전후, vitest 전후에 hlog 추가
 - `ATTEMPT` 전역 변수 루프 반복마다 갱신
 
 **실시간 모니터링**: `tail -f /tmp/${PREFIX}-harness-debug.log`
 
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -500,12 +500,12 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 **배경**: `_agent_call`이 `|| true`로 exit code를 먹어버려 hang 발생 시 어디서 멈추는지 알 수 없었다.
 
 **구현 내용**:
-- `harness-utils.sh`: `|| true` → `|| _call_exit=$?` 교체, `return $_call_exit` 추가
+- `harness/utils.sh`: `|| true` → `|| _call_exit=$?` 교체, `return $_call_exit` 추가
 - `agent_end` JSONL 이벤트에 `exit` 필드 추가
-- `harness-loop.sh`: 모든 `_agent_call` 호출에 `|| AGENT_EXIT=$?` 추가
+- `harness/impl-process.sh`: 모든 `_agent_call` 호출에 `|| AGENT_EXIT=$?` 추가
 - exit 124(timeout) 감지 시 `hlog "⏰ ${AGENT} timeout — skip"` 기록
 
-**변경**: `harness-utils.sh`, `harness-loop.sh`
+**변경**: `harness/utils.sh`, `harness/impl-process.sh`
 
 ---
 
@@ -521,7 +521,7 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - `orchestration-rules.md` depth 테이블 + 루프 C 다이어그램 동기화
 - "deep = std 미구현" 라인 제거
 
-**변경**: `harness-loop.sh`, `orchestration-rules.md`
+**변경**: `harness/impl-process.sh`, `orchestration-rules.md`
 
 ---
 
@@ -536,13 +536,13 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - UNKNOWN 케이스: `echo ⚠️` + FAIL 동일 처리 (`!= PASS` 조건으로 통일)
 - UNKNOWN 시 error_trace fallback: `tail -6`
 
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
 ### ⬜ S25 — BATS 테스트 (하네스 스크립트 자체 테스트)
 
-**배경**: `harness-loop.sh`·`harness-executor.sh` 핵심 함수를 수동으로만 검증 중. 회귀 방지 필요.
+**배경**: `harness/impl-process.sh`·`harness/executor.sh` 핵심 함수를 수동으로만 검증 중. 회귀 방지 필요.
 
 **구현 대상**:
 - `detect_depth()` — impl 파일 태그별 fast/std/deep 자동 선택
@@ -562,7 +562,7 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - pr-reviewer 호출 직전 `git add -A` 실행 (또는 `git diff HEAD` 대신 `git diff --cached HEAD` 검토)
 - deep 모드에서만 해당 (std에서는 pr-reviewer 스킵)
 
-**변경**: `harness-loop.sh`
+**변경**: `harness/impl-process.sh`
 
 ---
 
@@ -571,10 +571,10 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 **배경**: 개별 에이전트가 폭주해 비용이 무제한 증가하는 경우 방지.
 
 **구현 내용**:
-- `harness-utils.sh` `_agent_call()` claude 호출에 `--max-budget-usd 2.00` 추가
+- `harness/utils.sh` `_agent_call()` claude 호출에 `--max-budget-usd 2.00` 추가
 - 모든 에이전트(engineer/test-engineer/validator/pr-reviewer/security-reviewer 등) 일괄 적용
 
-**변경**: `harness-utils.sh`
+**변경**: `harness/utils.sh`
 
 ---
 
@@ -583,14 +583,14 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 **배경**: 루프가 폭주하거나 잘못된 방향으로 진행 시 즉시 중단할 방법이 없었다.
 
 **구현 내용**:
-- `harness-loop.sh` `kill_check()` 함수 — `/tmp/{PREFIX}_harness_kill` 파일 존재 시 즉시 `HARNESS_KILLED` 출력 후 exit 0
+- `harness/impl-process.sh` `kill_check()` 함수 — `/tmp/{PREFIX}_harness_kill` 파일 존재 시 즉시 `HARNESS_KILLED` 출력 후 exit 0
 - 삽입 위치: while 루프 상단 + 각 에이전트 호출 직전(engineer×2, test-engineer, vitest, validator, pr-reviewer, security-reviewer)
-- `harness-executor.sh` EXIT trap에 kill 파일 정리 추가
+- `harness/executor.sh` EXIT trap에 kill 파일 정리 추가
 - `commands/harness-kill.md` 신규 — `/harness-kill` 커맨드
 
 **사용법**: `touch /tmp/{PREFIX}_harness_kill`
 
-**변경**: `harness-loop.sh`, `harness-executor.sh`, `commands/harness-kill.md` (신규)
+**변경**: `harness/impl-process.sh`, `harness/executor.sh`, `commands/harness-kill.md` (신규)
 
 ---
 
@@ -599,12 +599,12 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 **배경**: 루프 전체 비용이 누적돼 예산을 초과하는 경우 방지.
 
 **구현 내용**:
-- `harness-utils.sh` Python parser에서 result 이벤트 `total_cost_usd` 추출 → `{out_file}_cost.txt` 기록
-- `harness-loop.sh` `budget_check()` 함수 — 에이전트별 비용 누적 → $10 초과 시 `HARNESS_BUDGET_EXCEEDED` 출력 후 exit 1
+- `harness/utils.sh` Python parser에서 result 이벤트 `total_cost_usd` 추출 → `{out_file}_cost.txt` 기록
+- `harness/impl-process.sh` `budget_check()` 함수 — 에이전트별 비용 누적 → $10 초과 시 `HARNESS_BUDGET_EXCEEDED` 출력 후 exit 1
 - `hlog`에 에이전트별·누적 비용 기록 (`💰 ${agent} 비용: $X | 누적: $Y/10`)
 - agent_end JSONL 이벤트에 `cost_usd` 필드 추가
 
-**변경**: `harness-utils.sh`, `harness-loop.sh`
+**변경**: `harness/utils.sh`, `harness/impl-process.sh`
 
 ---
 
@@ -681,11 +681,11 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 
 ### ✅ S35 — executor 경로 폴백
 
-**배경**: 프로젝트 `.claude/harness-executor.sh`가 없으면 `bash: No such file or directory` 에러.
+**배경**: 프로젝트 `.claude/harness/executor.sh`가 없으면 `bash: No such file or directory` 에러.
 
 **구현 내용**:
 - `harness-router.py`에서 executor 경로 자동 감지
-- 프로젝트 `.claude/harness-executor.sh` 먼저, 없으면 `~/.claude/harness-executor.sh` 폴백
+- 프로젝트 `.claude/harness/executor.sh` 먼저, 없으면 `~/.claude/harness/executor.sh` 폴백
 - 디렉티브 3곳 모두 동적 경로 사용
 
 **변경 파일**: `hooks/harness-router.py`
@@ -700,9 +700,9 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - `check_agent_output()` 헬퍼 — 파일 미존재 또는 비어있으면 return 1
 - 5곳 전수 적용: engineer → test-engineer → validator → pr-reviewer → security-reviewer
 - 실패 시 graceful retry (append_failure → rollback_attempt → continue)
-- `harness-utils.sh` `_agent_call`에서 out_file 사전 touch (이중 보호)
+- `harness/utils.sh` `_agent_call`에서 out_file 사전 touch (이중 보호)
 
-**변경 파일**: `harness-loop.sh`, `harness-utils.sh`
+**변경 파일**: `harness/impl-process.sh`, `harness/utils.sh`
 
 ---
 
@@ -738,7 +738,7 @@ M1(보안 파일 한정) → 전체 PR로 확장.
   - DESIGN_ISSUE → Feature 마일스톤
 - executor backlog 분기 제거 → FUNCTIONAL_BUG도 engineer 직접 경로
 
-**변경 파일**: `orchestration-rules.md`, `harness-executor.sh`, `agents/qa.md`
+**변경 파일**: `orchestration-rules.md`, `harness/executor.sh`, `agents/qa.md`
 
 ---
 
@@ -751,4 +751,4 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - 5곳 실패 분기(autocheck/test/validator/pr/security) continue 직전에 호출
 - 스태시는 `git stash list`로 확인/복구 가능
 
-**변경 파일**: `harness-loop.sh`
+**변경 파일**: `harness/impl-process.sh`

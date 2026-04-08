@@ -318,8 +318,8 @@ def _main_inner():
             log(prefix, f"AUTO_CLEAR stale designer_ran (age={age_min:.0f}min)")
 
     # executor 경로 감지 (프로젝트 → 글로벌 폴백)
-    local_executor = os.path.join(os.getcwd(), ".claude", "harness-executor.sh")
-    global_executor = os.path.expanduser("~/.claude/harness-executor.sh")
+    local_executor = os.path.join(os.getcwd(), ".claude", "harness/executor.sh")
+    global_executor = os.path.expanduser("~/.claude/harness/executor.sh")
     executor_path = local_executor if os.path.exists(local_executor) else global_executor
 
     # 현재 플래그 상태
@@ -531,7 +531,7 @@ def _main_inner():
         else:
             harness_directive = (
                 "\n\n⚠️ src/** 직접 Edit/Write 금지. engineer 에이전트 직접 호출 금지.\n"
-                f"올바른 순서: Bash로 harness-executor.sh 호출.\n"
+                f"올바른 순서: Bash로 harness/executor.sh 호출.\n"
                 f"예: bash {executor_path} impl --impl [IMPL_PATH] --issue {current_issue or 'N'} --prefix {prefix}\n"
                 "⚠️ 반드시 포어그라운드로 실행 (run_in_background 금지)."
             )

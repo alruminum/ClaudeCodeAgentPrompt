@@ -16,8 +16,12 @@ argument-hint: "[prefix]"
 
 ```bash
 for f in \
-  ~/.claude/harness-executor.sh \
-  ~/.claude/harness-loop.sh \
+  ~/.claude/harness/executor.sh \
+  ~/.claude/harness/impl-process.sh \
+  ~/.claude/harness/impl.sh \
+  ~/.claude/harness/design.sh \
+  ~/.claude/harness/bugfix.sh \
+  ~/.claude/harness/plan.sh \
   ~/.claude/hooks/harness-router.py \
   ~/.claude/hooks/harness-session-start.py \
   ~/.claude/hooks/agent-boundary.py \
@@ -38,8 +42,12 @@ echo "PREFIX: $PREFIX"
 ### 3. 스크립트 문법 검증
 
 ```bash
-bash -n ~/.claude/harness-executor.sh && echo "OK executor syntax" || echo "FAIL executor syntax"
-bash -n ~/.claude/harness-loop.sh && echo "OK loop syntax" || echo "FAIL loop syntax"
+bash -n ~/.claude/harness/executor.sh && echo "OK executor syntax" || echo "FAIL executor syntax"
+bash -n ~/.claude/harness/impl-process.sh && echo "OK impl-process syntax" || echo "FAIL impl-process syntax"
+bash -n ~/.claude/harness/impl.sh && echo "OK impl syntax" || echo "FAIL impl syntax"
+bash -n ~/.claude/harness/design.sh && echo "OK design syntax" || echo "FAIL design syntax"
+bash -n ~/.claude/harness/bugfix.sh && echo "OK bugfix syntax" || echo "FAIL bugfix syntax"
+bash -n ~/.claude/harness/plan.sh && echo "OK plan syntax" || echo "FAIL plan syntax"
 python3 -m py_compile ~/.claude/hooks/harness-router.py && echo "OK router syntax" || echo "FAIL router syntax"
 python3 -m py_compile ~/.claude/hooks/harness-session-start.py && echo "OK session-start syntax" || echo "FAIL session-start syntax"
 python3 -m py_compile ~/.claude/hooks/agent-boundary.py && echo "OK agent-boundary syntax" || echo "FAIL agent-boundary syntax"

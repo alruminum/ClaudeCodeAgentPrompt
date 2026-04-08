@@ -386,7 +386,7 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
                 "severity": "HIGH" if ratio > 3 else "MEDIUM",
                 "agent": agent,
                 "detail": f"{agent} prompt_chars={pc:,} (적정 {limit:,}의 {ratio:.1f}배)",
-                "fix": f"harness-executor.sh에서 {agent} 호출 시 전달 컨텍스트 축소 — 전체 소스 대신 관련 부분만 전달",
+                "fix": f"harness/executor.sh에서 {agent} 호출 시 전달 컨텍스트 축소 — 전체 소스 대신 관련 부분만 전달",
             })
 
     # WASTE_SPARSE_PROMPT: 너무 적은 컨텍스트 → 에이전트가 MCP/Read로 재조회
@@ -413,7 +413,7 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
                     "severity": "HIGH",
                     "agent": agent,
                     "detail": f"{agent} prompt {pc}자인데 Read/MCP {fetch_count}회 호출 — 컨텍스트 부족으로 재조회",
-                    "fix": f"harness-executor.sh에서 {agent} 호출 시 qa_out/impl 내용을 프롬프트에 포함",
+                    "fix": f"harness/executor.sh에서 {agent} 호출 시 qa_out/impl 내용을 프롬프트에 포함",
                 })
 
     # WASTE_DUPLICATE_READ: 여러 에이전트가 동일 파일 중복 읽기
@@ -448,7 +448,7 @@ def detect_waste_with_context(patterns, run_info, config, events):
                 "severity": "HIGH",
                 "agent": "harness",
                 "detail": f"FUNCTIONAL_BUG인데 depth={depth or '(미적용)'} — fast 경로 미사용",
-                "fix": "harness-bugfix.sh 분리 후 QA 기반 depth 자동 감지 적용",
+                "fix": "harness/bugfix.sh 분리 후 QA 기반 depth 자동 감지 적용",
             })
     return patterns
 
@@ -534,7 +534,7 @@ def detect_flow_issues(run_info, timeline, events):
                     "type": "ROUTING_MISMATCH",
                     "severity": "HIGH",
                     "detail": f"QA 판정 {qa_type} → 예상 다음 {exp}, 실제 {next_agent}",
-                    "diagnosis": "harness-executor.sh grep 파싱 확인 필요",
+                    "diagnosis": "harness/executor.sh grep 파싱 확인 필요",
                 })
 
     return issues

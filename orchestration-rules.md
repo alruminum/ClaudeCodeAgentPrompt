@@ -11,8 +11,8 @@
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **루프 A** |
 | UI 변경 요청 (design_critic_passed 없음) | → **루프 B** |
-| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **루프 C** (`bash .claude/harness-executor.sh impl ...`) — plan_validation_passed 시 architect+validator 자동 스킵 |
-| 버그 보고 | → **루프 D** (`bash .claude/harness-executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기 |
+| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **루프 C** (`bash .claude/harness/executor.sh impl ...`) — plan_validation_passed 시 architect+validator 자동 스킵 |
+| 버그 보고 | → **루프 D** (`bash .claude/harness/executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기 |
 | 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
 | **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 루프 A) |
 
@@ -153,7 +153,7 @@ src/** 변경 있음?
       (자체 수정 max 2회, attempt 불변)                 │
     TESTS_PASS                                         │
       ↓                                                │
-  harness-loop.sh → vitest run  ← ground truth (LLM 주장과 독립)
+  harness/impl-process.sh → vitest run  ← ground truth (LLM 주장과 독립)
     실패 ─────────────────────────────────────────── → FAIL
     통과                                               │
       ↓  ←─────────────────────────────────────────────┘
@@ -313,11 +313,11 @@ DESIGN_REVIEW_ESCALATE        │
 | `KNOWN_ISSUE` | qa (원인 특정 3회 실패) | 메인 Claude 보고 |
 | `SPEC_MISSING` | validator Mode B (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect Mode C | product-planner 에스컬레이션 |
-| `IMPLEMENTATION_ESCALATE` | harness-loop.sh (3회 실패 or SPEC_GAP 리셋 초과) | architect SPEC_GAP 권장 |
+| `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 리셋 초과) | architect SPEC_GAP 권장 |
 | `DESIGN_LOOP_ESCALATE` | designer (3라운드 후에도 ITERATE) | 유저 직접 선택 |
 | `TECH_CONSTRAINT_CONFLICT` | architect Mode C (기술 제약 충돌) | 메인 Claude 보고 |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation (재검 후 재FAIL) | 메인 Claude 보고 |
-| `MERGE_CONFLICT_ESCALATE` | harness-loop.sh / harness-executor.sh (merge 실패) | 메인 Claude 보고 |
+| `MERGE_CONFLICT_ESCALATE` | harness/impl-process.sh / harness/executor.sh (merge 실패) | 메인 Claude 보고 |
 
 ---
 
@@ -342,21 +342,21 @@ DESIGN_REVIEW_ESCALATE        │
 | `PASS` / `FAIL` | validator Mode B | PASS → pr-reviewer / FAIL → retry |
 | `LGTM` / `CHANGES_REQUESTED` | pr-reviewer | LGTM → security-reviewer / CR → retry |
 | `SECURE` / `VULNERABILITIES_FOUND` | security-reviewer | SECURE → commit / VF (HIGH/MEDIUM) → retry |
-| `HARNESS_DONE` | harness-loop.sh | 메인 Claude: stories 체크 → 유저 보고 |
-| `HARNESS_KILLED` | harness-loop.sh (킬 스위치) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
-| `HARNESS_BUDGET_EXCEEDED` | harness-loop.sh (비용 상한) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
-| `IMPLEMENTATION_ESCALATE` | harness-loop.sh | 메인 Claude 보고 후 architect SPEC_GAP 권장 |
+| `HARNESS_DONE` | harness/impl-process.sh | 메인 Claude: stories 체크 → 유저 보고 |
+| `HARNESS_KILLED` | harness/impl-process.sh (킬 스위치) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
+| `HARNESS_BUDGET_EXCEEDED` | harness/impl-process.sh (비용 상한) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
+| `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh | 메인 Claude 보고 후 architect SPEC_GAP 권장 |
 | `KNOWN_ISSUE` | qa | 메인 Claude 보고 후 대기 |
-| `PLAN_NEEDED` | harness-executor.sh | 유저 결정 → 루프 A or 이슈 종료 |
+| `PLAN_NEEDED` | harness/executor.sh | 유저 결정 → 루프 A or 이슈 종료 |
 | `PLAN_VALIDATION_PASS` | validator Plan Validation | 유저 게이트 → 루프 C |
 | `PLAN_VALIDATION_FAIL` | validator Plan Validation | architect 재보강 (max 1회) |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation | 메인 Claude 보고 후 대기 |
-| `UI_DESIGN_REQUIRED` | harness-executor.sh | 루프 B 선행 필요 안내 |
-| `DESIGN_DONE` | harness-executor.sh | 유저 시안 확인 대기 |
-| `PLAN_DONE` | harness-executor.sh | 유저 결정 대기 |
-| `SPEC_GAP_ESCALATE` | harness-executor.sh | 메인 Claude 보고 |
+| `UI_DESIGN_REQUIRED` | harness/executor.sh | 루프 B 선행 필요 안내 |
+| `DESIGN_DONE` | harness/executor.sh | 유저 시안 확인 대기 |
+| `PLAN_DONE` | harness/executor.sh | 유저 결정 대기 |
+| `SPEC_GAP_ESCALATE` | harness/executor.sh | 메인 Claude 보고 |
 | `TECH_CONSTRAINT_CONFLICT` | architect Mode C | 메인 Claude 보고 후 대기 |
-| `MERGE_CONFLICT_ESCALATE` | harness-loop.sh / harness-executor.sh | merge 충돌 → 메인 Claude 보고 후 대기 |
+| `MERGE_CONFLICT_ESCALATE` | harness/impl-process.sh / harness/executor.sh | merge 충돌 → 메인 Claude 보고 후 대기 |
 
 ---
 
@@ -364,7 +364,7 @@ DESIGN_REVIEW_ESCALATE        │
 
 **1. 메인 Claude — src/** 직접 Edit/Write 절대 금지**
 이유 불문. 규모 불문. 상황 불문.
-반드시 `bash .claude/harness-executor.sh`를 통해서만 구현.
+반드시 `bash .claude/harness/executor.sh`를 통해서만 구현.
 
 **2. 구현 루프 예외 없음**
 `src/**` 변경이 발생하는 모든 작업은 루프 C를 반드시 거친다.
@@ -393,7 +393,7 @@ DESIGN_REVIEW_ESCALATE        │
 | `PLAN_VALIDATION_PASS` | 유저 확인 전 impl 자동 호출 금지 |
 
 **4. 서브에이전트 포어그라운드 순차 실행**
-메인 Claude가 Bash 도구로 `harness-executor.sh`를 직접 실행한다.
+메인 Claude가 Bash 도구로 `harness/executor.sh`를 직접 실행한다.
 백그라운드 스폰(Popen) 금지. 한 에이전트가 완료된 후 다음 에이전트 호출.
 실행 중 출력은 대화창에 그대로 노출되며, /cancel로 중단 가능.
 
@@ -404,7 +404,7 @@ DESIGN_REVIEW_ESCALATE        │
 **6. 단일 소스 원칙 — orchestration-rules.md 선행 수정 강제**
 워크플로우 변경(에이전트 추가/삭제, 루프 순서 변경, 마커 추가, 플래그 추가)이 필요할 때:
 1. **먼저** 이 파일(`orchestration-rules.md`)에 변경 사항을 반영한다.
-2. **그 다음** 스크립트(`harness-executor.sh`, `harness-loop.sh`, `setup-harness.sh` 등)를 업데이트한다.
+2. **그 다음** 스크립트(`harness/executor.sh`, `harness/impl.sh`, `harness/impl-process.sh`, `harness/design.sh`, `harness/bugfix.sh`, `harness/plan.sh`, `setup-harness.sh` 등)를 업데이트한다.
 3. 스크립트를 먼저 수정하고 이 파일을 나중에 수정하는 것은 **절대 금지**.
 위반 시 PreToolUse 훅이 차단한다 (`orch_rules_first` 게이트).
 
@@ -439,11 +439,11 @@ READY_FOR_IMPL
 ```
 
 **9a. kill_check 공용화**
-`kill_check()` 함수는 `harness-loop.sh`와 `harness-executor.sh` 양쪽에서 사용한다.
-`harness-utils.sh`에 정의하여 양쪽에서 source로 공유한다.
+`kill_check()` 함수는 `harness/impl-process.sh`와 `harness/executor.sh` 양쪽에서 사용한다.
+`harness/utils.sh`에 정의하여 양쪽에서 source로 공유한다.
 
 **9. 하네스 관련 수정 순서**
-`harness-executor.sh` / `harness-loop.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` / 에이전트 파일 변경 시:
+`harness/executor.sh` / `harness/{impl,design,bugfix,plan}.sh` / `harness/impl-process.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` / 에이전트 파일 변경 시:
 1. **먼저** `docs/harness-backlog.md` — 해당 항목 상태 업데이트 또는 신규 항목 추가
 2. **그 다음** 실제 파일 수정
 3. **마지막** `docs/harness-state.md` 관련 섹션 현행화 (완료 기능 / 플래그 / 파일 인벤토리)
@@ -484,14 +484,14 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 결과는 `/tmp/{prefix}_scan_report.txt`에 저장.
 
 **14. 쉘 스크립트 코드 품질 규칙**
-하네스 쉘 스크립트(`harness-loop.sh`, `harness-executor.sh`, `harness-utils.sh`) 수정 시:
+하네스 쉘 스크립트(`harness/executor.sh`, `harness/{impl,design,bugfix,plan}.sh`, `harness/impl-process.sh`, `harness/utils.sh`) 수정 시:
 - **변수 인용**: `$var` → `"$var"` (for 루프, grep 패턴, 조건식). 예외: `${array[@]}`, `$?`, `$#`
 - **grep 리터럴**: 파이프(`|`) 등 메타문자가 포함된 패턴은 `grep -F` 사용
 - **원자적 쓰기**: 공유 파일(harness-memory.md 등) append 시 `mktemp` → `cat >> target` → `rm` 패턴 사용
 - **for 루프**: 파일 경로 목록 순회 시 `for f in $var` 대신 `while IFS= read -r f` 사용
 
 **11. 하네스 Bash 포어그라운드 강제**
-메인 Claude가 `harness-executor.sh` / `harness-loop.sh`를 Bash로 실행할 때
+메인 Claude가 `harness/executor.sh`를 Bash로 실행할 때
 **반드시 포어그라운드**(기본값)로 실행한다. `run_in_background` 금지.
 포어그라운드면 Bash 완료까지 Claude가 블로킹되므로 Stop 트리거 자체가 발생하지 않는다.
 
@@ -513,8 +513,8 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 예시: `feat/mvp-42-add-login` / `fix/57` (한국어 제목)
 
 ### 브랜치 생성 시점
-- harness-loop.sh impl 모드 engineer 루프 진입 직후 (engineer 호출 전)
-- harness-executor.sh _run_bugfix_direct() 진입 직후
+- harness/impl-process.sh impl 모드 engineer 루프 진입 직후 (engineer 호출 전)
+- harness/executor.sh _run_bugfix_direct() 진입 직후
 
 ### 커밋 규칙
 - feature branch: commit-gate의 pr_reviewer_lgtm 면제, engineer 자유 커밋
@@ -574,7 +574,7 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 
 | 변경 내용 | 업데이트 대상 |
 |-----------|---------------|
-| 루프 순서 / 조건 변경 | `harness-executor.sh`, `harness-loop.sh`, `docs/harness-state.md` |
+| 루프 순서 / 조건 변경 | `harness/executor.sh`, `harness/{impl,design,bugfix,plan}.sh`, `harness/impl-process.sh`, `docs/harness-state.md` |
 | 마커 추가 / 변경 | 해당 에이전트 md 파일 |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 |
 | 에이전트 추가 / 삭제 | 역할 경계 표 + 해당 루프 다이어그램 + 마커 표 + 스크립트 |

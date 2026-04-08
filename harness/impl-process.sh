@@ -1,9 +1,9 @@
 #!/bin/bash
-# ~/.claude/harness-loop.sh
-# 코드 기반 하네스 루프 — LLM 루프 해석 방지
+# ~/.claude/harness/impl-process.sh
+# impl 모드 engineer 루프 — LLM 루프 해석 방지
 #
 # 호출 형식:
-#   bash .claude/harness-loop.sh impl \
+#   bash .claude/harness/impl-process.sh impl \
 #     --impl <impl_file_path> \
 #     --issue <issue_number> \
 #     [--prefix <prefix>]
@@ -20,7 +20,7 @@ command -v timeout &>/dev/null || timeout() {
 }
 
 # shellcheck source=/dev/null
-source "${HOME}/.claude/harness-utils.sh"
+source "${HOME}/.claude/harness/utils.sh"
 
 export HARNESS_RESULT="unknown"
 
@@ -40,7 +40,7 @@ done
 
 # ── 필수 인자 검증 ─────────────────────────────────────────────────────
 if [[ -z "$MODE" || -z "$IMPL_FILE" || -z "$ISSUE_NUM" ]]; then
-  echo "사용법: bash harness-loop.sh impl --impl <path> --issue <N> [--prefix <prefix>]"
+  echo "사용법: bash harness/impl-process.sh impl --impl <path> --issue <N> [--prefix <prefix>]"
   exit 1
 fi
 
@@ -278,7 +278,7 @@ ${pr_notes}
 PRBODY
 }
 
-# generate_commit_msg() → harness-utils.sh로 이동 (executor와 공유)
+# generate_commit_msg() → harness/utils.sh로 이동 (executor와 공유)
 
 # ── 타임스탬프 디버그 로그 ─────────────────────────────────────────────
 HLOG="/tmp/${PREFIX}-harness-debug.log"
@@ -308,7 +308,7 @@ trap cleanup EXIT
 TOTAL_COST=0
 MAX_TOTAL_COST=10  # 달러 — 전체 루프 비용 상한
 
-# kill_check() → harness-utils.sh로 이동 (executor와 공유)
+# kill_check() → harness/utils.sh로 이동 (executor와 공유)
 
 budget_check() {
   local agent_name="$1" out_file="$2"

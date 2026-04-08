@@ -1,0 +1,99 @@
+#!/bin/bash
+# ~/.claude/harness/impl.sh
+# 루프 C (구현 루프): plan_validation_passed → engineer process 위임
+# planning fallback: impl 없으면 architect Module Plan → validator Plan Validation
+#
+# harness/executor.sh에서 source — 전역변수(PREFIX, IMPL_FILE, ISSUE_NUM 등) 사용
+
+run_impl() {
+  # ── 재진입 상태 감지 ──
+  # plan_validation_passed 플래그 + impl 파일 있으면 → engineer 루프로 바로 진입
+  if [[ -f "/tmp/${PREFIX}_plan_validation_passed" && -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] 재진입: plan_validation_passed + impl 존재 → engineer 루프 직접 진입"
+    [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
+    echo "[HARNESS] depth: $DEPTH"
+    bash "$PROCESS_SCRIPT" impl --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH" --branch-type "$BRANCH_TYPE"
+    return
+  fi
+
+  # Phase 0.5 — UI 키워드 감지
+  if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    ui_kw=$(grep -iE "화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이" "$IMPL_FILE" || true)
+    if [[ -n "$ui_kw" && ! -f "/tmp/${PREFIX}_design_critic_passed" ]]; then
+      export HARNESS_RESULT="UI_DESIGN_REQUIRED"
+      echo "UI_DESIGN_REQUIRED"
+      echo "impl: $IMPL_FILE"
+      echo "이유: $ui_kw"
+      echo "필요 조치: mode:design 완료 후 mode:impl 재호출"
+      exit 0
+    fi
+  fi
+
+  # run_bugfix → run_impl 이중 로테이션 방지: RUN_LOG 이미 설정돼있으면 스킵
+  [[ -z "$RUN_LOG" ]] && rotate_harness_logs "$PREFIX" "impl"
+
+  # Phase 0.7 — impl 파일 없으면 architect 호출
+  if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] Phase 0.7 — architect Mode B 호출 중"
+    _agent_call "architect" 900 \
+      "Module Plan(Mode B) — issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
+      "/tmp/${PREFIX}_arch_out.txt"
+    IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
+    echo "[HARNESS] Phase 0.7 — architect 완료 / impl: $IMPL_FILE"
+  fi
+
+  if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
+    export HARNESS_RESULT="SPEC_GAP_ESCALATE"
+    echo "SPEC_GAP_ESCALATE: architect가 impl 파일을 생성하지 못했다."
+    exit 1
+  fi
+
+  # Phase 0.8 — validator Plan Validation (Mode C)
+  echo "[HARNESS] Phase 0.8 — validator Plan Validation 호출 중"
+  _agent_call "validator" 300 \
+    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_val_pv_out.txt"
+  val_result=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out.txt") || val_result="UNKNOWN"
+  echo "[HARNESS] Phase 0.8 — Plan Validation 결과: $val_result"
+
+  if [[ "$val_result" == "PASS" ]]; then
+    touch "/tmp/${PREFIX}_plan_validation_passed"
+    echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
+    export HARNESS_RESULT="PLAN_VALIDATION_PASS"
+    echo "PLAN_VALIDATION_PASS"
+    echo "impl: $IMPL_FILE"
+    echo "issue: #$ISSUE_NUM"
+    echo "필요 조치: 계획 확인 후 mode:impl 로 재호출"
+    exit 0
+  fi
+
+  # FAIL → architect 재보강 1회 → 재검증
+  echo "[HARNESS] Phase 0.8 — FAIL → architect 재보강 중"
+  fail_feedback=$(tail -20 "/tmp/${PREFIX}_val_pv_out.txt")
+  _agent_call "architect" 900 \
+    "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $IMPL_FILE feedback: ${fail_feedback}" \
+    "/tmp/${PREFIX}_arch_fix_out.txt"
+  echo "[HARNESS] Phase 0.8 — architect 재보강 완료, 재검증 중"
+
+  _agent_call "validator" 300 \
+    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_val_pv_out2.txt"
+  val_result2=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out2.txt") || val_result2="UNKNOWN"
+  echo "[HARNESS] Phase 0.8 — 재검증 결과: $val_result2"
+
+  if [[ "$val_result2" == "PASS" ]]; then
+    touch "/tmp/${PREFIX}_plan_validation_passed"
+    echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
+    export HARNESS_RESULT="PLAN_VALIDATION_PASS"
+    echo "PLAN_VALIDATION_PASS"
+    echo "impl: $IMPL_FILE"
+    echo "issue: #$ISSUE_NUM"
+    echo "필요 조치: 계획 확인 후 mode:impl 로 재호출"
+    exit 0
+  fi
+
+  export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
+  echo "PLAN_VALIDATION_ESCALATE"
+  tail -20 "/tmp/${PREFIX}_val_pv_out2.txt"
+  exit 1
+}
