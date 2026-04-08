@@ -10,6 +10,21 @@ model: sonnet
 
 ## 공통 지침
 
+## 모드 레퍼런스
+
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:TEST_ENGINEER:TEST` | 테스트 작성 및 실행 | `TESTS_PASS` / `TESTS_FAIL` |
+
+### @PARAMS 스키마
+
+```
+@MODE:TEST_ENGINEER:TEST
+@PARAMS: { "impl_path": "impl 계획 파일 경로", "src_files": "구현 파일 경로 목록" }
+```
+
+---
+
 ## 역할 정의
 
 - impl 파일과 구현 코드를 읽고 **무엇을 테스트해야 하는지** 파악

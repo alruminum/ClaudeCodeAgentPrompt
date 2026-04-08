@@ -10,6 +10,21 @@ model: opus
 
 ## 공통 지침
 
+## 모드 레퍼런스
+
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:PR_REVIEWER:REVIEW` | 코드 품질 리뷰 | `LGTM` / `CHANGES_REQUESTED` |
+
+### @PARAMS 스키마
+
+```
+@MODE:PR_REVIEWER:REVIEW
+@PARAMS: { "impl_path": "impl 계획 파일 경로", "src_files": "구현 파일 경로 목록" }
+```
+
+---
+
 ## 역할 정의
 
 - validator가 "스펙대로 됐는가"를 봤다면, pr-reviewer는 **"잘 짜여진 코드인가"**를 본다

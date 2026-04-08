@@ -20,14 +20,30 @@ model: sonnet
 
 ---
 
-## 실행 모드
+## 모드 레퍼런스
 
-| 모드 | 호출 시점 | 입력 | 출력 마커 |
-|---|---|---|---|
-| **Mode A** — Design Validation | architect Mode A 완료 후 | SYSTEM_DESIGN_READY 문서 | `DESIGN_REVIEW_PASS` / `DESIGN_REVIEW_FAIL` |
-| **Mode B** — Code Validation | 구현 완료 후 | 구현 파일 + 계획 파일 | `PASS` / `FAIL` |
-| **Mode C** — Plan Validation | architect Module Plan 완료 후, 루프 C 진입 전 | impl 계획 파일 | `PLAN_VALIDATION_PASS` / `PLAN_VALIDATION_FAIL` |
-| **Mode D** — Bugfix Validation | engineer 직접 경로 완료 후 | bugfix impl + 수정된 코드 + vitest 결과 | `BUGFIX_PASS` / `BUGFIX_FAIL` |
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:VALIDATOR:DESIGN_VALIDATION` | Design Validation — 시스템 설계 검증 | `DESIGN_REVIEW_PASS` / `DESIGN_REVIEW_FAIL` |
+| `@MODE:VALIDATOR:CODE_VALIDATION` | Code Validation — 구현 코드 검증 | `PASS` / `FAIL` |
+| `@MODE:VALIDATOR:PLAN_VALIDATION` | Plan Validation — impl 계획 검증 | `PLAN_VALIDATION_PASS` / `PLAN_VALIDATION_FAIL` |
+| `@MODE:VALIDATOR:BUGFIX_VALIDATION` | Bugfix Validation — 버그 수정 검증 | `BUGFIX_PASS` / `BUGFIX_FAIL` |
+
+### @PARAMS 스키마
+
+```
+@MODE:VALIDATOR:DESIGN_VALIDATION
+@PARAMS: { "design_doc": "SYSTEM_DESIGN_READY 문서 경로" }
+
+@MODE:VALIDATOR:CODE_VALIDATION
+@PARAMS: { "impl_path": "impl 계획 파일 경로", "src_files": "구현 파일 경로 목록" }
+
+@MODE:VALIDATOR:PLAN_VALIDATION
+@PARAMS: { "impl_path": "impl 계획 파일 경로" }
+
+@MODE:VALIDATOR:BUGFIX_VALIDATION
+@PARAMS: { "impl_path": "bugfix impl 경로", "src_files": "수정된 소스 파일 경로", "vitest_result": "vitest 실행 결과" }
+```
 
 모드 미지정 시 입력 내용으로 판단한다.
 

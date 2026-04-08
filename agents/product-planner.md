@@ -69,12 +69,29 @@ model: sonnet
 
 ---
 
-## 실행 모드
+## 모드 레퍼런스
 
-### Mode A — 신규 제품 기획 (기본값)
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:PLANNER:PRODUCT_PLAN` | 신규 제품 기획 — 아이디어 → 구조화된 제품 계획 | `PRODUCT_PLAN_READY` |
+| `@MODE:PLANNER:PRODUCT_PLAN_CHANGE` | 요구사항 변경 — 기존 PRD 변경 처리 | `PRODUCT_PLAN_UPDATED` |
+
+### @PARAMS 스키마
+
+```
+@MODE:PLANNER:PRODUCT_PLAN
+@PARAMS: { "idea": "제품 아이디어/요구사항 설명", "constraints": "기술/비즈니스 제약 (선택)" }
+
+@MODE:PLANNER:PRODUCT_PLAN_CHANGE
+@PARAMS: { "plan_doc": "기존 prd.md 경로", "change_request": "변경 요청 내용" }
+```
+
+---
+
+### PRODUCT_PLAN — 신규 기획 상세
 아이디어/요청을 처음 구조화할 때. 위 수집 항목 파악 후 기능 스펙까지 작성.
 
-### Mode B — 요구사항 변경 처리
+### PRODUCT_PLAN_CHANGE — 변경 처리 상세
 이미 `PRODUCT_PLAN_READY` 문서가 있는 상태에서 요구사항이 바뀔 때.
 
 **트리거**: 유저가 "이거 바꾸고 싶어", "기능 추가할게", "BM 변경됐어" 등을 언급할 때

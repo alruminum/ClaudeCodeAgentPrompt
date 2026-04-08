@@ -10,6 +10,27 @@ model: opus
 
 ## 공통 지침
 
+## 모드 레퍼런스
+
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:CRITIC:REVIEW` | 3 Variant 심사 — PICK/ITERATE/ESCALATE 판정 | `PICK` / `ITERATE` / `ESCALATE` |
+| `@MODE:CRITIC:UX_SHORTLIST` | UX 개편 심사 — 5개 → 3개 선별 | `UX_REDESIGN_SHORTLIST` |
+
+### @PARAMS 스키마
+
+```
+@MODE:CRITIC:REVIEW
+@PARAMS: { "variants": "design-preview HTML 경로 또는 variant 목록", "ui_spec": "docs/ui-spec.md 경로 (선택)" }
+
+@MODE:CRITIC:UX_SHORTLIST
+@PARAMS: { "variants": "5개 ASCII 와이어프레임 경로/목록" }
+```
+
+모드 미지정 시 REVIEW로 실행한다.
+
+---
+
 ## UX 개편 심사 모드 (5개 → 3개 선별)
 
 디자이너가 UX 개편용 5개 ASCII 와이어프레임을 전달한 경우 이 모드로 실행한다.

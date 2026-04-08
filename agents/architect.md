@@ -51,16 +51,38 @@ model: sonnet
 
 ---
 
-## 실행 모드
+## 모드 레퍼런스
 
-| 모드 | 호출 시점 | 입력 | 출력 마커 |
-|---|---|---|---|
-| **System Design(Mode A)** | 새 프로젝트/큰 구조 변경 — PRODUCT_PLAN_READY 후 | PRODUCT_PLAN_READY + 선택 옵션 | `SYSTEM_DESIGN_READY` |
-| **Module Plan(Mode B)** | 단순 feat 직접 요청 또는 Mode D/E 이후 모듈별 호출 | SYSTEM_DESIGN_READY + 모듈명 | `READY_FOR_IMPL` |
-| **SPEC_GAP(Mode C)** | engineer의 SPEC_GAP_FOUND 수신 시 | 갭 목록 | `SPEC_GAP_RESOLVED` + 보강된 계획 파일 |
-| **Task Decompose(Mode D)** | product-planner Epic+Story 완료 후 — Epic 전체 batch 처리 | Epic stories 목록 | `READY_FOR_IMPL` ×N |
-| **Technical Epic(Mode E)** | 기술부채/인프라 개선 필요 시 | 개선 목표 | Epic+Story 이슈 + impl 파일 |
-| **Bugfix Plan(Mode F)** | qa 라우팅에서 engineer 직접 경로 판정 시 | qa 리포트 + 원인 분석 | `BUGFIX_PLAN_READY` |
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:ARCHITECT:SYSTEM_DESIGN` | System Design — 시스템 전체 구조 설계 | `SYSTEM_DESIGN_READY` |
+| `@MODE:ARCHITECT:MODULE_PLAN` | Module Plan — 단일 모듈 impl 계획 작성 | `READY_FOR_IMPL` |
+| `@MODE:ARCHITECT:SPEC_GAP` | SPEC_GAP — engineer 갭 피드백 처리 | `SPEC_GAP_RESOLVED` |
+| `@MODE:ARCHITECT:TASK_DECOMPOSE` | Task Decompose — Epic → 태스크 분해 + impl batch | `READY_FOR_IMPL` ×N |
+| `@MODE:ARCHITECT:TECH_EPIC` | Technical Epic — 기술부채/인프라 에픽 설계 | `SYSTEM_DESIGN_READY` |
+| `@MODE:ARCHITECT:BUGFIX_PLAN` | Bugfix Plan — 국소적 버그 수정 계획 | `BUGFIX_PLAN_READY` |
+
+### @PARAMS 스키마
+
+```
+@MODE:ARCHITECT:SYSTEM_DESIGN
+@PARAMS: { "plan_doc": "prd.md 경로", "options": "선택된 옵션 (A/B/C/D)" }
+
+@MODE:ARCHITECT:MODULE_PLAN
+@PARAMS: { "design_doc": "설계 문서 경로", "module": "대상 모듈명/에픽 경로" }
+
+@MODE:ARCHITECT:SPEC_GAP
+@PARAMS: { "gap_list": "SPEC_GAP_FOUND 갭 목록", "impl_path": "해당 impl 파일 경로" }
+
+@MODE:ARCHITECT:TASK_DECOMPOSE
+@PARAMS: { "stories_doc": "Epic stories.md 경로", "design_doc": "설계 문서 경로" }
+
+@MODE:ARCHITECT:TECH_EPIC
+@PARAMS: { "goal": "개선 목표 설명", "scope": "영향 범위" }
+
+@MODE:ARCHITECT:BUGFIX_PLAN
+@PARAMS: { "qa_report": "QA 리포트 내용", "issue": "GitHub 이슈 번호" }
+```
 
 모드 미지정 시 입력 내용으로 판단한다.
 

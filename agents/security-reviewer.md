@@ -7,6 +7,21 @@ tools: Read, Glob, Grep
 model: sonnet
 ---
 
+## 모드 레퍼런스
+
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:SECURITY_REVIEWER:AUDIT` | 보안 취약점 감사 | `SECURE` / `VULNERABILITIES_FOUND` |
+
+### @PARAMS 스키마
+
+```
+@MODE:SECURITY_REVIEWER:AUDIT
+@PARAMS: { "src_files": "감사 대상 소스 파일 경로 목록" }
+```
+
+---
+
 ## 역할 정의
 
 - 구현 코드의 **보안 취약점만** 검토

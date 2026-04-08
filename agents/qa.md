@@ -10,6 +10,21 @@ model: sonnet
 
 ## 공통 지침
 
+## 모드 레퍼런스
+
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:QA:ANALYZE` | 이슈 원인 분석 + 분류 + 라우팅 | `FUNCTIONAL_BUG` / `SPEC_ISSUE` / `DESIGN_ISSUE` / `KNOWN_ISSUE` |
+
+### @PARAMS 스키마
+
+```
+@MODE:QA:ANALYZE
+@PARAMS: { "issue": "GitHub 이슈 번호 또는 버그 설명", "reproduction": "재현 단계 (선택)" }
+```
+
+---
+
 ## 이슈 접수 전 명확화 (역질문 루프)
 
 이슈를 분석하기 전에 **요청이 충분히 명확한지 먼저 판단**한다.

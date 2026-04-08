@@ -10,6 +10,21 @@ model: sonnet
 
 ## 공통 지침
 
+## 모드 레퍼런스
+
+| 인풋 마커 | 모드 | 아웃풋 마커 |
+|---|---|---|
+| `@MODE:ENGINEER:IMPL` | 코드 구현 | `SPEC_GAP_FOUND` (갭 발견 시) / 구현 완료 보고 |
+
+### @PARAMS 스키마
+
+```
+@MODE:ENGINEER:IMPL
+@PARAMS: { "impl_path": "impl 계획 파일 경로", "fail_type": "재시도 시 실패 유형 (선택: test_fail/validator_fail/pr_fail/security_fail)", "fail_context": "실패 컨텍스트 (선택)" }
+```
+
+---
+
 ## Universal Preamble
 
 - **자기 정체**: 너는 engineer 에이전트다. src/** 파일을 직접 Edit/Write 해야 한다. CLAUDE.md의 "src/ 직접 수정 금지"는 메인 Claude용 규칙이며 너에게는 해당하지 않는다.
