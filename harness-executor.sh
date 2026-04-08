@@ -123,6 +123,7 @@ run_impl() {
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     ui_kw=$(grep -iE "화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이" "$IMPL_FILE" || true)
     if [[ -n "$ui_kw" && ! -f "/tmp/${PREFIX}_design_critic_passed" ]]; then
+      export HARNESS_RESULT="UI_DESIGN_REQUIRED"
       echo "UI_DESIGN_REQUIRED"
       echo "impl: $IMPL_FILE"
       echo "이유: $ui_kw"
@@ -140,11 +141,12 @@ run_impl() {
     _agent_call "architect" 900 \
       "Module Plan(Mode B) — issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
       "/tmp/${PREFIX}_arch_out.txt"
-    IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
+    IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
     echo "[HARNESS] Phase 0.7 — architect 완료 / impl: $IMPL_FILE"
   fi
 
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
+    export HARNESS_RESULT="SPEC_GAP_ESCALATE"
     echo "SPEC_GAP_ESCALATE: architect가 impl 파일을 생성하지 못했다."
     exit 1
   fi
@@ -154,12 +156,13 @@ run_impl() {
   _agent_call "validator" 300 \
     "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_val_pv_out.txt"
-  val_result=$(grep -oE '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out.txt" | head -1 || echo "UNKNOWN")
+  val_result=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out.txt") || val_result="UNKNOWN"
   echo "[HARNESS] Phase 0.8 — Plan Validation 결과: $val_result"
 
   if [[ "$val_result" == "PASS" ]]; then
     touch "/tmp/${PREFIX}_plan_validation_passed"
     echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
+    export HARNESS_RESULT="PLAN_VALIDATION_PASS"
     echo "PLAN_VALIDATION_PASS"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
@@ -178,12 +181,13 @@ run_impl() {
   _agent_call "validator" 300 \
     "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_val_pv_out2.txt"
-  val_result2=$(grep -oE '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out2.txt" | head -1 || echo "UNKNOWN")
+  val_result2=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out2.txt") || val_result2="UNKNOWN"
   echo "[HARNESS] Phase 0.8 — 재검증 결과: $val_result2"
 
   if [[ "$val_result2" == "PASS" ]]; then
     touch "/tmp/${PREFIX}_plan_validation_passed"
     echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
+    export HARNESS_RESULT="PLAN_VALIDATION_PASS"
     echo "PLAN_VALIDATION_PASS"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
@@ -191,6 +195,7 @@ run_impl() {
     exit 0
   fi
 
+  export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
   echo "PLAN_VALIDATION_ESCALATE"
   tail -20 "/tmp/${PREFIX}_val_pv_out2.txt"
   exit 1
@@ -213,11 +218,12 @@ run_design() {
     _agent_call "design-critic" 300 \
       "$des_out" \
       "/tmp/${PREFIX}_dc_out.txt"
-    dc_result=$(grep -oE '\bPICK\b|\bITERATE\b|\bESCALATE\b' "/tmp/${PREFIX}_dc_out.txt" | head -1 || echo "UNKNOWN")
+    dc_result=$(grep -oEm1 '\bPICK\b|\bITERATE\b|\bESCALATE\b' "/tmp/${PREFIX}_dc_out.txt") || dc_result="UNKNOWN"
 
     case "$dc_result" in
       PICK)
         touch "/tmp/${PREFIX}_design_critic_passed"
+        export HARNESS_RESULT="DESIGN_DONE"
         echo "DESIGN_DONE"
         echo "issue: #$ISSUE_NUM"
         echo "필요 조치: 시안 확인 후 mode:impl 로 재호출"
@@ -225,12 +231,14 @@ run_design() {
         ;;
       ITERATE) attempt=$((attempt+1)); continue ;;
       *)
+        export HARNESS_RESULT="DESIGN_ESCALATE"
         echo "DESIGN_ESCALATE: design-critic 판정 불명확"
         cat "/tmp/${PREFIX}_dc_out.txt"
         exit 1
         ;;
     esac
   done
+  export HARNESS_RESULT="DESIGN_ESCALATE"
   echo "DESIGN_ESCALATE: 3회 모두 PICK 없음"
   exit 1
 }
@@ -241,6 +249,14 @@ run_design() {
 # ══════════════════════════════════════════════════════════════════════
 run_bugfix() {
   rotate_harness_logs "$PREFIX" "bugfix"
+
+  # ── 필수 파라미터 검증: bugfix는 --bug 또는 --issue 필요 ──
+  if [[ -z "$BUG_DESC" && ( -z "$ISSUE_NUM" || "$ISSUE_NUM" == "N" ) ]]; then
+    export HARNESS_RESULT="HARNESS_CRASH"
+    echo "[HARNESS] 오류: bugfix 모드는 --bug 또는 --issue가 필요합니다"
+    echo "사용법: harness-executor.sh bugfix --bug <설명> --issue <번호>"
+    exit 1
+  fi
 
   # ── 재진입 상태 감지 (역순 체크) ──
 
@@ -300,6 +316,7 @@ run_plan() {
     "System Design(Mode A) — ${pp_out} issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_arch_out.txt"
 
+  export HARNESS_RESULT="PLAN_DONE"
   echo "PLAN_DONE"
   echo "issue: #$ISSUE_NUM"
   echo "필요 조치: UI 변경 있으면 mode:design, 없으면 mode:impl"
@@ -319,5 +336,5 @@ case "$MODE" in
   design)  run_design ;;
   bugfix)  run_bugfix ;;
   plan)    run_plan ;;
-  *)       echo "[HARNESS] 알 수 없는 mode: $MODE"; exit 1 ;;
+  *)       export HARNESS_RESULT="HARNESS_CRASH"; echo "[HARNESS] 알 수 없는 mode: $MODE"; exit 1 ;;
 esac

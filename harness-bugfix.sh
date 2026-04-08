@@ -104,7 +104,7 @@ _bugfix_direct() {
     _agent_call "architect" 300 \
       "Bugfix Plan(Mode F) — ${qa_out} issue: #$ISSUE_NUM" \
       "/tmp/${PREFIX}_arch_out.txt"
-    IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
+    IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
 
     if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
       echo "[HARNESS] Mode F impl 생성 실패 → full 경로로 폴백"
@@ -175,7 +175,7 @@ $CONSTRAINTS"
           "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS" \
           "/tmp/${PREFIX}_val_bf_out.txt"
         local bf_result
-        bf_result=$(grep -oE 'BUGFIX_PASS|BUGFIX_FAIL|\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_bf_out.txt" | head -1 || echo "UNKNOWN")
+        bf_result=$(grep -oEm1 'BUGFIX_PASS|BUGFIX_FAIL|\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_bf_out.txt") || bf_result="UNKNOWN"
 
         if [[ "$bf_result" != "BUGFIX_PASS" && "$bf_result" != "PASS" ]]; then
           echo "[HARNESS] validator BUGFIX_FAIL — engineer 재시도"
@@ -209,6 +209,7 @@ $CONSTRAINTS"
         echo "commit: $merge_commit"
         exit 0
       else
+        export HARNESS_RESULT="HARNESS_DONE"
         echo "[HARNESS] 변경사항 없음"
         exit 0
       fi
@@ -224,19 +225,62 @@ $CONSTRAINTS"
   exit 1
 }
 
-# ── full 경로: architect Mode B → validator Mode C → 루프 C ────────
+# ── full 경로: architect Mode B → validator Plan Validation → engineer 직접 ──
+# NOTE: run_impl은 exit 0으로 전체 스크립트를 종료하므로 호출하지 않는다.
+#       validator를 인라인 처리하고, PASS 시 _bugfix_direct로 위임한다.
 _bugfix_full() {
   local qa_file="$1"
   local qa_out
-  qa_out=$(cat "$qa_file" 2>/dev/null)
+  qa_out=$(head -c 30000 "$qa_file" 2>/dev/null)
 
   BRANCH_TYPE="fix"  # bugfix full → fix/ 브랜치
   echo "[HARNESS] Phase B2 — architect bugfix Mode B (full) 호출 중"
   _agent_call "architect" 900 \
     "버그픽스 — Module Plan(Mode B) — ${qa_out} issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_arch_out.txt"
-  IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
+  IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
 
-  # Phase 0.8 재사용 (IMPL_FILE이 이미 설정됨)
-  run_impl
+  if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
+    export HARNESS_RESULT="SPEC_GAP_ESCALATE"
+    echo "SPEC_GAP_ESCALATE: architect가 impl 파일을 생성하지 못했다."
+    exit 1
+  fi
+
+  # ── Inline Plan Validation (Mode C) — run_impl의 exit 0 문제 회피 ──
+  echo "[HARNESS] Phase B2.5 — validator Plan Validation (Mode C) 호출 중"
+  _agent_call "validator" 300 \
+    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+    "/tmp/${PREFIX}_val_pv_out.txt"
+  local val_result
+  val_result=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out.txt") || val_result="UNKNOWN"
+  echo "[HARNESS] Phase B2.5 — Plan Validation 결과: $val_result"
+
+  if [[ "$val_result" != "PASS" ]]; then
+    # FAIL → architect 재보강 1회 → 재검증
+    echo "[HARNESS] Phase B2.5 — FAIL → architect 재보강 중"
+    local fail_feedback
+    fail_feedback=$(tail -20 "/tmp/${PREFIX}_val_pv_out.txt")
+    _agent_call "architect" 900 \
+      "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $IMPL_FILE feedback: ${fail_feedback}" \
+      "/tmp/${PREFIX}_arch_fix_out.txt"
+
+    _agent_call "validator" 300 \
+      "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+      "/tmp/${PREFIX}_val_pv_out2.txt"
+    val_result=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out2.txt") || val_result="UNKNOWN"
+    echo "[HARNESS] Phase B2.5 — 재검증 결과: $val_result"
+
+    if [[ "$val_result" != "PASS" ]]; then
+      export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
+      echo "PLAN_VALIDATION_ESCALATE (bugfix_full)"
+      tail -20 "/tmp/${PREFIX}_val_pv_out2.txt"
+      exit 1
+    fi
+  fi
+
+  touch "/tmp/${PREFIX}_plan_validation_passed"
+  echo "[HARNESS] Plan Validation PASS → engineer 직접 경로로 전환"
+
+  # _bugfix_direct: IMPL_FILE 설정 상태를 감지해 architect 스킵 → engineer 루프 직행
+  _bugfix_direct "$qa_file"
 }

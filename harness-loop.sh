@@ -248,8 +248,7 @@ generate_pr_body() {
 
   # 보안 최고 등급
   local sec_level
-  sec_level=$(grep -oE '\bHIGH\b|\bMEDIUM\b|\bLOW\b' "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null \
-    | head -1 || echo "LOW")
+  sec_level=$(grep -oEm1 '\bHIGH\b|\bMEDIUM\b|\bLOW\b' "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null) || sec_level="LOW"
 
   # pr-reviewer 권고사항 (NICE TO HAVE 아래 bullet)
   local pr_notes
@@ -379,6 +378,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
       < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
 
     if [[ "$engineer_committed" == "false" && ${#commit_files[@]} -eq 0 ]]; then
+      export HARNESS_RESULT="HARNESS_DONE"
       echo "[HARNESS/fast] 변경사항 없음"
       hlog "=== 하네스 루프 종료 (결과=no_changes, 시도=1) ==="
       exit 0
@@ -843,5 +843,6 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
 
 fi
 
+export HARNESS_RESULT="HARNESS_CRASH"
 echo "[HARNESS] 알 수 없는 mode: $MODE"
 exit 1
