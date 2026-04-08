@@ -8,61 +8,77 @@
 
 버그픽스 루프 재진입 시 이전 실행의 완료 단계를 감지해 스킵한다.
 
-```
-진입 시 역순 체크:
-  1. impl 파일 존재? → QA + architect 스킵 → engineer 직접 진입
-  2. GitHub issue에 QA 리포트? → QA 스킵 → issue body를 qa_out으로 → architect
-  3. 둘 다 없음 → QA부터 시작 (기본)
+```mermaid
+flowchart TD
+    RE_ENTRY{{"진입 시 역순 체크"}}
+    RE_IMPL{{"impl 파일 존재?"}}
+    RE_QA{{"QA 리포트 있음?"}}
+
+    RE_ENTRY --> RE_IMPL
+    RE_IMPL -->|YES| ENG_DIRECT["engineer 직접 진입"]
+    RE_IMPL -->|NO| RE_QA
+    RE_QA -->|YES| ARC_ENTRY["architect부터"]
+    RE_QA -->|NO| QA_START["QA부터 시작 (기본)"]
 ```
 
 ## 흐름
 
-```
-진입: bug 레이블 이슈 OR 유저 버그 직접 보고
-      │
-      ↓
-  [재진입 감지] ─── impl 있음 ──→ engineer 직접 진입
-      │               │
-      │          QA 리포트 있음 ──→ architect부터
-      │
-      ↓ (신규)
-  qa (원인 분석 + 타입 분류 + 이슈 등록 + 라우팅 추천)
-      │ 원인 특정 3회 실패 → KNOWN_ISSUE → 메인 Claude 보고 후 대기
-      │
-      ↓ qa가 분류 결과에 따라 이슈 등록 (전 경로 공통)
-      │
-  ┌───┴──────────────────────────┐
-  ↓                    ↓          ↓
-architect 경유    engineer 직접   DESIGN_ISSUE
-                  (구현 루프 미진입)  → 디자인 루프
-SPEC_ISSUE        FUNCTIONAL_BUG
-  │                    │
-  ↓                    ↓
-architect              architect
-[Module Plan]          [Bugfix Plan(Mode F)]
-  "버그픽스 —" 명시      경량 impl 작성
-  │                    │
-  ↓                    ↓
-validator              engineer (코드 수정)
-[Plan Validation]        │
-  │                    vitest run (직접 실행)
-  ↓                      │
-→ 구현 루프 진입       validator [Bugfix Validation(Mode D)]
-                         │
-                     ┌───┴───┐
-                   PASS     FAIL
-                   │       → engineer 재시도 (max 2회)
-                   ↓
-                 commit
-                 HARNESS_DONE
+```mermaid
+flowchart TD
+    ENTRY{{"진입: bug 레이블 이슈\nOR 유저 버그 직접 보고"}}
+
+    QA["qa\n@MODE:QA:ANALYZE"]
+    KI["KNOWN_ISSUE\n(원인 특정 3회 실패)"]:::escalation
+
+    QA_ROUTE{{"qa 분류 결과"}}
+
+    %% SPEC_ISSUE 경로
+    ARC_MP["architect\n@MODE:ARCHITECT:MODULE_PLAN"]
+    VAL_PV["validator\n@MODE:VALIDATOR:PLAN_VALIDATION"]
+    IMPL_ENTRY["→ 구현 루프 진입"]
+
+    %% FUNCTIONAL_BUG 경로
+    ARC_BF["architect\n@MODE:ARCHITECT:BUGFIX_PLAN"]
+    ENG["engineer\n@MODE:ENGINEER:IMPL"]
+    VITEST["vitest run\n(직접 실행)"]
+    VAL_BV["validator\n@MODE:VALIDATOR:BUGFIX_VALIDATION"]
+    BF_RESULT{{"BUGFIX_PASS / BUGFIX_FAIL"}}
+    ENG_RETRY["engineer 재시도\n(max 2회)"]
+    COMMIT["commit"]
+    HD{"HARNESS_DONE"}
+
+    %% DESIGN_ISSUE 경로
+    DESIGN_ENTRY["→ 디자인 루프"]
+
+    ENTRY --> QA
+    QA -->|"issue, reproduction?"| QA_ROUTE
+    QA -->|"3회 실패"| KI
+
+    QA_ROUTE -->|SPEC_ISSUE| ARC_MP
+    QA_ROUTE -->|FUNCTIONAL_BUG| ARC_BF
+    QA_ROUTE -->|DESIGN_ISSUE| DESIGN_ENTRY
+
+    ARC_MP -->|"design_doc, module"| VAL_PV
+    VAL_PV -->|"impl_path"| IMPL_ENTRY
+
+    ARC_BF -->|"qa_report, issue"| ENG
+    ENG -->|"impl_path"| VITEST
+    VITEST --> VAL_BV
+    VAL_BV -->|"impl_path, src_files, vitest_result?"| BF_RESULT
+    BF_RESULT -->|BUGFIX_PASS| COMMIT
+    BF_RESULT -->|BUGFIX_FAIL| ENG_RETRY
+    ENG_RETRY --> ENG
+    COMMIT --> HD
+
+    classDef escalation stroke:#f00,stroke-width:2px
 ```
 
 ## qa 분류 → 분기 매핑
 
 | qa 분류 | 경로 | 실행 단계 |
 |---------|------|----------|
-| FUNCTIONAL_BUG | engineer 직접 | architect Mode F → engineer → vitest → validator Mode D → commit |
-| SPEC_ISSUE | architect 경유 | architect Mode B → validator Mode C → 구현 루프 |
+| FUNCTIONAL_BUG | engineer 직접 | architect Bugfix Plan → engineer → vitest → validator Bugfix Validation → commit |
+| SPEC_ISSUE | architect 경유 | architect Module Plan → validator Plan Validation → 구현 루프 |
 | DESIGN_ISSUE | → 디자인 루프 | designer → design-critic |
 
 ## qa 이슈 등록 규칙

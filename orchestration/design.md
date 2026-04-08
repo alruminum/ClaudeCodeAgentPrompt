@@ -4,37 +4,60 @@
 
 ---
 
-```
-designer
-  │
-DESIGN_READY_FOR_REVIEW
-  │
-design-preview-{issue}.html 생성  ← designer가 Write로 직접 생성 (브라우저 시각 확인용)
-  │
-design-critic
-  │           │            │
-PICK       ITERATE      ESCALATE
-  │           │            │
-  │     designer 재시도   유저 직접 선택
-  │     (max 3회)       DESIGN_LOOP_ESCALATE
-  │     3회 초과 →
-  │     DESIGN_LOOP_ESCALATE
-  │
-  └─────────────────────────────┐
-                                ↓
-                  유저 variant 선택
-                                ↓
-              메인 Claude → DESIGN_HANDOFF 발행
-                                ↓
-                  impl 파일 영향 있음?
-                    YES → architect [Module Plan] → READY_FOR_IMPL
-                    NO  → 기존 impl 파일 유지
-                                ↓
-              /tmp/{prefix}_design_critic_passed 플래그 생성
-                                ↓
-                          유저 승인 대기
-                                ↓
-                          → 구현 루프 진입
+```mermaid
+flowchart TD
+    DES["designer\n@MODE:DESIGNER:DEFAULT\n/ FIGMA / UX_REDESIGN"]
+    DRR{"DESIGN_READY_FOR_REVIEW"}
+    HTML["design-preview-{issue}.html 생성"]
+
+    CRITIC["design-critic\n@MODE:CRITIC:REVIEW"]
+
+    PICK{"PICK"}
+    ITERATE{"ITERATE"}
+    ESC_CRITIC{"ESCALATE"}
+
+    DES_RETRY["designer 재시도\n(max 3회)"]
+    DLE["DESIGN_LOOP_ESCALATE"]:::escalation
+    USER_PICK{{"유저 직접 선택"}}
+
+    USER_SELECT{{"유저 variant 선택"}}
+    HANDOFF{"DESIGN_HANDOFF"}
+
+    IMPL_CHK{{"impl 파일 영향 있음?"}}
+    ARC_MP["architect\n@MODE:ARCHITECT:MODULE_PLAN"]
+    RFI{"READY_FOR_IMPL"}
+    KEEP["기존 impl 파일 유지"]
+
+    FLAG["/tmp/{prefix}_design_critic_passed\n플래그 생성"]
+    USER_APPROVE{{"유저 승인 대기"}}
+    IMPL_ENTRY["→ 구현 루프 진입"]
+
+    DES -->|"screen, ui_spec?, impl_path?"| DRR
+    DRR --> HTML
+    HTML --> CRITIC
+    CRITIC -->|"variants, ui_spec?"| PICK
+    CRITIC -->|"variants, ui_spec?"| ITERATE
+    CRITIC -->|"variants, ui_spec?"| ESC_CRITIC
+
+    PICK --> USER_SELECT
+    ITERATE -->|feedback| DES_RETRY
+    DES_RETRY -->|"3회 초과"| DLE
+    DES_RETRY -->|"3회 이내"| DES
+    ESC_CRITIC --> USER_PICK
+    DLE --> USER_PICK
+    USER_PICK --> USER_SELECT
+
+    USER_SELECT --> HANDOFF
+    HANDOFF --> IMPL_CHK
+    IMPL_CHK -->|YES| ARC_MP
+    ARC_MP -->|"design_doc, module"| RFI
+    IMPL_CHK -->|NO| KEEP
+    RFI --> FLAG
+    KEEP --> FLAG
+    FLAG --> USER_APPROVE
+    USER_APPROVE --> IMPL_ENTRY
+
+    classDef escalation stroke:#f00,stroke-width:2px
 ```
 
 ---
