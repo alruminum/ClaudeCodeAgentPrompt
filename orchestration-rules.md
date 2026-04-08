@@ -30,15 +30,15 @@
 
 | 마커 | 발행 주체 | 처리 |
 |------|-----------|------|
-| `DESIGN_REVIEW_ESCALATE` | validator Mode A (재검 후 재FAIL) | 메인 Claude 보고 |
-| `VALIDATION_ESCALATE` | validator Mode B (3회 초과) | 메인 Claude 보고 |
+| `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
+| `VALIDATION_ESCALATE` | validator Code Validation (3회 초과) | 메인 Claude 보고 |
 | `REVIEW_LOOP_ESCALATE` | pr-reviewer (3라운드 초과) | 메인 Claude 보고 |
 | `KNOWN_ISSUE` | qa (원인 특정 3회 실패) | 메인 Claude 보고 |
-| `SPEC_MISSING` | validator Mode B (impl 없음) | architect Module Plan 호출 |
-| `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect Mode C | product-planner 에스컬레이션 |
+| `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
+| `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
 | `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 리셋 초과) | architect SPEC_GAP 권장 |
 | `DESIGN_LOOP_ESCALATE` | designer (3라운드 후에도 ITERATE) | 유저 직접 선택 |
-| `TECH_CONSTRAINT_CONFLICT` | architect Mode C (기술 제약 충돌) | 메인 Claude 보고 |
+| `TECH_CONSTRAINT_CONFLICT` | architect SPEC_GAP (기술 제약 충돌) | 메인 Claude 보고 |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | `MERGE_CONFLICT_ESCALATE` | harness/impl-process.sh / harness/executor.sh (merge 실패) | 메인 Claude 보고 |
 
