@@ -166,7 +166,7 @@ generate_commit_msg() {
   if [[ -n "$IMPL_FILE" ]]; then
     impl_name=$(basename "$IMPL_FILE" .md)
   else
-    impl_name="bugfix-fast"
+    impl_name="bugfix-${ISSUE_NUM:-unknown}"
   fi
   local changed; changed=$(git diff --cached --name-only 2>/dev/null | head -5 | tr '\n' ' ' || echo "(파일 목록 없음)")
   cat <<MSGEOF

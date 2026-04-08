@@ -87,8 +87,12 @@ _bugfix_direct() {
   depth=$(detect_bugfix_depth "$qa_file")
   echo "[HARNESS] bugfix depth: $depth"
 
+  # config 이벤트 기록 — harness-review.py가 depth를 파싱할 수 있도록
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"%s","max_retries":3,"constraints_chars":%d}\n' \
+    "${IMPL_FILE:-}" "$ISSUE_NUM" "$depth" "${#CONSTRAINTS}" >> "$RUN_LOG"
+
   local qa_out
-  qa_out=$(cat "$qa_file" 2>/dev/null)
+  qa_out=$(head -c 30000 "$qa_file" 2>/dev/null)
 
   # impl 파일이 이미 있으면 architect 스킵
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
@@ -155,7 +159,7 @@ $CONSTRAINTS"
     echo "[HARNESS] vitest run (ground truth)"
     local vitest_exit=0
     if [[ "$depth" == "fast" ]]; then
-      npx vitest run --changed --reporter=verbose 2>&1 | tail -100 > "/tmp/${PREFIX}_vitest_out.txt" || vitest_exit=$?
+      npx vitest run --changed HEAD --reporter=verbose 2>&1 | tail -100 > "/tmp/${PREFIX}_vitest_out.txt" || vitest_exit=$?
     else
       npx vitest run --reporter=verbose 2>&1 | tail -100 > "/tmp/${PREFIX}_vitest_out.txt" || vitest_exit=$?
     fi
