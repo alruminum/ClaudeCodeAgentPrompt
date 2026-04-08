@@ -21,6 +21,7 @@ model: opus
 ```
 @MODE:PR_REVIEWER:REVIEW
 @PARAMS: { "impl_path": "impl 계획 파일 경로", "src_files": "구현 파일 경로 목록" }
+@OUTPUT: { "marker": "LGTM / CHANGES_REQUESTED", "must_fix?": "MUST FIX 항목 목록 (CHANGES_REQUESTED 시)", "nice_to_have?": "NICE TO HAVE 항목 목록" }
 ```
 
 ---

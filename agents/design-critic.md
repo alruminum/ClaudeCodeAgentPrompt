@@ -21,10 +21,12 @@ model: opus
 
 ```
 @MODE:CRITIC:REVIEW
-@PARAMS: { "variants": "design-preview HTML 경로 또는 variant 목록", "ui_spec": "docs/ui-spec.md 경로 (선택)" }
+@PARAMS: { "variants": "design-preview HTML 경로 또는 variant 목록", "ui_spec?": "docs/ui-spec.md 경로" }
+@OUTPUT: { "marker": "PICK / ITERATE / ESCALATE", "picked_variant?": "PICK 시 선택된 variant 번호", "feedback?": "ITERATE 시 개선 피드백" }
 
 @MODE:CRITIC:UX_SHORTLIST
 @PARAMS: { "variants": "5개 ASCII 와이어프레임 경로/목록" }
+@OUTPUT: { "marker": "UX_REDESIGN_SHORTLIST", "selected": "선별된 3개 안 번호 목록", "excluded": "제외된 2개 안 + 사유" }
 ```
 
 모드 미지정 시 REVIEW로 실행한다.

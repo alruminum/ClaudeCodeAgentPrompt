@@ -21,6 +21,7 @@ model: sonnet
 ```
 @MODE:TEST_ENGINEER:TEST
 @PARAMS: { "impl_path": "impl 계획 파일 경로", "src_files": "구현 파일 경로 목록" }
+@OUTPUT: { "marker": "TESTS_PASS / TESTS_FAIL", "test_files": "생성된 테스트 파일 경로 목록", "fail_type?": "IMPLEMENTATION_BUG / TEST_CODE_BUG / FLAKY (TESTS_FAIL 시)" }
 ```
 
 ---

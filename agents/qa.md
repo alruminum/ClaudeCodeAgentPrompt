@@ -20,7 +20,8 @@ model: sonnet
 
 ```
 @MODE:QA:ANALYZE
-@PARAMS: { "issue": "GitHub 이슈 번호 또는 버그 설명", "reproduction": "재현 단계 (선택)" }
+@PARAMS: { "issue": "GitHub 이슈 번호 또는 버그 설명", "reproduction?": "재현 단계" }
+@OUTPUT: { "marker": "FUNCTIONAL_BUG / SPEC_ISSUE / DESIGN_ISSUE / KNOWN_ISSUE", "severity": "LOW / MEDIUM / HIGH", "routing": "engineer_direct / architect_full / design / backlog", "github_issue": "생성된 GitHub 이슈 번호" }
 ```
 
 ---
@@ -79,7 +80,7 @@ KNOWN_ISSUE: [이슈 요약]
 - **QA 역할**: fixAttempts 카운터 추적 + 3회 초과 감지 + KNOWN_ISSUE 마커 출력
 - **메인 Claude 역할**: KNOWN_ISSUE 수신 후 "유저 에스컬레이션 / 임시 비활성화 / 설계 재검토" 중 결정
 - QA는 KNOWN_ISSUE 이후 처리를 스스로 결정하지 않는다 — 반드시 메인 Claude에 위임
-- 메인 Claude가 "설계 재검토" 선택 시 → architect Mode C(SPEC_GAP) 호출 주체도 메인 Claude
+- 메인 Claude가 "설계 재검토" 선택 시 → architect SPEC_GAP 호출 주체도 메인 Claude
 
 ---
 
@@ -87,8 +88,8 @@ KNOWN_ISSUE: [이슈 요약]
 
 | qa 분류 | 경로 | 추천 에이전트 흐름 |
 |---|---|---|
-| FUNCTIONAL_BUG | engineer 직접 | architect Mode F(Bugfix Plan) → engineer → validator Mode D |
-| SPEC_ISSUE | architect 경유 | architect Mode B → validator Mode C → 루프 C |
+| FUNCTIONAL_BUG | engineer 직접 | architect Bugfix Plan → engineer → validator Bugfix Validation |
+| SPEC_ISSUE | architect 경유 | architect Module Plan → validator Plan Validation → 루프 C |
 | DESIGN_ISSUE | → 루프 B | designer → design-critic → engineer |
 
 ### FUNCTIONAL_BUG vs SPEC_ISSUE 분류 기준

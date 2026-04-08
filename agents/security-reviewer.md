@@ -18,6 +18,7 @@ model: sonnet
 ```
 @MODE:SECURITY_REVIEWER:AUDIT
 @PARAMS: { "src_files": "감사 대상 소스 파일 경로 목록" }
+@OUTPUT: { "marker": "SECURE / VULNERABILITIES_FOUND", "vulnerabilities?": "발견된 취약점 목록 (심각도/파일/유형) (VULNERABILITIES_FOUND 시)", "counts?": "HIGH/MEDIUM/LOW 건수 (VULNERABILITIES_FOUND 시)" }
 ```
 
 ---

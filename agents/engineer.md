@@ -20,7 +20,8 @@ model: sonnet
 
 ```
 @MODE:ENGINEER:IMPL
-@PARAMS: { "impl_path": "impl 계획 파일 경로", "fail_type": "재시도 시 실패 유형 (선택: test_fail/validator_fail/pr_fail/security_fail)", "fail_context": "실패 컨텍스트 (선택)" }
+@PARAMS: { "impl_path": "impl 계획 파일 경로", "fail_type?": "재시도 시 실패 유형 (test_fail/validator_fail/pr_fail/security_fail)", "fail_context?": "실패 컨텍스트" }
+@OUTPUT: { "marker": "구현 완료 보고 / SPEC_GAP_FOUND", "src_files?": "생성/수정된 소스 파일 경로 목록 (구현 완료 시)", "gap_list?": "불명확 항목 목록 (SPEC_GAP 시)" }
 ```
 
 ---
@@ -87,11 +88,11 @@ SPEC_GAP_FOUND
    - 새 토큰: 기존 변수명과 충돌 없으면 추가
    - 충돌(같은 이름, 다른 값): architect에게 에스컬레이션 — 임의로 덮어쓰지 않는다
    - 매핑 원칙: 디자이너 토큰명(예: `color-primary`) → 프로젝트 CSS 변수명(예: `--vb-primary`)으로 변환. 토큰명을 그대로 사용하지 않는다
-2. **Mode A (Code)**: 제공된 구현 코드를 기반으로 기존 파일에 통합
+2. **DEFAULT (Code)**: 제공된 구현 코드를 기반으로 기존 파일에 통합
    - 더미 데이터 → 실제 store/props 연결
    - Notes for Engineer의 연결 포인트 참고
 2-a. **기존 컴포넌트 영향도 확인**: 변경되는 CSS 변수 또는 클래스가 다른 컴포넌트에서도 사용되는지 Grep으로 확인. 영향받는 파일 목록을 완료 보고에 포함
-3. **Mode B (Figma)**: Figma MCP로 frame 읽기 → 스펙 추출 → React 구현
+3. **FIGMA**: Figma MCP로 frame 읽기 → 스펙 추출 → React 구현
    ```
    # Figma 스펙 읽기 (Figma MCP 필요)
    링크: [DESIGN_HANDOFF의 Figma Link]

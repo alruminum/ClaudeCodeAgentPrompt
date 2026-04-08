@@ -80,10 +80,12 @@ model: sonnet
 
 ```
 @MODE:PLANNER:PRODUCT_PLAN
-@PARAMS: { "idea": "제품 아이디어/요구사항 설명", "constraints": "기술/비즈니스 제약 (선택)" }
+@PARAMS: { "idea": "제품 아이디어/요구사항 설명", "constraints?": "기술/비즈니스 제약" }
+@OUTPUT: { "marker": "PRODUCT_PLAN_READY", "plan_doc": "생성된 prd.md 경로" }
 
 @MODE:PLANNER:PRODUCT_PLAN_CHANGE
 @PARAMS: { "plan_doc": "기존 prd.md 경로", "change_request": "변경 요청 내용" }
+@OUTPUT: { "marker": "PRODUCT_PLAN_UPDATED", "plan_doc": "수정된 prd.md 경로", "affected_areas": "영향받는 설계 항목 목록" }
 ```
 
 ---
@@ -271,7 +273,7 @@ PRODUCT_PLAN_READY
 
 ---
 
-## 변경 출력 형식 (Mode B)
+## 변경 출력 형식 (PRODUCT_PLAN_CHANGE)
 
 ```
 PRODUCT_PLAN_UPDATED
