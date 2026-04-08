@@ -27,6 +27,7 @@ export HARNESS_RESULT="unknown"
 
 MODE=${1:-""}; shift || true
 IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; BUG_DESC=""; CONTEXT=""; DEPTH="auto"; CONSTRAINTS=""
+BRANCH_TYPE="feat"  # bugfix 경로에서 "fix"로 변경
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,6 +43,24 @@ done
 
 LOCK_FILE="/tmp/${PREFIX}_harness_active"
 LOCK_STARTED=$(date +%s)
+
+# ── 병렬 실행 가드: 같은 PREFIX로 동시 실행 방지 ─────────────────────
+if [[ -f "$LOCK_FILE" ]]; then
+  existing_pid=$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    print(d.get("pid", ""))
+except: pass
+' "$LOCK_FILE" 2>/dev/null || true)
+  if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+    echo "[HARNESS] 오류: 같은 PREFIX($PREFIX)로 이미 실행 중 (PID=$existing_pid)"
+    echo "동시 실행은 지원하지 않습니다. /harness-kill로 기존 실행을 중단하거나 완료를 기다리세요."
+    exit 1
+  fi
+  # PID가 죽었으면 stale lock — 정리 후 진행
+  rm -f "$LOCK_FILE"
+fi
 
 _write_lease() {
   printf '{"pid":%d,"mode":"%s","started":%d,"heartbeat":%d}\n' \
@@ -95,7 +114,7 @@ run_impl() {
     echo "[HARNESS] 재진입: plan_validation_passed + impl 존재 → impl2 전환"
     [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
     echo "[HARNESS] depth: $DEPTH"
-    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH"
+    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH" --branch-type "$BRANCH_TYPE"
     return
   fi
 
@@ -315,6 +334,12 @@ _run_bugfix_direct() {
     fi
   fi
 
+  # ── Feature branch 생성 ──────────────────────────────────────
+  local FEATURE_BRANCH
+  FEATURE_BRANCH=$(create_feature_branch "fix" "$ISSUE_NUM")
+  export HARNESS_BRANCH="$FEATURE_BRANCH"
+  echo "[HARNESS] feature branch: $FEATURE_BRANCH"
+
   local attempt=0
   local MAX_HOTFIX=3
   while [[ $attempt -lt $MAX_HOTFIX ]]; do
@@ -362,6 +387,14 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
           git commit -m "$(generate_commit_msg) [bugfix-direct]"
           local commit_hash
           commit_hash=$(git rev-parse --short HEAD)
+          # ── merge to main ──────────────────────────────────────
+          if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "bugfix" "$PREFIX"; then
+            export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
+            echo "MERGE_CONFLICT_ESCALATE"
+            echo "branch: $FEATURE_BRANCH"
+            echo "impl_commit: $commit_hash"
+            exit 1
+          fi
           export HARNESS_RESULT="HARNESS_DONE"
           echo "HARNESS_DONE (engineer_direct)"
           echo "impl: $IMPL_FILE"
@@ -382,11 +415,13 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
   rm -f "/tmp/${PREFIX}_plan_validation_passed"
   export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
   echo "IMPLEMENTATION_ESCALATE (engineer_direct ${MAX_HOTFIX}회 실패)"
+  echo "branch: ${FEATURE_BRANCH:-unknown}"
   exit 1
 }
 
 # ── 기존 full 경로: architect Mode B → validator Mode C → 루프 C ──
 _run_bugfix_full() {
+  BRANCH_TYPE="fix"  # bugfix full 경로 → fix/ 브랜치
   echo "[HARNESS] Phase B2 — architect bugfix Mode B (full) 호출 중"
   _agent_call "architect" 900 \
     "버그픽스 — Module Plan(Mode B) — ${qa_out} issue: #$ISSUE_NUM" \
@@ -427,7 +462,7 @@ case "$MODE" in
   impl2)
     [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
     echo "[HARNESS] depth: $DEPTH"
-    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH"
+    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH" --branch-type "$BRANCH_TYPE"
     ;;
   design)  run_design ;;
   bugfix)  run_bugfix ;;

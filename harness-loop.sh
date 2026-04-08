@@ -25,14 +25,15 @@ source "${HOME}/.claude/harness-utils.sh"
 export HARNESS_RESULT="unknown"
 
 MODE=${1:-""}; shift || true
-IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; DEPTH="std"
+IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; DEPTH="std"; BRANCH_TYPE="feat"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --impl)   IMPL_FILE="$2"; shift 2 ;;
-    --issue)  ISSUE_NUM="$2"; shift 2 ;;
-    --prefix) PREFIX="$2";    shift 2 ;;
-    --depth)  DEPTH="$2";     shift 2 ;;
+    --impl)        IMPL_FILE="$2";   shift 2 ;;
+    --issue)       ISSUE_NUM="$2";   shift 2 ;;
+    --prefix)      PREFIX="$2";      shift 2 ;;
+    --depth)       DEPTH="$2";       shift 2 ;;
+    --branch-type) BRANCH_TYPE="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -128,11 +129,10 @@ CANDIDATE
 
 rollback_attempt() {
   local attempt_num="$1"
-  git stash push --include-untracked \
-    -m "harness-failed-attempt-${attempt_num}" 2>/dev/null || true
-  [[ -n "$RUN_LOG" ]] && printf '{"event":"rollback","attempt":%d,"t":%d}\n' \
+  # Feature branch: stash 대신 변경 유지, 다음 attempt에서 추가 커밋
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"rollback","attempt":%d,"method":"keep-on-branch","t":%d}\n' \
     "$attempt_num" "$(date +%s)" >> "$RUN_LOG"
-  hlog "ROLLBACK attempt=${attempt_num} — stashed"
+  hlog "ROLLBACK attempt=${attempt_num} — changes kept on feature branch"
 }
 
 check_agent_output() {
@@ -279,22 +279,7 @@ ${pr_notes}
 PRBODY
 }
 
-generate_commit_msg() {
-  local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
-  # git add 이후 staged 파일 목록 사용 (HEAD~1은 최초 커밋 시 없을 수 있음)
-  local changed; changed=$(git diff --cached --name-only 2>/dev/null | head -5 | tr '\n' ' ' || echo "(파일 목록 없음)")
-  cat <<MSGEOF
-feat: implement ${impl_name} (#${ISSUE_NUM})
-
-[왜] Issue #${ISSUE_NUM} 구현
-[변경]
-- ${changed}
-
-Closes #${ISSUE_NUM}
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
-MSGEOF
-}
+# generate_commit_msg() → harness-utils.sh로 이동 (executor와 공유)
 
 # ── 타임스탬프 디버그 로그 ─────────────────────────────────────────────
 HLOG="/tmp/${PREFIX}-harness-debug.log"
@@ -351,17 +336,26 @@ if [[ "$MODE" == "impl2" ]]; then
   [[ ! -f "/tmp/${PREFIX}_plan_validation_passed" ]] && touch "/tmp/${PREFIX}_plan_validation_passed"
   rotate_harness_logs "$PREFIX" "impl2"
 
-  # ── fast mode: engineer → commit (테스트·리뷰·보안 스킵) ─────────────
+  # ── Feature branch 생성 ──────────────────────────────────────
+  FEATURE_BRANCH=$(create_feature_branch "$BRANCH_TYPE" "$ISSUE_NUM")
+  export HARNESS_BRANCH="$FEATURE_BRANCH"
+  hlog "feature branch: $FEATURE_BRANCH"
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"branch_create","branch":"%s","t":%d}\n' \
+    "$FEATURE_BRANCH" "$(date +%s)" >> "$RUN_LOG"
+
+  # ── fast mode: engineer → validator → pr-reviewer → commit (테스트·보안 스킵) ──
   if [[ "$DEPTH" == "fast" ]]; then
     hlog "=== 하네스 루프 시작 (depth=fast) ==="
     [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"fast","max_retries":1,"constraints_chars":%d}\n' \
       "$IMPL_FILE" "$ISSUE_NUM" "${#CONSTRAINTS}" >> "$RUN_LOG"
+
+    # ── fast 워커 1: engineer ────────────────────────────────────
     kill_check
     log_phase "engineer"
-    echo "[HARNESS/fast] engineer 호출 중 (테스트·리뷰·보안 스킵)"
+    echo "[HARNESS/fast] engineer 호출 중"
     context=$(cat "$IMPL_FILE" | head -c 30000)
     hlog "▶ engineer 시작 (depth=fast, timeout=900s)"
-    kill_check
+    local head_before; head_before=$(git rev-parse HEAD)
     AGENT_EXIT=0
     _agent_call "engineer" 900 \
       "impl: $IMPL_FILE
@@ -375,24 +369,97 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
+    # engineer가 커밋했는지 + 미커밋 변경이 있는지 확인
+    local head_after; head_after=$(git rev-parse HEAD)
+    local engineer_committed=false
+    [[ "$head_before" != "$head_after" ]] && engineer_committed=true
+
     commit_files=()
     while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
       < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+
+    if [[ "$engineer_committed" == "false" && ${#commit_files[@]} -eq 0 ]]; then
+      echo "[HARNESS/fast] 변경사항 없음"
+      hlog "=== 하네스 루프 종료 (결과=no_changes, 시도=1) ==="
+      exit 0
+    fi
+
+    # 미커밋 변경이 있으면 하네스가 커밋
     if [[ ${#commit_files[@]} -gt 0 ]]; then
       git add -- "${commit_files[@]}"
       git commit -m "$(generate_commit_msg) [fast-mode]"
-      commit_hash=$(git rev-parse --short HEAD)
-      export HARNESS_RESULT="HARNESS_DONE"
-      echo "HARNESS_DONE (fast)"
-      echo "impl: $IMPL_FILE"
-      echo "issue: #$ISSUE_NUM"
-      echo "commit: $commit_hash"
-      echo "⚠️ fast mode: 테스트·리뷰·보안 검사 스킵됨. 중요 변경엔 --depth=std 사용."
-      hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=1) ==="
-    else
-      echo "[HARNESS/fast] 변경사항 없음"
-      hlog "=== 하네스 루프 종료 (결과=no_changes, 시도=1) ==="
     fi
+
+    # ── fast 워커 2: validator Mode B ────────────────────────────
+    kill_check
+    log_phase "validator"
+    echo "[HARNESS/fast] validator Mode B 호출 중"
+    hlog "▶ validator 시작 (depth=fast, timeout=300s)"
+    touch "/tmp/${PREFIX}_test_engineer_passed"  # validator Mode B 게이트 통과용
+    AGENT_EXIT=0
+    _agent_call "validator" 300 \
+      "Mode B — impl: $IMPL_FILE" \
+      "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
+    hlog "◀ validator 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ validator timeout — skip to pr-reviewer"; fi
+    budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
+
+    val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
+    if echo "$val_out" | grep -qi "PASS"; then
+      val_result="PASS"
+    elif echo "$val_out" | grep -qi "FAIL"; then
+      val_result="FAIL"
+    else
+      val_result="UNKNOWN"
+    fi
+    echo "[HARNESS/fast] validator 결과: $val_result"
+    if [[ "$val_result" != "PASS" ]]; then
+      echo "[HARNESS/fast] validator FAIL — fast mode에서는 재시도 없이 경고만 출력"
+      hlog "⚠️ validator FAIL (fast — no retry)"
+    fi
+    touch "/tmp/${PREFIX}_validator_b_passed"
+
+    # ── fast 워커 3: pr-reviewer ─────────────────────────────────
+    kill_check
+    log_phase "pr-reviewer"
+    diff_out=$(git diff HEAD~1 2>&1 | head -300)
+    echo "[HARNESS/fast] pr-reviewer 호출 중"
+    hlog "▶ pr-reviewer 시작 (depth=fast, timeout=180s)"
+    AGENT_EXIT=0
+    _agent_call "pr-reviewer" 180 \
+      "변경 내용 리뷰:
+$diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
+    hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
+    budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
+
+    pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
+    if echo "$pr_out" | grep -qi "LGTM"; then
+      echo "[HARNESS/fast] pr-reviewer: LGTM"
+    elif echo "$pr_out" | grep -qi "CHANGES_REQUESTED"; then
+      echo "[HARNESS/fast] pr-reviewer: CHANGES_REQUESTED — fast mode에서는 경고만 출력"
+      hlog "⚠️ pr-reviewer CHANGES_REQUESTED (fast — no retry)"
+    fi
+
+    # ── merge to main ──────────────────────────────────────────
+    commit_hash=$(git rev-parse --short HEAD)
+    if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "fast" "$PREFIX"; then
+      export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
+      echo "MERGE_CONFLICT_ESCALATE"
+      echo "branch: $FEATURE_BRANCH"
+      echo "impl_commit: $commit_hash"
+      hlog "=== merge conflict ==="
+      exit 1
+    fi
+
+    # ── 완료 ─────────────────────────────────────────────────────
+    export HARNESS_RESULT="HARNESS_DONE"
+    echo "HARNESS_DONE (fast)"
+    echo "impl: $IMPL_FILE"
+    echo "issue: #$ISSUE_NUM"
+    echo "commit: $commit_hash"
+    echo "⚠️ fast mode: 테스트·보안 검사 스킵됨. 중요 변경엔 --depth=std 사용."
+    hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=1) ==="
     exit 0
   fi
 
@@ -417,6 +484,9 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     else
       # ── C1: 실패 유형별 수정 전략 ────────────────────────────────
       error_1line=$(echo "$error_trace" | head -1 | cut -c1-200)
+      # working tree 컨텍스트 prefix (feature branch에서 이전 변경 유지)
+      local wt_prefix="[주의] 이전 attempt의 변경이 working tree에 남아있음. 추가 수정으로 해결하라 (stash/reset 금지).
+"
       case "$fail_type" in
         autocheck_fail)
           task="[사전 검사 실패] 시도 ${attempt}회. 검사 결과:
@@ -447,6 +517,7 @@ ${error_1line}
           task="이전 시도(${attempt}회) 에러: ${error_1line}. 해당 부분만 수정."
           ;;
       esac
+      task="${wt_prefix}${task}"
     fi
 
     # ── context 크기 기록 ──────────────────────────────────────────
@@ -708,6 +779,16 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
     [[ -n "$RUN_LOG" ]] && printf '{"event":"commit","hash":"%s","attempt":%d,"t":%d}\n' \
       "$commit_hash" "$((attempt+1))" "$(date +%s)" >> "$RUN_LOG"
 
+    # ── merge to main ────────────────────────────────────────────
+    if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "$DEPTH" "$PREFIX"; then
+      export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
+      echo "MERGE_CONFLICT_ESCALATE"
+      echo "branch: $FEATURE_BRANCH"
+      echo "impl_commit: $commit_hash"
+      hlog "=== merge conflict ==="
+      exit 1
+    fi
+
     # ── G6: PR body 생성 ─────────────────────────────────────────
     generate_pr_body $((attempt+1)) > "/tmp/${PREFIX}_pr_body.txt" 2>/dev/null || true
 
@@ -749,6 +830,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
   hlog "=== 하네스 루프 종료 (결과=IMPLEMENTATION_ESCALATE, 시도=$MAX) ==="
   echo "IMPLEMENTATION_ESCALATE"
   echo "attempts: $MAX"
+  echo "branch: ${FEATURE_BRANCH:-unknown}"
   echo "마지막 에러:"
   echo "$error_trace" | head -20
   exit 1

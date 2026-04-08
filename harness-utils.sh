@@ -40,8 +40,9 @@ write_run_end() {
     result="HARNESS_CRASH"
   fi
   local t_end; t_end=$(date +%s)
-  printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s"}\n' \
-    "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" >> "$RUN_LOG"
+  local branch_name="${HARNESS_BRANCH:-}"
+  printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s","branch":"%s"}\n' \
+    "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" "$branch_name" >> "$RUN_LOG"
   # 크래시/실패 시 자동 리뷰 트리거 (백그라운드 — 하네스 종료를 블로킹하지 않음)
   if [[ "$result" == "HARNESS_CRASH" || "$result" == "IMPLEMENTATION_ESCALATE" ]]; then
     local review_script="${HOME}/.claude/scripts/harness-review.py"
@@ -59,6 +60,121 @@ kill_check() {
     echo "HARNESS_KILLED: 사용자 요청으로 중단됨"
     exit 0
   fi
+}
+
+# ── Feature branch 생성 ──────────────────────────────────────────────
+# 사용법: create_feature_branch <type> <issue_num>
+# 반환: 브랜치 이름 (stdout)
+create_feature_branch() {
+  local type="$1" issue_num="$2"
+
+  # milestone: harness.config.json에서 읽기
+  local milestone=""
+  local config_file; config_file="$(pwd)/.claude/harness.config.json"
+  if [[ -f "$config_file" ]]; then
+    milestone=$(python3 -c '
+import json, sys
+try: print(json.load(open(sys.argv[1])).get("milestone",""))
+except: pass
+' "$config_file" 2>/dev/null || true)
+  fi
+
+  # slug: gh issue title → 영문/숫자만, 30자 캡
+  local slug=""
+  if command -v gh &>/dev/null; then
+    local raw_title=""
+    raw_title=$(gh issue view "$issue_num" --json title -q .title 2>/dev/null || true)
+    if [[ -n "$raw_title" ]]; then
+      slug=$(printf '%s' "$raw_title" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9 -]//g' | sed 's/  */ /g' \
+        | tr ' ' '-' | sed 's/--*/-/g; s/^-//; s/-$//' \
+        | cut -c1-30)
+    fi
+  fi
+
+  # 브랜치명 조립 (# 없이 숫자만)
+  local branch_name="${type}/"
+  [[ -n "$milestone" ]] && branch_name="${branch_name}${milestone}-"
+  branch_name="${branch_name}${issue_num}"
+  [[ -n "$slug" ]] && branch_name="${branch_name}-${slug}"
+
+  # default branch 감지
+  local default_branch
+  default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@' || echo "main")
+
+  # 이미 동일 브랜치 존재 → 체크아웃만 (재진입)
+  if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
+    git checkout "$branch_name"
+    echo "$branch_name"
+    return 0
+  fi
+
+  git checkout -b "$branch_name" "$default_branch"
+  echo "$branch_name"
+}
+
+# ── Feature branch → main 머지 ───────────────────────────────────────
+# 사용법: merge_to_main <branch_name> <issue_num> <depth> <prefix>
+# 반환: 0=성공, 1=실패
+merge_to_main() {
+  local branch_name="$1" issue_num="$2" depth="$3" prefix="$4"
+
+  local default_branch
+  default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@' || echo "main")
+
+  # 머지 전 게이트 (depth별 3-way 분기)
+  if [[ "$depth" == "deep" ]]; then
+    if [[ ! -f "/tmp/${prefix}_pr_reviewer_lgtm" ]]; then
+      echo "[HARNESS] merge 거부: pr_reviewer_lgtm 없음 (deep)"
+      return 1
+    fi
+    if [[ ! -f "/tmp/${prefix}_security_review_passed" ]]; then
+      echo "[HARNESS] merge 거부: security_review_passed 없음 (deep)"
+      return 1
+    fi
+  elif [[ "$depth" == "std" || "$depth" == "bugfix" ]]; then
+    if [[ ! -f "/tmp/${prefix}_validator_b_passed" ]]; then
+      echo "[HARNESS] merge 거부: validator_b_passed 없음 ($depth)"
+      return 1
+    fi
+  fi
+  # fast: 게이트 없음 — engineer 커밋만으로 머지
+
+  git checkout "$default_branch"
+
+  local merge_msg
+  merge_msg=$(printf 'merge: %s (#%s)' "$branch_name" "$issue_num")
+
+  if ! git merge --no-ff -m "$merge_msg" "$branch_name" 2>/dev/null; then
+    git merge --abort 2>/dev/null || true
+    git checkout "$branch_name" 2>/dev/null || true
+    echo "MERGE_CONFLICT_ESCALATE"
+    return 1
+  fi
+
+  git branch -d "$branch_name" 2>/dev/null || true
+  return 0
+}
+
+# ── 커밋 메시지 생성 ─────────────────────────────────────────────────
+# IMPL_FILE, ISSUE_NUM 전역변수 의존 (harness-loop.sh, harness-executor.sh에서 설정)
+generate_commit_msg() {
+  local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
+  local changed; changed=$(git diff --cached --name-only 2>/dev/null | head -5 | tr '\n' ' ' || echo "(파일 목록 없음)")
+  cat <<MSGEOF
+feat: implement ${impl_name} (#${ISSUE_NUM})
+
+[왜] Issue #${ISSUE_NUM} 구현
+[변경]
+- ${changed}
+
+Closes #${ISSUE_NUM}
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+MSGEOF
 }
 
 # ── 에이전트 호출 래퍼 ────────────────────────────────────────────────
@@ -103,10 +219,18 @@ ${prompt}"
   # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
   # NOTE: python3이 result를 out_file에 직접 쓴다 (stdout redirect 대신 파일 직접 쓰기).
   #       macOS에서 파이프라인 SIGPIPE/signal로 stdout flush가 안 되는 문제 방지.
+  # 에이전트별 도구 제한 — Agent 도구는 메인 Claude 전용, 서브에이전트에서 사용 금지
+  local _disallow_flags=""
+  case "$agent" in
+    engineer|test-engineer|validator|qa|pr-reviewer|design-critic|security-reviewer)
+      _disallow_flags="--disallowedTools Agent" ;;
+  esac
+
   HARNESS_INTERNAL=1 timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
     --output-format stream-json --include-partial-messages \
     --max-budget-usd 2.00 \
     --permission-mode bypassPermissions \
+    $_disallow_flags \
     --fallback-model haiku \
     -p "$prompt" 2>&1 \
     | tee -a "${RUN_LOG:-/dev/null}" \
