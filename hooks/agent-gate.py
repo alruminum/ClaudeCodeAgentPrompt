@@ -56,7 +56,7 @@ def main():
     if agent == "engineer" and not flag("harness_active"):
         deny(f"❌ engineer는 harness-executor.sh를 통해서만 호출 가능. "
              f"/tmp/{PREFIX}_harness_active 없음. "
-             "메인 Claude에서 직접 engineer 호출 금지 — bash .claude/harness-executor.sh impl2로 호출하라.")
+             "메인 Claude에서 직접 engineer 호출 금지 — bash .claude/harness-executor.sh impl로 호출하라.")
 
     # 3c. engineer는 feature branch에서만 실행 (main 직접 작업 방지)
     if agent == "engineer" and flag("harness_active"):

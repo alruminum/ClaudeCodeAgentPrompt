@@ -37,10 +37,19 @@ def fast_classify(prompt):
     # GREETING — 동의/수락 + 짧은 부가어 ("내가 해볼게", "그래 해보자", "할게")
     if re.match(r'^(내가\s*.{0,6}|그래|그럼|해볼게|할게|알았어|넵|ㅇㅋ|확인|커밋|푸시|push)[\s!.]*$', p, re.I):
         return "GREETING"
+    # GREETING — "응/오키/ㅇ" + 짧은 동사구 ("응 시작해", "오키 진행해", "응 해보자")
+    if re.match(r'^(응|오키|ㅇ)\s+.{1,15}$', p) and re.search(r'(시작|진행|해보자|해봐|확인|가자|하자|해줘|볼게|볼까|해볼|가보자)', p):
+        return "GREETING"
+    # GENERIC — 욕설/감탄/감정 표출 (비코딩)
+    if re.search(r'(씨발|시발|개새끼|미친|ㅅㅂ|ㅆㅂ|존나|ㅈㄴ)', p) and not re.search(r'(#\d+|src/|구현|수정|fix)', p, re.I):
+        return "GENERIC"
     # BUG — QUESTION보다 먼저 체크 ("수정한거 맞아?" 같은 패턴이 ?로 QUESTION에 빠지는 것 방지)
     if re.search(r'(버그|bug|크래시|crash)', p, re.I) and not re.search(r'(추가|구현|만들)', p):
         return "BUG"
     if re.search(r'(안\s*[되돼]고|안\s*[되돼]요|안\s*됨|깨[졌지]|작동.*안|동작.*안)', p):
+        return "BUG"
+    # BUG — 훅/에러/실패 보고 ("훅에러", "에러 나", "실패", "터졌")
+    if re.search(r'(에러|error|실패|fail|터[졌지]|죽[었었]|뻗[었었])', p, re.I) and not re.search(r'(추가|구현|만들)', p):
         return "BUG"
     # BUG — "여전히/아직/또" + 증상/스크린샷 → 수정 후 재발 리포트
     if re.search(r'(여전히|아직|still|또\s)', p, re.I) and re.search(r'(Image\s*#|스크린샷|보이|나타|표시|노출|남아)', p, re.I):
@@ -54,6 +63,12 @@ def fast_classify(prompt):
     # QUESTION — 한국어 의문형 어미 (니/나/까/가/냐 + 문장 끝)
     if re.search(r'(할\s*수\s*있[니나]|가능할[까가]|[되될]까|[되될]나|어때|[인건]지|[인건]가|냐)\s*$', p):
         return "QUESTION"
+    # QUESTION — 분석/확인/리뷰/살펴 + 명령형 ("분석해봐", "확인해보고", "리뷰해줘", "살펴봐")
+    if re.search(r'(분석|확인|리뷰|review|살펴|점검|체크|check).*(해봐|해보고|해줘|해주고|봐줘|봐|보고)\s*$', p, re.I):
+        return "QUESTION"
+    # QUESTION — "하네스/harness/로그" + 확인/분석 동사
+    if re.search(r'(하네스|harness|로그|log)', p, re.I) and re.search(r'(확인|분석|봐|리뷰|보고)', p):
+        return "QUESTION"
     # IMPLEMENTATION — 이슈번호 + 명령형 동사 조합
     if re.search(r'#\d+', p) and re.search(r'(구현|수정|추가|만들|해줘|해주세요|하자|진행)', p):
         return "IMPLEMENTATION"
@@ -62,6 +77,15 @@ def fast_classify(prompt):
     # IMPLEMENTATION — 명령형 동사 단독 ("실행해봐", "돌려봐", "적용해")
     if re.search(r'(실행|돌려|재실행|적용|배포|빌드|테스트|커밋|푸시).*(해봐|해줘|하자|해|봐)\s*$', p):
         return "IMPLEMENTATION"
+    # IMPLEMENTATION — 삭제/제거/정리 + 명령형
+    if re.search(r'(삭제|지워|제거|정리|없애|날려).*(해|봐|줘|하자)?\s*$', p):
+        return "IMPLEMENTATION"
+    # IMPLEMENTATION — "다시/재" + 시도/실행 ("다시 시도해봐", "재실행", "다시 돌려")
+    if re.search(r'(다시|재)\s*(시도|실행|돌려|해봐|해줘|시작)', p):
+        return "IMPLEMENTATION"
+    # IMPLEMENTATION — 짧은 단독 명령 ("고", "ㄱ", "고고", "진행")
+    if re.match(r'^(고|ㄱ|고고|ㄱㄱ|진행|시작|계속|넥스트|next)[\s!.]*$', p, re.I):
+        return "GREETING"
     # GENERIC — 짧은 비코딩 응답 (≤15자, 위 패턴 모두 미스)
     if len(p) <= 15 and not re.search(r'(#\d+|src/|fix|bug|구현|수정)', p, re.I):
         return "GREETING"
@@ -476,7 +500,7 @@ def _main_inner():
                 "🐛 [HARNESS ROUTER] 버그/이슈 감지 — IMPLEMENTATION 분류지만 BUG 키워드 포함\n"
                 "→ bugfix 루프(QA 우선)로 실행하세요.\n"
                 f"예: bash {executor_path} bugfix --bug \"{{버그 설명}}\" --issue {current_issue or 'N'} --prefix {prefix}\n"
-                "⚠️ impl2 직접 실행 금지 — 이슈는 무조건 QA부터."
+                "⚠️ impl 직접 실행 금지 — 이슈는 무조건 QA부터."
             )
             log(prefix, f"INJECT(impl→bugfix_override) prompt={prompt[:60]!r}")
         elif flags["harness_active"]:
@@ -493,7 +517,7 @@ def _main_inner():
             issue_ref = current_issue or "N"
             harness_directive = (
                 f"\n\n🔁 [HARNESS ROUTER] plan_validation_passed OK → 아래 Bash 명령을 즉시 실행하라:\n"
-                f"bash {executor_path} impl2 --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
+                f"bash {executor_path} impl --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
                 "engineer 직접 호출 금지. 위 스크립트가 루프를 완주한다.\n"
                 "⚠️ 반드시 포어그라운드로 실행 (run_in_background 금지)."
             )
@@ -503,7 +527,7 @@ def _main_inner():
                 + "\n\n요청 분류: IMPLEMENTATION"
                 + harness_directive
             )
-            log(prefix, f"INJECT(impl/impl2) issue={current_issue} prompt={prompt[:60]!r}")
+            log(prefix, f"INJECT(impl/reentry) issue={current_issue} prompt={prompt[:60]!r}")
         else:
             harness_directive = (
                 "\n\n⚠️ src/** 직접 Edit/Write 금지. engineer 에이전트 직접 호출 금지.\n"

@@ -114,7 +114,7 @@
 
 | 기능 | 구현체 |
 |---|---|
-| 결정론적 게이트 5모드 (impl/impl2/design/bugfix/plan) | `harness-executor.sh` |
+| 결정론적 게이트 4모드 (impl/design/bugfix/plan) | `harness-executor.sh` |
 | 플래그 기반 상태머신 | `/tmp/{prefix}_*` 13개 |
 | Ground truth 테스트 (LLM 독립) | `npx vitest run` in `harness-loop.sh` |
 | 에이전트 도구 경계 물리적 차단 | `agent-boundary.py` |
@@ -355,7 +355,7 @@ attempt 2 → context = prev_attempt_summary + new_error_trace  ← 신규
 3. 둘 다 없음 → QA부터 (기본)
 
 **루프 C (impl) 재진입**:
-1. `plan_validation_passed` 플래그 + impl 존재 → impl2로 전환
+1. `plan_validation_passed` 플래그 + impl 존재 → engineer 루프로 직접 진입
 2. impl 존재 → architect 스킵 → validator Plan Validation
 3. 둘 다 없음 → architect부터 (기본 — Phase 0.7이 이미 처리)
 

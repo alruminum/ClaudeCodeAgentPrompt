@@ -3,7 +3,7 @@
 # 코드 기반 하네스 루프 — LLM 루프 해석 방지
 #
 # 호출 형식:
-#   bash .claude/harness-loop.sh impl2 \
+#   bash .claude/harness-loop.sh impl \
 #     --impl <impl_file_path> \
 #     --issue <issue_number> \
 #     [--prefix <prefix>]
@@ -40,7 +40,7 @@ done
 
 # ── 필수 인자 검증 ─────────────────────────────────────────────────────
 if [[ -z "$MODE" || -z "$IMPL_FILE" || -z "$ISSUE_NUM" ]]; then
-  echo "사용법: bash harness-loop.sh impl2 --impl <path> --issue <N> [--prefix <prefix>]"
+  echo "사용법: bash harness-loop.sh impl --impl <path> --issue <N> [--prefix <prefix>]"
   exit 1
 fi
 
@@ -327,13 +327,13 @@ budget_check() {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# mode: impl2
+# mode: impl (engineer 루프)
 # ══════════════════════════════════════════════════════════════════════
-if [[ "$MODE" == "impl2" ]]; then
+if [[ "$MODE" == "impl" ]]; then
 
   touch "/tmp/${PREFIX}_harness_active"
   [[ ! -f "/tmp/${PREFIX}_plan_validation_passed" ]] && touch "/tmp/${PREFIX}_plan_validation_passed"
-  rotate_harness_logs "$PREFIX" "impl2"
+  rotate_harness_logs "$PREFIX" "impl"
 
   # ── Feature branch 생성 ──────────────────────────────────────
   FEATURE_BRANCH=$(create_feature_branch "$BRANCH_TYPE" "$ISSUE_NUM")

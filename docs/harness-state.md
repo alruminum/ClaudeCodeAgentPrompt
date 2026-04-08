@@ -27,7 +27,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 
 | 파일 | 역할 | 의존 |
 |---|---|---|
-| `harness-executor.sh` | 5가지 모드(impl/impl2/design/bugfix/plan) 라우터 + depth 자동 감지 (`detect_depth()`) | harness-loop.sh, 에이전트들 |
+| `harness-executor.sh` | 4가지 모드(impl/design/bugfix/plan) 라우터 + depth 자동 감지 (`detect_depth()`) | harness-loop.sh, 에이전트들 |
 | `harness-loop.sh` | 구현 루프 엔진 (fast/std/deep depth 분기, engineer→test-engineer→validator→pr-reviewer→security-reviewer, 3회 재시도) + memory candidate 작성 | /tmp/{p}_* 플래그들 |
 | `setup-harness.sh` | 프로젝트별 훅 설치 → `.claude/settings.json` + `harness.config.json` | - |
 | `setup-agents.sh` | 프로젝트별 에이전트 파일 초기화 (9개) + GitHub milestone/label 생성 | - |
@@ -68,7 +68,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | 플래그 | 생성 주체 | 소비 주체 | 의미 |
 |---|---|---|---|
 | `{p}_harness_active` | harness-executor.sh | harness-loop.sh | 하네스 실행 중 |
-| `{p}_plan_validation_passed` | validator (Plan Validation PASS) | harness-loop.sh (impl2 진입 체크) | impl 파일 검증 완료 |
+| `{p}_plan_validation_passed` | validator (Plan Validation PASS) | harness-loop.sh (engineer 루프 진입 체크) | impl 파일 검증 완료 |
 | `{p}_impl_path` | harness-executor.sh | harness-loop.sh | 현재 impl 파일 경로 |
 | `{p}_current_issue` | harness-executor.sh | harness-loop.sh, PostToolUse 훅 | 현재 처리 중 이슈 번호 |
 | `{p}_test_engineer_passed` | test-engineer (TESTS_PASS) | harness-loop.sh | 테스트 통과 |
@@ -146,7 +146,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S48 | QA 에이전트 스코프 강화 | `harness-utils.sh` `_agent_call()`에 `{prefix}_{agent}_active` 플래그 세팅/해제 → `agent-boundary.py` 물리적 차단 활성화. `qa.md` Agent/Bash 도구 제거 + 인프라 접근 금지 명시 | 2026-04-07 |
 | S49 | 루프 D 라우팅 단순화 | 6타입→3타입(FUNCTIONAL_BUG/SPEC_ISSUE/DESIGN_ISSUE), 심각도 제거, QA 이슈 등록 전 경로 의무화, backlog 분기 제거 | 2026-04-07 |
 | S50 | harness-review 흐름 진단 | ABNORMAL_END/EARLY_EXIT/MISSING_PHASE/ROUTING_MISMATCH 4패턴 + 모드별 예상 순서 + QA 타입 추출 + 중단 원인 힌트 | 2026-04-07 |
-| S12 | 루프 C/D 재진입 상태 감지 | run_bugfix: impl→engineer직접, issue QA리포트→architect. run_impl: plan_validation_passed→impl2. _run_bugfix_direct: impl 있으면 architect 스킵 | 2026-04-07 |
+| S12 | 루프 C/D 재진입 상태 감지 | run_bugfix: impl→engineer직접, issue QA리포트→architect. run_impl: plan_validation_passed→engineer 루프 직접 진입. _run_bugfix_direct: impl 있으면 architect 스킵 | 2026-04-07 |
 | S51 | harness-review 토큰 낭비 진단 | WASTE_CONTEXT_EXCESS(역할별 프롬프트 상한), WASTE_SPARSE_PROMPT(컨텍스트 부족→재조회), WASTE_DUPLICATE_READ(3+에이전트 동일파일) | 2026-04-07 |
 | S52 | run_end result 마커 기록 | HARNESS_RESULT 환경변수 → write_run_end() result 필드. 6개 종료 경로 전수 설정. harness-review EARLY_EXIT 오탐 수정 | 2026-04-07 |
 | S53 | 로그 분석 기반 5건 수정 | validator/pr/security 마커 파싱 완화(`grep -qi`), test-engineer timeout 300→600s, engineer Agent 금지, build_smart_context 소스파일 3KB캡+전체 30KB캡 | 2026-04-07 |
@@ -173,7 +173,7 @@ graph TD
   User[사용자 프롬프트] --> Router[harness-router.py\nUserPromptSubmit]
   Router -->|AMBIGUOUS| Interview[Adaptive Interview\nHaiku Q&A → product-planner 힌트]
   Router -->|분류 완료| Executor[harness-executor.sh\n5모드 라우터]
-  Executor -->|impl2 + depth 감지| Loop[harness-loop.sh\n구현 루프]
+  Executor -->|impl + depth 감지| Loop[harness-loop.sh\n구현 루프]
   Executor -->|impl| Architect[architect\nModule Plan]
   Architect --> Validator_C[validator\nPlan Validation]
   Validator_C -->|PASS| Loop

@@ -42,8 +42,8 @@ EXPECTED_SEQUENCE = {
         "architect":       ["qa", "architect", "validator", "engineer"],
         "design":          ["qa", "designer", "design-critic"],
     },
-    "impl": ["architect", "validator"],
-    "impl2": {
+    "impl": {
+        "plan_only": ["architect", "validator"],
         "fast": ["engineer"],
         "std":  ["engineer", "test-engineer", "validator"],
         "deep": ["engineer", "test-engineer", "validator", "pr-reviewer", "security-reviewer"],
@@ -470,7 +470,10 @@ def detect_flow_issues(run_info, timeline, events):
     has_done_marker = run_end_result in (
         "HARNESS_DONE", "IMPLEMENTATION_ESCALATE", "HARNESS_KILLED",
         "HARNESS_BUDGET_EXCEEDED", "KNOWN_ISSUE",
-    ) or any(
+        # 의도적 일시정지 마커 (유저 게이트 대기)
+        "PLAN_VALIDATION_PASS", "PLAN_DONE", "DESIGN_DONE",
+        "UI_DESIGN_REQUIRED",
+    ) or "ESCALATE" in run_end_result or any(
         "HARNESS_DONE" in str(e) or "ESCALATE" in str(e) or "KNOWN_ISSUE" in str(e)
         for e in events if e.get("event") in ("phase", "decision")
     )
@@ -495,7 +498,7 @@ def detect_flow_issues(run_info, timeline, events):
             })
 
     # EARLY_EXIT: run_end는 있지만 HARNESS_DONE/ESCALATE 마커 없음
-    if has_run_end and not has_done_marker and mode in ("bugfix", "impl2"):
+    if has_run_end and not has_done_marker and mode in ("bugfix", "impl"):
         issues.append({
             "type": "EARLY_EXIT",
             "severity": "HIGH",
@@ -543,16 +546,16 @@ def _get_expected_agents(mode, events):
         # bugfix는 qa 라우팅에 따라 다름 — qa는 무조건 첫 번째
         return ["qa"]  # 최소한 qa는 있어야 함
     elif mode == "impl":
-        return EXPECTED_SEQUENCE.get("impl", [])
-    elif mode == "impl2":
-        # depth 감지
-        depth = "std"
+        depth = None
         for e in events:
             if e.get("event") == "config":
-                depth = e.get("depth", "std")
+                depth = e.get("depth")
                 break
-        seq = EXPECTED_SEQUENCE.get("impl2", {})
-        return seq.get(depth, seq.get("std", []))
+        seq = EXPECTED_SEQUENCE.get("impl", {})
+        if depth:
+            return seq.get(depth, seq.get("std", []))
+        else:
+            return seq.get("plan_only", [])
     elif mode == "design":
         return EXPECTED_SEQUENCE.get("design", [])
     elif mode == "plan":

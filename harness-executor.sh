@@ -6,9 +6,8 @@
 #   bash .claude/harness-executor.sh <mode> \
 #     --impl <path> --issue <N> [--prefix <p>] [--bug <desc>] [--context <ctx>]
 #
-# 5가지 mode:
-#   impl   — architect → validator Plan Validation → PLAN_VALIDATION_PASS (유저 게이트)
-#   impl2  — harness-loop.sh 위임 (engineer~pr-reviewer 루프)
+# 4가지 mode:
+#   impl   — architect → validator → PLAN_VALIDATION_PASS → engineer 루프 (plan_validation_passed 시 architect+validator 스킵)
 #   design — designer → design-critic → DESIGN_DONE
 #   bugfix — qa 라우팅 기반 4-way 분기 (engineer_direct/architect_full/design/backlog)
 #   plan   — product-planner → architect Mode A → PLAN_DONE
@@ -110,12 +109,12 @@ LOOP_SCRIPT="${HOME}/.claude/harness-loop.sh"
 # ══════════════════════════════════════════════════════════════════════
 run_impl() {
   # ── 재진입 상태 감지 ──
-  # plan_validation_passed 플래그 + impl 파일 있으면 → impl2로 바로 전환
+  # plan_validation_passed 플래그 + impl 파일 있으면 → engineer 루프로 바로 진입
   if [[ -f "/tmp/${PREFIX}_plan_validation_passed" && -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
-    echo "[HARNESS] 재진입: plan_validation_passed + impl 존재 → impl2 전환"
+    echo "[HARNESS] 재진입: plan_validation_passed + impl 존재 → engineer 루프 직접 진입"
     [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
     echo "[HARNESS] depth: $DEPTH"
-    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH" --branch-type "$BRANCH_TYPE"
+    bash "$LOOP_SCRIPT" impl --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH" --branch-type "$BRANCH_TYPE"
     return
   fi
 
@@ -166,7 +165,7 @@ run_impl() {
     echo "PLAN_VALIDATION_PASS"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
-    echo "필요 조치: 계획 확인 후 mode:impl2 로 재호출"
+    echo "필요 조치: 계획 확인 후 mode:impl 로 재호출"
     exit 0
   fi
 
@@ -191,7 +190,7 @@ run_impl() {
     echo "PLAN_VALIDATION_PASS"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
-    echo "필요 조치: 계획 확인 후 mode:impl2 로 재호출"
+    echo "필요 조치: 계획 확인 후 mode:impl 로 재호출"
     exit 0
   fi
 
@@ -328,11 +327,6 @@ run_plan() {
 # ══════════════════════════════════════════════════════════════════════
 case "$MODE" in
   impl)    run_impl ;;
-  impl2)
-    [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
-    echo "[HARNESS] depth: $DEPTH"
-    bash "$LOOP_SCRIPT" impl2 --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH" --branch-type "$BRANCH_TYPE"
-    ;;
   design)  run_design ;;
   bugfix)  run_bugfix ;;
   plan)    run_plan ;;
