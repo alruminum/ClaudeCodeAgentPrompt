@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
 import re
+import subprocess
 from datetime import datetime
 from harness_common import get_prefix, deny, flag_exists
 
@@ -56,6 +57,21 @@ def main():
         deny(f"❌ engineer는 harness-executor.sh를 통해서만 호출 가능. "
              f"/tmp/{PREFIX}_harness_active 없음. "
              "메인 Claude에서 직접 engineer 호출 금지 — bash .claude/harness-executor.sh impl2로 호출하라.")
+
+    # 3c. engineer는 feature branch에서만 실행 (main 직접 작업 방지)
+    if agent == "engineer" and flag("harness_active"):
+        try:
+            branch_result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, timeout=5
+            )
+            current_branch = branch_result.stdout.strip()
+            if current_branch in ("main", "master"):
+                deny("❌ engineer는 feature branch에서만 실행 가능. "
+                     f"현재: {current_branch}. "
+                     "harness가 create_feature_branch()를 먼저 호출해야 합니다.")
+        except Exception:
+            pass  # git 실패 시 차단 안 함 (safety net)
 
     # 4. designer 실행 후 design-critic PICK 전까지 engineer 차단
     if agent == "engineer" and flag("designer_ran") and not flag("design_critic_passed"):

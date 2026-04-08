@@ -44,6 +44,19 @@ def main():
     if not has_src:
         sys.exit(0)
 
+    # feature branch → LGTM 불필요, 자유 커밋
+    try:
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=5
+        )
+        current_branch = branch_result.stdout.strip()
+    except Exception:
+        current_branch = ""
+
+    if current_branch and current_branch not in ("main", "master"):
+        sys.exit(0)
+
     # src 변경이 있으면 LGTM 필요
     if not os.path.exists(f"/tmp/{PREFIX}_pr_reviewer_lgtm"):
         deny(f"❌ git commit 전 pr-reviewer LGTM 필요. /tmp/{PREFIX}_pr_reviewer_lgtm 없음.")

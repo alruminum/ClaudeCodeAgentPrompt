@@ -124,6 +124,8 @@ SPEC_GAP_FOUND
 - 커밋 전 `git diff --stat`으로 변경 파일 수 확인
   - 10개 이상의 파일이 변경되었다면 → 분리 가능한지 재검토
 - `git add .` / `git add -A` 금지 → 파일 명시적 지정
+- **feature branch 작업**: 하네스가 feature branch를 생성한 상태에서 실행됨. main 직접 커밋 금지
+- **실패 재시도 시**: 이전 변경이 working tree에 남아있음. 추가 수정을 커밋 (stash/reset 금지)
 
 ---
 
