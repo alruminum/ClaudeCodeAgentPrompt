@@ -270,6 +270,10 @@ run_bugfix() {
   echo "[HARNESS] Phase B1 — qa 호출 중"
   _agent_call "qa" 300 \
     "bug: $BUG_DESC issue: #$ISSUE_NUM
+탐색 범위: 이슈에 직접 관련된 파일만 분석하라. 전체 코드베이스 스캔 금지.
+- 이슈 설명에서 언급된 파일/컴포넌트부터 시작
+- 연관 파일은 import 체인 1단계까지만
+- Glob 최대 2회, Read 최대 10회
 분석 완료 후 반드시 mcp__github__create_issue로 이슈를 등록하라.
 - FUNCTIONAL_BUG → Bugs 마일스톤 (라벨: bug)
 - SPEC_ISSUE (PRD 명세 있음) → Feature 마일스톤 (해당 epic 라벨, 본문에 epic 경로 명시)
