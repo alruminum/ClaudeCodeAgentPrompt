@@ -227,7 +227,7 @@ ${prompt}"
   # 도구 제한 — Agent 도구는 메인 Claude 전용, 모든 서브에이전트에서 기본 금지
   local _disallow_flags="--disallowedTools Agent"
 
-  HARNESS_INTERNAL=1 timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
+  HARNESS_INTERNAL=1 HARNESS_PREFIX="$_prefix_for_flag" timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
     --output-format stream-json --include-partial-messages \
     --max-budget-usd 2.00 \
     --permission-mode bypassPermissions \

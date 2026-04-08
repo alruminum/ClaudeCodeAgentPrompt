@@ -1,14 +1,15 @@
 #!/bin/bash
 # ~/.claude/setup-harness.sh
 # 신규 프로젝트 루트에서 실행: bash ~/.claude/setup-harness.sh
-# .claude/settings.json 에 Harness Engineering PreToolUse/PostToolUse 훅 세트를 설치한다.
+# 프로젝트별 .claude/settings.json + harness.config.json을 초기화한다.
 #
-# UserPromptSubmit / SessionStart 는 ~/.claude/settings.json(전역)에서 관리.
-# 이 스크립트는 프로젝트별 게이트 훅만 생성한다.
+# ⚠️ 훅은 프로젝트 settings.json에 쓰지 않는다.
+#    모든 훅은 ~/.claude/settings.json(전역)에서만 관리.
+#    프로젝트 settings.json에는 env + allowedTools만 작성.
 #
-# 설치되는 훅 (모두 글로벌 ~/.claude/hooks/*.py 참조 — 업데이트 시 전 프로젝트 즉시 반영):
-#   PreToolUse(Read)       — agent-boundary.py (하네스 인프라 Read 차단)
-#   PreToolUse(Edit/Write) — orch-rules-first.py + agent-boundary.py (file-ownership 통합)
+# 전역 훅 (모두 ~/.claude/hooks/*.py 참조):
+#   PreToolUse(Edit/Write) — orch-rules-first.py + agent-boundary.py
+#   PreToolUse(Read)       — agent-boundary.py
 #   PreToolUse(Bash)       — harness-drift-check.py + commit-gate.py
 #   PreToolUse(Agent)      — agent-gate.py
 #   PostToolUse(Edit)      — harness-settings-watcher.py
@@ -78,95 +79,29 @@ prefix = "${PREFIX}"
 p = prefix
 doc_name = "${DOC_NAME}"
 
-hooks = {
-    "PreToolUse": [
-        # ── Edit: orch-rules-first + agent-boundary (file-ownership 통합) ──
-        {
-            "matcher": "Edit",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/orch-rules-first.py 2>/dev/null || true"},
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
-            ]
-        },
-        # ── Write: Edit와 동일 보호 ───────────────────────────────────────
-        {
-            "matcher": "Write",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/orch-rules-first.py 2>/dev/null || true"},
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
-            ]
-        },
-        # ── Read: 하네스 인프라 파일 읽기 차단 (에이전트 활성 시) ─────────
-        {
-            "matcher": "Read",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/agent-boundary.py 2>/dev/null || true"},
-            ]
-        },
-        # ── Bash: 드리프트 감지 + 커밋 게이트 ────────────────────────────
-        {
-            "matcher": "Bash",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/harness-drift-check.py 2>/dev/null || true"},
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/commit-gate.py 2>/dev/null || true"},
-            ]
-        },
-        # ── Agent: 에이전트 순서 게이트 ──────────────────────────────────
-        {
-            "matcher": "Agent",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/agent-gate.py 2>/dev/null || true"},
-            ]
-        }
-    ],
-    "PostToolUse": [
-        # ── Edit: settings.json 변경 감지 ────────────────────────────────
-        {
-            "matcher": "Edit",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/harness-settings-watcher.py 2>/dev/null || true"},
-            ]
-        },
-        # ── Bash: commit 성공 후 플래그 정리 ────────────────────────────
-        {
-            "matcher": "Bash",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/post-commit-cleanup.py 2>/dev/null || true"},
-            ]
-        },
-        # ── Agent: 플래그 생성/삭제 + 경고 ──────────────────────────────
-        {
-            "matcher": "Agent",
-            "hooks": [
-                {"type": "command", "timeout": 5,
-                    "command": "python3 ~/.claude/hooks/post-agent-flags.py 2>/dev/null || true"},
-            ]
-        }
-    ]
-}
-
 import os
 settings_path = "$SETTINGS_FILE"
 existing_allowed = ${EXISTING_ALLOWED}
 
-# env 섹션 — HARNESS_DOC_NAME만 주입 (PREFIX는 harness_common.get_prefix()로 동적 결정)
+# ⚠️ 훅은 프로젝트 settings.json에 쓰지 않는다.
+#    모든 훅은 ~/.claude/settings.json(전역)에서 관리.
+#    프로젝트에는 env + allowedTools만 작성.
 output = {
     "env": {
         "HARNESS_DOC_NAME": doc_name,
     },
     "allowedTools": existing_allowed,
-    "hooks": hooks
 }
+
+# 기존 settings.json에 hooks 섹션이 있으면 제거 (마이그레이션)
+if os.path.exists(settings_path):
+    try:
+        with open(settings_path) as f:
+            old = json.load(f)
+        if "hooks" in old:
+            print("⚠️  기존 프로젝트 hooks 섹션 발견 — 제거 (전역으로 이관)")
+    except Exception:
+        pass
 
 with open(settings_path, "w") as f:
     json.dump(output, f, indent=2, ensure_ascii=False)
@@ -186,22 +121,14 @@ done
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "✅ Harness 훅 설치 완료"
+echo "✅ Harness 프로젝트 설정 완료"
 echo ""
 echo "  플래그 prefix : /tmp/${PREFIX}_*"
-echo "  설정 파일     : $SETTINGS_FILE"
+echo "  설정 파일     : $SETTINGS_FILE (env + allowedTools만)"
 echo "  config 파일   : $CONFIG_FILE"
 echo ""
-echo "설치된 훅 (글로벌 ~/.claude/hooks/*.py 참조):"
-echo "  PreToolUse(Edit/Write)  — orch-rules-first.py + agent-boundary.py"
-echo "  PreToolUse(Read)        — agent-boundary.py"
-echo "  PreToolUse(Bash)        — harness-drift-check.py + commit-gate.py"
-echo "  PreToolUse(Agent)       — agent-gate.py"
-echo "  PostToolUse(Edit)       — harness-settings-watcher.py"
-echo "  PostToolUse(Bash)       — post-commit-cleanup.py"
-echo "  PostToolUse(Agent)      — post-agent-flags.py"
-echo ""
-echo "전역 훅(UserPromptSubmit/SessionStart)은 ~/.claude/settings.json에서 자동 적용됨."
+echo "⚠️  훅은 전역 ~/.claude/settings.json에서만 관리."
+echo "    프로젝트 settings.json에 hooks 섹션 추가 금지."
 echo ""
 echo "다음 단계:"
 echo "  1. /init-agents  — 에이전트 파일(.claude/agents/) 초기화"

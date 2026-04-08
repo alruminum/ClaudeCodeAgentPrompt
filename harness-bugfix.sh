@@ -84,7 +84,11 @@ bugfix_run() {
 _bugfix_direct() {
   local qa_file="$1"
   local depth
-  depth=$(detect_bugfix_depth "$qa_file")
+  if [[ "$DEPTH" != "auto" && -n "$DEPTH" ]]; then
+    depth="$DEPTH"
+  else
+    depth=$(detect_bugfix_depth "$qa_file")
+  fi
   echo "[HARNESS] bugfix depth: $depth"
 
   # config 이벤트 기록 — harness-review.py가 depth를 파싱할 수 있도록
