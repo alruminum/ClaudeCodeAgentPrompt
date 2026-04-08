@@ -91,6 +91,7 @@ def extract_run_info(events):
         elif e.get("event") == "run_end":
             info["t_end"] = e.get("t", 0)
             info["elapsed"] = e.get("elapsed", 0)
+            info["run_end_result"] = e.get("result", "")
     if info["t_end"] == 0 and info["t_start"] > 0:
         # 비정상 종료 — 마지막 하네스 이벤트 시각 사용 (stream_event 제외)
         for e in reversed(events):
@@ -184,6 +185,8 @@ def extract_agent_stats(events):
             stats[agent] = {
                 "tools": e.get("tools", {}),
                 "files_read": e.get("files_read", []),
+                "in_tok": e.get("in_tok", 0),
+                "out_tok": e.get("out_tok", 0),
             }
     return stats
 
@@ -433,6 +436,23 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
     return patterns
 
 
+def detect_waste_with_context(patterns, run_info, config, events):
+    """실행 컨텍스트 기반 추가 낭비 패턴을 탐지한다."""
+    # WASTE_DEPTH_MISS: bugfix에서 FUNCTIONAL_BUG인데 depth=fast 미적용
+    if run_info.get("mode") == "bugfix":
+        qa_type = _extract_qa_type(events)
+        depth = config.get("depth", "") if config else ""
+        if qa_type == "FUNCTIONAL_BUG" and depth != "fast":
+            patterns.append({
+                "type": "WASTE_DEPTH_MISS",
+                "severity": "HIGH",
+                "agent": "harness",
+                "detail": f"FUNCTIONAL_BUG인데 depth={depth or '(미적용)'} — fast 경로 미사용",
+                "fix": "harness-bugfix.sh 분리 후 QA 기반 depth 자동 감지 적용",
+            })
+    return patterns
+
+
 # ── 흐름 진단 (비정상 종료 / 라우팅 불일치 / 단계 누락) ──────────
 
 
@@ -588,6 +608,86 @@ def _diagnose_abort(agent, mode, events):
     return " | ".join(hints)
 
 
+# ── 호출 흐름도 ──────────────────────────────────────────────────────
+
+def generate_flow_diagram(run_info, timeline, events):
+    """타임라인에서 ASCII 트리 형태의 호출 흐름도를 생성한다."""
+    mode = run_info.get("mode", "?")
+    lines = []
+    lines.append(f"harness-executor {mode}")
+
+    agents_ran = [e["agent"] for e in timeline]
+
+    # stream_event에서 Agent tool_use 감지 → 서브에이전트 매핑
+    sub_agents = defaultdict(list)  # parent_agent -> [(name, elapsed_approx)]
+    current_parent = None
+    for e in events:
+        if e.get("event") == "agent_start":
+            current_parent = e.get("agent")
+        elif e.get("event") == "agent_end":
+            current_parent = None
+        elif current_parent and e.get("type") == "stream_event":
+            se = e.get("event", {})
+            if se.get("type") == "content_block_start":
+                cb = se.get("content_block", {})
+                if cb.get("type") == "tool_use" and cb.get("name") == "Agent":
+                    sub_agents[current_parent].append(cb.get("id", "?"))
+
+    # QA routing 추출
+    qa_type = _extract_qa_type(events)
+
+    # 예상 시퀀스
+    expected = []
+    if mode == "bugfix":
+        seq_map = EXPECTED_SEQUENCE.get("bugfix", {})
+        if qa_type == "FUNCTIONAL_BUG":
+            expected = seq_map.get("engineer_direct", [])
+        elif qa_type == "DESIGN_ISSUE":
+            expected = seq_map.get("design", [])
+        else:
+            expected = seq_map.get("architect", [])
+    elif mode in EXPECTED_SEQUENCE:
+        seq = EXPECTED_SEQUENCE[mode]
+        if isinstance(seq, list):
+            expected = seq
+        elif isinstance(seq, dict):
+            # depth 기반
+            for e in events:
+                if e.get("event") == "config":
+                    depth = e.get("depth", "std")
+                    expected = seq.get(depth, seq.get("std", []))
+                    break
+
+    for i, entry in enumerate(timeline):
+        agent = entry["agent"]
+        is_last = (i == len(timeline) - 1)
+        prefix = "└─" if is_last else "├─"
+        exit_str = f"exit={entry['exit']}" if entry.get("status") != "incomplete" else "INCOMPLETE"
+        cost_str = f"${entry.get('cost_usd', 0):.2f}"
+        line = f"{prefix} {agent} ({entry['elapsed']}s, {cost_str}, {exit_str})"
+        lines.append(line)
+
+        # QA routing 표시
+        if agent == "qa" and qa_type:
+            routing = "engineer_direct" if qa_type == "FUNCTIONAL_BUG" else \
+                      "design" if qa_type == "DESIGN_ISSUE" else "architect_full"
+            sub_prefix = "│  └─" if not is_last else "   └─"
+            lines.append(f"{sub_prefix} routing: {routing} ({qa_type})")
+
+        # 서브에이전트 표시
+        if agent in sub_agents:
+            for sa_id in sub_agents[agent]:
+                sub_prefix = "│  └─" if not is_last else "   └─"
+                lines.append(f"{sub_prefix} Agent→sub-agent ({sa_id})")
+
+    # 미진입 에이전트 표시
+    missing = [a for a in expected if a not in agents_ran]
+    for m in missing:
+        lines.append(f"❌ {m} 미진입")
+
+    return "\n".join(lines)
+
+
 # ── 리포트 생성 ──────────────────────────────────────────────────────
 
 def fmt_time(ts):
@@ -598,7 +698,7 @@ def fmt_time(ts):
 
 def generate_report(filepath, run_info, config, timeline, agent_stats,
                     stream_tools, stream_files, waste, decisions, phases, contexts,
-                    flow_issues=None):
+                    flow_issues=None, events=None):
     lines = []
     basename = os.path.basename(filepath)
 
@@ -606,21 +706,31 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
     total_cost = sum(e.get("cost_usd", 0) for e in timeline)
     lines.append(f"# Harness Review: {run_info['prefix']}/{basename}")
     lines.append("")
+    run_end_result = run_info.get("run_end_result", "")
     lines.append("## 요약")
-    lines.append(f"- 모드: {run_info['mode']}")
-    lines.append(f"- 전체 소요: {run_info['elapsed']}s")
-    lines.append(f"- 에이전트 호출: {len(timeline)}개")
-    lines.append(f"- 총 비용: ${total_cost:.2f}")
+    lines.append("| 항목 | 값 |")
+    lines.append("|------|-----|")
+    lines.append(f"| 모드 | {run_info['mode']} |")
+    lines.append(f"| depth | {config.get('depth', '(미적용)') if config else '(미적용)'} |")
+    lines.append(f"| 소요 | {run_info['elapsed']}s |")
+    lines.append(f"| 에이전트 | {len(timeline)}개 |")
+    lines.append(f"| 비용 | ${total_cost:.2f} |")
+    lines.append(f"| 결과 | {run_end_result or '?'} |")
     if config:
-        lines.append(f"- impl: {config.get('impl_file', '?')}")
-        lines.append(f"- depth: {config.get('depth', '?')}")
-        lines.append(f"- constraints: {config.get('constraints_chars', '?')} chars")
+        lines.append(f"| impl | {config.get('impl_file', '?')} |")
+    lines.append("")
+
+    # 호출 흐름도
+    lines.append("## 호출 흐름도")
+    lines.append("```")
+    lines.append(generate_flow_diagram(run_info, timeline, events or []))
+    lines.append("```")
     lines.append("")
 
     # 타임라인
     lines.append("## 타임라인")
-    lines.append("| 시간 | 에이전트 | 소요(s) | 비용($) | exit | prompt(KB) | 도구 |")
-    lines.append("|------|---------|---------|---------|------|------------|------|")
+    lines.append("| 시간 | 에이전트 | 소요(s) | 비용($) | exit | in_tok | out_tok | prompt(KB) | 도구 |")
+    lines.append("|------|---------|---------|---------|------|--------|---------|------------|------|")
     for entry in timeline:
         agent = entry["agent"]
         tools_str = ""
@@ -628,13 +738,19 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
             tools_str = " ".join(f"{k}:{v}" for k, v in agent_stats[agent]["tools"].items())
         elif stream_tools:
             tools_str = " ".join(f"{k}:{v}" for k, v in stream_tools.items())
+        # 토큰 정보 (agent_stats에서 추출)
+        in_tok_str = ""
+        out_tok_str = ""
+        if agent in agent_stats:
+            in_tok_str = str(agent_stats[agent].get("in_tok", ""))
+            out_tok_str = str(agent_stats[agent].get("out_tok", ""))
         pc_kb = f"{entry.get('prompt_chars', 0) / 1024:.1f}"
         exit_str = "KILLED" if entry.get("status") == "incomplete" else str(entry["exit"])
         elapsed_str = f"~{entry['elapsed']}" if entry.get("status") == "incomplete" else str(entry["elapsed"])
         lines.append(
             f"| {fmt_time(entry.get('t_start', 0))} | {agent} "
             f"| {elapsed_str} | {entry.get('cost_usd', 0):.2f} "
-            f"| {exit_str} | {pc_kb} | {tools_str} |"
+            f"| {exit_str} | {in_tok_str} | {out_tok_str} | {pc_kb} | {tools_str} |"
         )
     lines.append("")
 
@@ -679,13 +795,16 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
     # 낭비 패턴
     if waste:
         lines.append("## WASTE 패턴")
+        lines.append("| # | 심각도 | 패턴 | 에이전트 | 상세 | 수정 |")
+        lines.append("|---|--------|------|---------|------|------|")
         for i, w in enumerate(waste, 1):
-            sev = w["severity"]
-            lines.append(f"{i}. **{w['type']}** [{sev}] — {w['detail']}")
-            lines.append(f"   fix: {w['fix']}")
+            lines.append(
+                f"| {i} | {w['severity']} | {w['type']} | {w.get('agent', '')} "
+                f"| {w['detail']} | {w['fix']} |"
+            )
             if "files" in w:
                 for f in w["files"]:
-                    lines.append(f"   - `{f}`")
+                    lines.append(f"|   |        |      |         | `{f}` |      |")
         lines.append("")
 
         # 수정 제안 테이블
@@ -707,10 +826,13 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
     # 흐름 진단
     if flow_issues:
         lines.append("## 흐름 진단")
+        lines.append("| # | 심각도 | 유형 | 상세 | 진단 |")
+        lines.append("|---|--------|------|------|------|")
         for i, fi in enumerate(flow_issues, 1):
-            sev = fi["severity"]
-            lines.append(f"{i}. **{fi['type']}** [{sev}] — {fi['detail']}")
-            lines.append(f"   진단: {fi['diagnosis']}")
+            lines.append(
+                f"| {i} | {fi['severity']} | {fi['type']} "
+                f"| {fi['detail']} | {fi['diagnosis']} |"
+            )
         lines.append("")
     else:
         lines.append("## 흐름 정상")
@@ -741,12 +863,13 @@ def analyze_file(filepath):
         stream_tools, stream_files = {}, []
 
     waste = detect_waste(timeline, agent_stats_data, stream_tools, stream_files, decisions)
+    waste = detect_waste_with_context(waste, run_info, config, events)
     flow_issues = detect_flow_issues(run_info, timeline, events)
 
     return generate_report(
         filepath, run_info, config, timeline, agent_stats_data,
         stream_tools, stream_files, waste, decisions, phases_data, contexts,
-        flow_issues=flow_issues,
+        flow_issues=flow_issues, events=events,
     )
 
 

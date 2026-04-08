@@ -162,7 +162,12 @@ merge_to_main() {
 # ── 커밋 메시지 생성 ─────────────────────────────────────────────────
 # IMPL_FILE, ISSUE_NUM 전역변수 의존 (harness-loop.sh, harness-executor.sh에서 설정)
 generate_commit_msg() {
-  local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
+  local impl_name
+  if [[ -n "$IMPL_FILE" ]]; then
+    impl_name=$(basename "$IMPL_FILE" .md)
+  else
+    impl_name="bugfix-fast"
+  fi
   local changed; changed=$(git diff --cached --name-only 2>/dev/null | head -5 | tr '\n' ' ' || echo "(파일 목록 없음)")
   cat <<MSGEOF
 feat: implement ${impl_name} (#${ISSUE_NUM})
@@ -219,12 +224,8 @@ ${prompt}"
   # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
   # NOTE: python3이 result를 out_file에 직접 쓴다 (stdout redirect 대신 파일 직접 쓰기).
   #       macOS에서 파이프라인 SIGPIPE/signal로 stdout flush가 안 되는 문제 방지.
-  # 에이전트별 도구 제한 — Agent 도구는 메인 Claude 전용, 서브에이전트에서 사용 금지
-  local _disallow_flags=""
-  case "$agent" in
-    engineer|test-engineer|validator|qa|pr-reviewer|design-critic|security-reviewer)
-      _disallow_flags="--disallowedTools Agent" ;;
-  esac
+  # 도구 제한 — Agent 도구는 메인 Claude 전용, 모든 서브에이전트에서 기본 금지
+  local _disallow_flags="--disallowedTools Agent"
 
   HARNESS_INTERNAL=1 timeout "$timeout_secs" claude --agent "$agent" --print --verbose \
     --output-format stream-json --include-partial-messages \
@@ -239,6 +240,8 @@ import sys, json
 
 result = ""
 cost = 0.0
+in_tok = 0
+out_tok = 0
 cost_file = sys.argv[1] if len(sys.argv) > 1 else "/dev/null"
 out_file = sys.argv[2] if len(sys.argv) > 2 else "/dev/null"
 stats_file = sys.argv[3] if len(sys.argv) > 3 else "/dev/null"
@@ -259,6 +262,10 @@ for line in sys.stdin:
         if t == "result":
             result = o.get("result", "")
             cost = float(o.get("total_cost_usd", 0) or 0)
+            usage = o.get("usage", {})
+            if usage:
+                in_tok = usage.get("input_tokens", 0)
+                out_tok = usage.get("output_tokens", 0)
 
         elif t == "stream_event":
             e = o.get("event", {})
@@ -288,13 +295,19 @@ for line in sys.stdin:
                         pass
                 cur_tool = ""
                 cur_input = ""
+
+            elif et == "message_delta":
+                u = e.get("usage", {})
+                if u and in_tok == 0:
+                    in_tok += u.get("input_tokens", 0)
+                    out_tok += u.get("output_tokens", 0)
     except Exception:
         pass
 
 for f in [
     (cost_file, lambda fh: fh.write(str(cost))),
     (out_file, lambda fh: fh.write(result)),
-    (stats_file, lambda fh: json.dump({"tools": tools, "files_read": files_read[:50]}, fh)),
+    (stats_file, lambda fh: json.dump({"tools": tools, "files_read": files_read[:50], "in_tok": in_tok, "out_tok": out_tok}, fh)),
 ]:
     try:
         with open(f[0], "w") as fh:

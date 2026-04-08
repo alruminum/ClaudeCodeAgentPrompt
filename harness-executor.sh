@@ -22,6 +22,7 @@ command -v timeout &>/dev/null || timeout() {
 
 # shellcheck source=/dev/null
 source "${HOME}/.claude/harness-utils.sh"
+source "${HOME}/.claude/harness-bugfix.sh"
 
 export HARNESS_RESULT="unknown"
 
@@ -236,6 +237,7 @@ run_design() {
 
 # ══════════════════════════════════════════════════════════════════════
 # mode: bugfix (Phase B1 → qa 라우팅 기반 4-way 분기)
+# 핵심 로직은 harness-bugfix.sh에 분리됨
 # ══════════════════════════════════════════════════════════════════════
 run_bugfix() {
   rotate_harness_logs "$PREFIX" "bugfix"
@@ -245,33 +247,19 @@ run_bugfix() {
   # 1. impl 파일 있으면 → QA + architect 스킵, engineer 직접
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     echo "[HARNESS] 재진입: impl 존재 ($IMPL_FILE) → engineer 직접"
-    qa_out="[재진입 — impl 파일 기반. QA 스킵]"
-    _run_bugfix_direct
+    echo "[재진입 — impl 파일 기반. QA 스킵]" > "/tmp/${PREFIX}_qa_out.txt"
+    _bugfix_direct "/tmp/${PREFIX}_qa_out.txt"
     return
   fi
 
-  # 2. GitHub issue에 QA 리포트 있으면 → QA 스킵, architect부터
+  # 2. GitHub issue에 QA 리포트 있으면 → QA 스킵, bugfix_run으로 라우팅
   if [[ -n "$ISSUE_NUM" && "$ISSUE_NUM" != "N" ]]; then
     local issue_body
     issue_body=$(gh issue view "$ISSUE_NUM" --json body -q .body 2>/dev/null || echo "")
-    if echo "$issue_body" | grep -q 'QA_REPORT\|FUNCTIONAL_BUG\|SPEC_ISSUE\|DESIGN_ISSUE'; then
+    if echo "$issue_body" | grep -q 'QA_REPORT\|QA_SUMMARY\|FUNCTIONAL_BUG\|SPEC_ISSUE\|DESIGN_ISSUE'; then
       echo "[HARNESS] 재진입: GitHub issue #${ISSUE_NUM}에 QA 리포트 존재 → QA 스킵"
-      qa_out="$issue_body"
-
-      # 타입 기반 라우팅
-      local routing="architect"
-      if echo "$qa_out" | grep -q 'FUNCTIONAL_BUG'; then
-        routing="engineer_direct"
-      elif echo "$qa_out" | grep -q 'DESIGN_ISSUE'; then
-        routing="design"
-      fi
-      echo "[HARNESS] 재진입 routing: $routing"
-
-      case "$routing" in
-        engineer_direct) _run_bugfix_direct ;;
-        design) run_design ;;
-        *) _run_bugfix_full ;;
-      esac
+      echo "$issue_body" > "/tmp/${PREFIX}_qa_out.txt"
+      bugfix_run  # QA_SUMMARY 파싱 + 폴백 라우팅
       return
     fi
   fi
@@ -288,149 +276,8 @@ run_bugfix() {
 - SPEC_ISSUE (PRD 명세 없음) → Feature 마일스톤
 - DESIGN_ISSUE → Feature 마일스톤" \
     "/tmp/${PREFIX}_qa_out.txt"
-  qa_out=$(cat "/tmp/${PREFIX}_qa_out.txt")
 
-  # ── qa 라우팅 파싱 (타입 기준, 심각도 무관) ──
-  local routing="architect"  # 기본값 (안전 — SPEC_ISSUE)
-  if echo "$qa_out" | grep -q 'FUNCTIONAL_BUG'; then
-    routing="engineer_direct"
-  elif echo "$qa_out" | grep -q 'DESIGN_ISSUE'; then
-    routing="design"
-  elif echo "$qa_out" | grep -q 'SPEC_ISSUE'; then
-    routing="architect"
-  fi
-  echo "[HARNESS] qa routing: $routing"
-
-  case "$routing" in
-    engineer_direct)
-      _run_bugfix_direct
-      ;;
-    design)
-      echo "[HARNESS] DESIGN_ISSUE → 루프 B 전환"
-      run_design
-      ;;
-    *)
-      _run_bugfix_full
-      ;;
-  esac
-}
-
-# ── engineer 직접 경로: architect Mode F → engineer → vitest → validator Mode D → commit ──
-_run_bugfix_direct() {
-  # impl 파일이 이미 있으면 architect 스킵
-  if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
-    echo "[HARNESS] impl 존재 ($IMPL_FILE) → architect 스킵"
-  else
-    echo "[HARNESS] Phase B2 — architect Bugfix Plan(Mode F) 호출 중"
-    _agent_call "architect" 300 \
-      "Bugfix Plan(Mode F) — ${qa_out} issue: #$ISSUE_NUM" \
-      "/tmp/${PREFIX}_arch_out.txt"
-    IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
-
-    if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
-      echo "[HARNESS] Mode F impl 생성 실패 → full 경로로 폴백"
-      _run_bugfix_full
-      return
-    fi
-  fi
-
-  # ── Feature branch 생성 ──────────────────────────────────────
-  local FEATURE_BRANCH
-  FEATURE_BRANCH=$(create_feature_branch "fix" "$ISSUE_NUM")
-  export HARNESS_BRANCH="$FEATURE_BRANCH"
-  echo "[HARNESS] feature branch: $FEATURE_BRANCH"
-
-  local attempt=0
-  local MAX_HOTFIX=3
-  while [[ $attempt -lt $MAX_HOTFIX ]]; do
-    attempt=$((attempt + 1))
-    kill_check
-    echo "[HARNESS] engineer 직접 (attempt $attempt/$MAX_HOTFIX)"
-
-    local context
-    context=$(cat "$IMPL_FILE" 2>/dev/null | head -c 30000)
-    local AGENT_EXIT=0
-    _agent_call "engineer" 900 \
-      "impl: $IMPL_FILE
-issue: #$ISSUE_NUM
-task: Bugfix Plan의 버그 수정 이행
-context:
-$context
-constraints:
-$CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
-
-    if [[ $AGENT_EXIT -eq 124 ]]; then
-      echo "[HARNESS] engineer timeout — 재시도"
-      continue
-    fi
-
-    # vitest 직접 실행 (test-engineer 스킵)
-    echo "[HARNESS] vitest run (ground truth)"
-    local vitest_exit=0
-    npx vitest run --reporter=verbose 2>&1 | tail -100 > "/tmp/${PREFIX}_vitest_out.txt" || vitest_exit=$?
-
-    if [[ $vitest_exit -eq 0 ]]; then
-      # validator Mode D (Bugfix Validation)
-      echo "[HARNESS] validator Bugfix Validation(Mode D) 호출 중"
-      _agent_call "validator" 300 \
-        "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS" \
-        "/tmp/${PREFIX}_val_bf_out.txt"
-      local bf_result
-      bf_result=$(grep -oE 'BUGFIX_PASS|BUGFIX_FAIL|\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_bf_out.txt" | head -1 || echo "UNKNOWN")
-
-      if [[ "$bf_result" == "BUGFIX_PASS" || "$bf_result" == "PASS" ]]; then
-        commit_files=()
-        while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
-          < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
-        if [[ ${#commit_files[@]} -gt 0 ]]; then
-          git add -- "${commit_files[@]}"
-          git commit -m "$(generate_commit_msg) [bugfix-direct]"
-          local impl_commit merge_commit
-          impl_commit=$(git rev-parse --short HEAD)
-          # ── merge to main ──────────────────────────────────────
-          if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "bugfix" "$PREFIX"; then
-            export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
-            echo "MERGE_CONFLICT_ESCALATE"
-            echo "branch: $FEATURE_BRANCH"
-            echo "impl_commit: $impl_commit"
-            exit 1
-          fi
-          merge_commit=$(git rev-parse --short HEAD)
-          export HARNESS_RESULT="HARNESS_DONE"
-          echo "HARNESS_DONE (engineer_direct)"
-          echo "impl: $IMPL_FILE"
-          echo "issue: #$ISSUE_NUM"
-          echo "commit: $merge_commit"
-          exit 0
-        else
-          echo "[HARNESS] 변경사항 없음"
-          exit 0
-        fi
-      fi
-      echo "[HARNESS] validator BUGFIX_FAIL — engineer 재시도"
-    else
-      echo "[HARNESS] vitest 실패 (exit=$vitest_exit) — engineer 재시도"
-    fi
-  done
-
-  rm -f "/tmp/${PREFIX}_plan_validation_passed"
-  export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
-  echo "IMPLEMENTATION_ESCALATE (engineer_direct ${MAX_HOTFIX}회 실패)"
-  echo "branch: ${FEATURE_BRANCH:-unknown}"
-  exit 1
-}
-
-# ── 기존 full 경로: architect Mode B → validator Mode C → 루프 C ──
-_run_bugfix_full() {
-  BRANCH_TYPE="fix"  # bugfix full 경로 → fix/ 브랜치
-  echo "[HARNESS] Phase B2 — architect bugfix Mode B (full) 호출 중"
-  _agent_call "architect" 900 \
-    "버그픽스 — Module Plan(Mode B) — ${qa_out} issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_arch_out.txt"
-  IMPL_FILE=$(grep -oE 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt" | head -1 || echo "")
-
-  # Phase 0.8 재사용 (IMPL_FILE이 이미 설정됨)
-  run_impl
+  bugfix_run  # harness-bugfix.sh 함수
 }
 
 # ══════════════════════════════════════════════════════════════════════

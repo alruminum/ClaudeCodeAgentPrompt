@@ -102,6 +102,24 @@ KNOWN_ISSUE: [이슈 요약]
 
 ---
 
+## 출력 형식
+
+분석 결과를 자유 형식으로 출력한 뒤, 반드시 아래 구조화 요약을 **마지막에** 출력하라:
+
+```
+---QA_SUMMARY---
+TYPE: FUNCTIONAL_BUG | SPEC_ISSUE | DESIGN_ISSUE
+AFFECTED_FILES: <수정 필요한 파일 수 (정수)>
+SEVERITY: LOW | MEDIUM | HIGH
+ROUTING: engineer_direct | architect_full | design | backlog
+---END_QA_SUMMARY---
+```
+
+- TYPE/ROUTING은 반드시 위 값 중 하나만 사용
+- AFFECTED_FILES는 정수만 (추측 가능하면 최선 추정)
+
+---
+
 ## 제약
 
 - **Agent 도구 사용 절대 금지** — 서브에이전트 스폰 금지. 직접 분석만 수행.
