@@ -36,3 +36,30 @@ PICK       ITERATE      ESCALATE
                                 ↓
                           → 구현 루프 진입
 ```
+
+---
+
+## 마커 레퍼런스
+
+### 인풋 마커 (이 루프에서 호출하는 @MODE)
+
+| @MODE | 대상 에이전트 | 호출 시점 |
+|---|---|---|
+| `@MODE:DESIGNER:DEFAULT` | designer | ASCII+Code 3 variant 생성 (기본) |
+| `@MODE:DESIGNER:FIGMA` | designer | Figma MCP 연동 시 |
+| `@MODE:DESIGNER:UX_REDESIGN` | designer | UX 전면 개편 요청 시 |
+| `@MODE:CRITIC:REVIEW` | design-critic | 3 variant 심사 |
+| `@MODE:CRITIC:UX_SHORTLIST` | design-critic | UX 개편 5→3 선별 |
+| `@MODE:ARCHITECT:MODULE_PLAN` | architect | DESIGN_HANDOFF 후 impl 영향 있을 때 |
+
+### 아웃풋 마커 (이 루프에서 발생하는 시그널)
+
+| 마커 | 발행 주체 | 다음 행동 |
+|------|-----------|-----------|
+| `DESIGN_READY_FOR_REVIEW` | designer | HTML 생성 → design-critic 호출 |
+| `PICK` | design-critic | 유저 variant 선택 대기 |
+| `ITERATE` | design-critic | designer 재시도 (max 3회) |
+| `ESCALATE` | design-critic | DESIGN_LOOP_ESCALATE |
+| `UX_REDESIGN_SHORTLIST` | design-critic | 3개 선별 → designer Stitch 렌더링 |
+| `DESIGN_LOOP_ESCALATE` | designer (3회 초과) | 유저 직접 선택 |
+| `DESIGN_HANDOFF` | 메인 Claude (유저 선택 후) | architect Module Plan (영향 시) → 구현 루프 |

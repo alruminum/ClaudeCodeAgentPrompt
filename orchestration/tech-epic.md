@@ -24,3 +24,25 @@ DESIGN_REVIEW_ESCALATE        │
                               │
                         → 구현 루프 진입
 ```
+
+---
+
+## 마커 레퍼런스
+
+### 인풋 마커 (이 루프에서 호출하는 @MODE)
+
+| @MODE | 대상 에이전트 | 호출 시점 |
+|---|---|---|
+| `@MODE:ARCHITECT:TECH_EPIC` | architect | 기술 에픽 설계 시작 |
+| `@MODE:VALIDATOR:DESIGN_VALIDATION` | validator | SYSTEM_DESIGN_READY 후 설계 검증 |
+| `@MODE:ARCHITECT:MODULE_PLAN` | architect | DESIGN_REVIEW_PASS 후 모듈별 impl 작성 ×N |
+
+### 아웃풋 마커 (이 루프에서 발생하는 시그널)
+
+| 마커 | 발행 주체 | 다음 행동 |
+|------|-----------|-----------|
+| `SYSTEM_DESIGN_READY` | architect | validator Design Validation |
+| `DESIGN_REVIEW_PASS` | validator | Epic+Story 이슈 생성 → Module Plan ×N |
+| `DESIGN_REVIEW_FAIL` | validator | architect 재설계 (max 1회) |
+| `DESIGN_REVIEW_ESCALATE` | validator | 메인 Claude 보고 후 대기 |
+| `READY_FOR_IMPL` | architect | → 구현 루프 진입 (순차 ×N) |
