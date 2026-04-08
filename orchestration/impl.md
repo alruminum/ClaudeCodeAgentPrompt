@@ -32,68 +32,97 @@
 
 ## 흐름
 
-```
-READY_FOR_IMPL (impl 파일 경로 확정)
-      │
-      ┌─────────────── attempt loop (MAX 3회) ───────────────────┐
-      ↓                                                          │
-  engineer                                               FAIL → attempt++
-      │
-SPEC_GAP_FOUND?
-  YES → architect [SPEC_GAP]
-          │
-    SPEC_GAP_RESOLVED
-          │ counter 리셋 (SPEC_GAP 리셋 max 2회)
-          │ 리셋 횟수 초과 → IMPLEMENTATION_ESCALATE
-          └──→ engineer 재시도
-      │
-  (SPEC_GAP 없음)
-      ↓
-src/** 변경 있음?
-  NO  ────────────────────────────────────────────────┐
-  YES ↓                                                │
-  test-engineer (테스트 작성)                          │
-    TESTS_FAIL 분류:                                   │
-      IMPLEMENTATION_BUG → engineer 재구현 ──────────→ FAIL
-      TEST_CODE_BUG      → test-engineer 자체 수정     │
-      FLAKY              → test-engineer 자체 수정     │
-      (자체 수정 max 2회, attempt 불변)                 │
-    TESTS_PASS                                         │
-      ↓                                                │
-  harness/impl-process.sh → vitest run  ← ground truth (LLM 주장과 독립)
-    실패 ─────────────────────────────────────────── → FAIL
-    통과                                               │
-      ↓  ←─────────────────────────────────────────────┘
-  validator [Code Validation]
-    마커 파싱: 출력에서 PASS/FAIL 포함 여부로 판정 (공백·설명 텍스트 허용)
-    FAIL ────────────────────────────────────────── → FAIL
-    PASS
-      ↓
-  [deep only]
-  pr-reviewer
-    CHANGES_REQUESTED ─────────────────────────────→ FAIL
-    LGTM                                      3회 후 → IMPLEMENTATION_ESCALATE
-      ↓                                                → 메인 Claude 보고
-  security-reviewer                                     (architect SPEC_GAP 권장)
-    VULNERABILITIES_FOUND (HIGH/MEDIUM) ───────────────→ FAIL
-    SECURE (LOW만 있으면 SECURE 판정)
-  [std: pr-reviewer·security-reviewer 스킵, 플래그 자동 생성]
-      ↓
-  git commit (feature branch에서, PR body → /tmp/{prefix}_pr_body.txt 자동 생성)
-      ↓
-  merge_to_main (--no-ff)
-    충돌 → MERGE_CONFLICT_ESCALATE → 메인 Claude 보고
-    성공 → 브랜치 삭제
-      ↓
-  HARNESS_DONE  ← pr_body 파일 경로 포함 출력
-      ↓
-  메인 Claude: stories.md 체크 + GitHub Issue 업데이트
-      ↓
-  유저 보고 후 대기 (PR 생성 시 pr_body 파일 내용 활용 권장)
-      ↓
-  유저 승인 → git push
-      ↓
-  이후 버그 발견 시 → 유저가 bugfix 루프 트리거
+```mermaid
+flowchart TD
+    RFI{"READY_FOR_IMPL\n(impl 파일 경로 확정)"}
+
+    subgraph ATTEMPT_LOOP["attempt loop (MAX 3회)"]
+        ENG["engineer\n@MODE:ENGINEER:IMPL"]
+        SPEC_CHK{{"SPEC_GAP_FOUND?"}}
+
+        ARC_SG["architect\n@MODE:ARCHITECT:SPEC_GAP"]
+        SGR{"SPEC_GAP_RESOLVED"}
+        SG_LIMIT{{"리셋 횟수 초과?"}}
+        IMPL_ESC_SG["IMPLEMENTATION_ESCALATE"]:::escalation
+
+        SRC_CHK{{"src/** 변경 있음?"}}
+
+        TE["test-engineer\n@MODE:TEST_ENGINEER:TEST"]
+        TF_CHK{{"TESTS_FAIL 분류"}}
+        TE_SELF["test-engineer 자체 수정\n(max 2회, attempt 불변)"]
+
+        VITEST["harness/impl-process.sh\n→ vitest run\n(ground truth)"]
+
+        VAL_CV["validator\n@MODE:VALIDATOR:CODE_VALIDATION"]
+    end
+
+    subgraph DEEP_ONLY["deep only"]
+        PR_REV["pr-reviewer\n@MODE:PR_REVIEWER:REVIEW"]
+        SEC_REV["security-reviewer\n@MODE:SECURITY_REVIEWER:AUDIT"]
+    end
+
+    COMMIT["git commit\n(feature branch)"]
+    MERGE["merge_to_main\n(--no-ff)"]
+    MCE["MERGE_CONFLICT_ESCALATE"]:::escalation
+    HD{"HARNESS_DONE"}
+    STORIES["메인 Claude:\nstories.md 체크 +\nGitHub Issue 업데이트"]
+    USER_REPORT{{"유저 보고 후 대기"}}
+    PUSH["유저 승인 → git push"]
+    IMPL_ESC["IMPLEMENTATION_ESCALATE\n(3회 실패)"]:::escalation
+
+    %% 노트: fail_type?, fail_context? 는 재시도 시 선택 파라미터
+    RFI --> ENG
+    ENG -->|"impl_path, fail_type?, fail_context?"| SPEC_CHK
+    SPEC_CHK -->|YES| ARC_SG
+    ARC_SG -->|"gap_list, impl_path"| SGR
+    SGR --> SG_LIMIT
+    SG_LIMIT -->|"리셋 max 2회 초과"| IMPL_ESC_SG
+    SG_LIMIT -->|OK| ENG
+
+    SPEC_CHK -->|NO| SRC_CHK
+    SRC_CHK -->|YES| TE
+    TE -->|"impl_path, src_files"| TF_CHK
+    TF_CHK -->|IMPLEMENTATION_BUG| FAIL_ROUTE
+    TF_CHK -->|"TEST_CODE_BUG\nFLAKY"| TE_SELF
+    TE_SELF --> TE
+
+    TF_CHK -->|TESTS_PASS| VITEST
+    VITEST -->|실패| FAIL_ROUTE
+    VITEST -->|통과| VAL_CV
+
+    SRC_CHK -->|NO| VAL_CV
+    VAL_CV -->|"impl_path, src_files"| VAL_RESULT
+
+    VAL_RESULT{{"PASS / FAIL"}}
+    VAL_RESULT -->|FAIL| FAIL_ROUTE
+    VAL_RESULT -->|PASS| DEPTH_CHK
+
+    DEPTH_CHK{{"depth?"}}
+    DEPTH_CHK -->|deep| PR_REV
+    DEPTH_CHK -->|"std/fast"| COMMIT
+
+    PR_REV -->|"impl_path, src_files"| PR_RESULT
+    PR_RESULT{{"LGTM / CHANGES_REQUESTED"}}
+    PR_RESULT -->|CHANGES_REQUESTED| FAIL_ROUTE
+    PR_RESULT -->|LGTM| SEC_REV
+
+    SEC_REV -->|"src_files"| SEC_RESULT
+    SEC_RESULT{{"SECURE / VULNERABILITIES_FOUND"}}
+    SEC_RESULT -->|"VULNERABILITIES_FOUND\n(HIGH/MEDIUM)"| FAIL_ROUTE
+    SEC_RESULT -->|SECURE| COMMIT
+
+    FAIL_ROUTE["FAIL → attempt++"]
+    FAIL_ROUTE -->|"attempt < 3"| ENG
+    FAIL_ROUTE -->|"attempt >= 3"| IMPL_ESC
+
+    COMMIT --> MERGE
+    MERGE -->|충돌| MCE
+    MERGE -->|성공| HD
+    HD --> STORIES
+    STORIES --> USER_REPORT
+    USER_REPORT --> PUSH
+
+    classDef escalation stroke:#f00,stroke-width:2px
 ```
 
 ## 실패 유형별 수정 전략
