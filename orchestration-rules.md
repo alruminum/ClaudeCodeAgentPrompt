@@ -173,7 +173,11 @@ src/** 변경 있음?
     SECURE (LOW만 있으면 SECURE 판정)
   [std: pr-reviewer·security-reviewer 스킵, 플래그 자동 생성]
       ↓
-  git commit (PR body → /tmp/{prefix}_pr_body.txt 자동 생성)
+  git commit (feature branch에서, PR body → /tmp/{prefix}_pr_body.txt 자동 생성)
+      ↓
+  merge_to_main (--no-ff)
+    충돌 → MERGE_CONFLICT_ESCALATE → 메인 Claude 보고
+    성공 → 브랜치 삭제
       ↓
   HARNESS_DONE  ← pr_body 파일 경로 포함 출력
       ↓
@@ -314,6 +318,7 @@ DESIGN_REVIEW_ESCALATE        │
 | `DESIGN_LOOP_ESCALATE` | designer (3라운드 후에도 ITERATE) | 유저 직접 선택 |
 | `TECH_CONSTRAINT_CONFLICT` | architect Mode C (기술 제약 충돌) | 메인 Claude 보고 |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation (재검 후 재FAIL) | 메인 Claude 보고 |
+| `MERGE_CONFLICT_ESCALATE` | harness-loop.sh / harness-executor.sh (merge 실패) | 메인 Claude 보고 |
 
 ---
 
@@ -352,6 +357,7 @@ DESIGN_REVIEW_ESCALATE        │
 | `PLAN_DONE` | harness-executor.sh | 유저 결정 대기 |
 | `SPEC_GAP_ESCALATE` | harness-executor.sh | 메인 Claude 보고 |
 | `TECH_CONSTRAINT_CONFLICT` | architect Mode C | 메인 Claude 보고 후 대기 |
+| `MERGE_CONFLICT_ESCALATE` | harness-loop.sh / harness-executor.sh | merge 충돌 → 메인 Claude 보고 후 대기 |
 
 ---
 
@@ -366,11 +372,11 @@ DESIGN_REVIEW_ESCALATE        │
 "줄 수가 적다", "간단한 수정", "빨리 해달라" — 어느 것도 루프 자체를 건너뛰는 근거가 되지 않는다.
 단, `--depth=fast` 플래그로 루프 깊이를 줄이는 것은 허용된다:
 
-| depth | 실행 단계 | 사용 조건 |
-|---|---|---|
-| `fast` | engineer → commit (테스트·리뷰·보안 스킵) | impl에 `(MANUAL)` 태그만 있을 때 / 변수명·설정값 등 단순 변경 |
-| `std` | engineer → test-engineer → vitest → validator → commit (LLM 3회) | 일반 구현 (기본값) |
-| `deep` | engineer → test-engineer → vitest → validator → pr-reviewer → security-reviewer → commit (LLM 5회) | impl에 `(BROWSER:DOM)` 태그 있을 때, 또는 보안·품질 게이트 필요 시 |
+| depth | 실행 단계 | 사용 조건 | 머지 조건 |
+|---|---|---|---|
+| `fast` | engineer → validator → pr-reviewer → commit → merge (테스트·보안 스킵) | impl에 `(MANUAL)` 태그만 있을 때 / 변수명·설정값 등 단순 변경 | 없음 |
+| `std` | engineer → test-engineer → vitest → validator → commit → merge (LLM 3회) | 일반 구현 (기본값) | validator_b_passed |
+| `deep` | engineer → test-engineer → vitest → validator → pr-reviewer → security-reviewer → commit → merge (LLM 5회) | impl에 `(BROWSER:DOM)` 태그 있을 때, 또는 보안·품질 게이트 필요 시 | pr_reviewer_lgtm + security_review_passed |
 
 자동 선택 규칙 (`--depth` 미지정 시):
 - impl 파일에 `(MANUAL)` 태그만 있고 `(TEST)` `(BROWSER:DOM)` 없음 → `fast` 자동
@@ -465,6 +471,7 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 | 비용 상한 초과 | `HARNESS_BUDGET_EXCEEDED` |
 | bugfix engineer_direct 성공 | `HARNESS_DONE` |
 | 크래시/unhandled exit | `HARNESS_CRASH` (write_run_end이 unknown 감지 시 자동 변환) |
+| merge 충돌 | `MERGE_CONFLICT_ESCALATE` |
 
 **13. post-commit-scan (선택적)**
 `hooks/post-commit-scan.sh`는 커밋 후 간단한 정적 분석(console.log, any 타입, TODO 잔류)을 수행한다.
@@ -484,6 +491,46 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 포어그라운드면 Bash 완료까지 Claude가 블로킹되므로 Stop 트리거 자체가 발생하지 않는다.
 
 유저는 `/cancel` 또는 `/harness-kill`로 언제든 중단 가능.
+
+---
+
+## 브랜치 전략 (Feature Branch)
+
+### 브랜치 네이밍
+루프 C / 루프 D 실행은 feature branch에서 수행한다.
+네이밍: `{type}/{milestone}-{issue}-{slug}` (# 없이 숫자만)
+
+- `type`: `feat` (루프 C) / `fix` (루프 D bugfix)
+- `milestone`: harness.config.json의 milestone 값 (없으면 생략)
+- `issue`: GitHub issue 번호 (숫자만)
+- `slug`: issue title에서 영문/숫자만 추출, 30자 캡. 한국어만이면 생략
+
+예시: `feat/mvp-42-add-login` / `fix/57` (한국어 제목)
+
+### 브랜치 생성 시점
+- harness-loop.sh impl2 모드 진입 직후 (engineer 호출 전)
+- harness-executor.sh _run_bugfix_direct() 진입 직후
+
+### 커밋 규칙
+- feature branch: commit-gate의 pr_reviewer_lgtm 면제, engineer 자유 커밋
+- 실패 시: git stash 대신 변경 유지 + 다음 attempt에서 추가 커밋
+
+### main 머지 조건
+| depth | 머지 전 필수 |
+|---|---|
+| fast | 없음 (engineer 커밋만으로 머지) |
+| std | validator_b_passed |
+| deep | pr_reviewer_lgtm + security_review_passed |
+| bugfix | validator_b_passed (bugfix-direct 경로) |
+
+머지: `git merge --no-ff`, 충돌 시 `MERGE_CONFLICT_ESCALATE` → 메인 Claude 보고
+
+### 브랜치 정리
+| 결과 | 처리 |
+|---|---|
+| HARNESS_DONE | 브랜치 삭제 |
+| IMPLEMENTATION_ESCALATE | 브랜치 보존 (디버깅용) |
+| MERGE_CONFLICT_ESCALATE | 브랜치 보존 |
 
 ---
 
