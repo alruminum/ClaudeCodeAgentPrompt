@@ -23,11 +23,17 @@
 
 구현 루프 재진입 시 이전 실행의 완료 단계를 감지해 스킵한다.
 
-```
-진입 시 체크:
-  1. plan_validation_passed 플래그? → architect + validator 스킵 → engineer 루프 직접 진입
-  2. impl 파일 존재? → architect 스킵 → validator Plan Validation
-  3. 둘 다 없음 → architect부터 (기본)
+```mermaid
+flowchart TD
+    RE_ENTRY{{"진입 시 체크"}}
+    RE_PV{{"plan_validation_passed 플래그?"}}
+    RE_IMPL{{"impl 파일 존재?"}}
+
+    RE_ENTRY --> RE_PV
+    RE_PV -->|YES| ENG_DIRECT["engineer 루프 직접 진입\n(architect + validator 스킵)"]
+    RE_PV -->|NO| RE_IMPL
+    RE_IMPL -->|YES| VAL_PV["validator Plan Validation\n(architect 스킵)"]
+    RE_IMPL -->|NO| ARC_START["architect부터 (기본)"]
 ```
 
 ## 흐름

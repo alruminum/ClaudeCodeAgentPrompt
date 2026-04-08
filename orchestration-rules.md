@@ -104,7 +104,7 @@ impl 파일의 모든 요구사항 항목은 `## 수용 기준` 섹션에 검증
 impl 진입 게이트 상세:
 ```
 validator [Plan Validation]
-  ↓ PASS (기존 A/B 체크)
+  ↓ PASS (기존 Design/Code Validation 체크)
 validator [수용 기준 메타데이터 감사]  ← 정책 8 게이트
   태그 없는 요구사항 발견 → PLAN_VALIDATION_FAIL (architect 재보강)
   ↓ PASS
@@ -259,4 +259,4 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 |
 | 에이전트 추가 / 삭제 | 역할 경계 표 + 해당 루프 다이어그램 + 마커 표 + 스크립트 |
 | 하네스 기능 추가 / 변경 | `docs/harness-state.md` (완료/한계 섹션) + `docs/harness-backlog.md` (항목 상태) |
-| architect Mode 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
+| architect @MODE 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
