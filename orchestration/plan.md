@@ -4,53 +4,86 @@
 
 ---
 
-```
-product-planner
-  │ Mode A (신규)                Mode B (변경)
-  ↓                                   ↓
-PRODUCT_PLAN_READY           PRODUCT_PLAN_UPDATED
-  │                                   │
-  │                          메인 Claude 판단:
-  │                          전체 구조 변경?
-  │                            YES → architect [System Design]
-  │                            NO  → architect [Module Plan] → READY_FOR_IMPL
-  │                                   ↓                            │
-  └───────────────────────────────────┘                            │
-                 ↓                                                  │
-    architect [System Design]                                       │
-                 │                                                  │
-        SYSTEM_DESIGN_READY                                         │
-                 │                                                  │
-    validator [Design Validation]                                   │
-          │               │                                         │
- DESIGN_REVIEW_FAIL  DESIGN_REVIEW_PASS                            │
-          │                     │                                   │
-    architect 재설계   DESIGN_REVIEW_SAVE_REQUIRED                  │
-    (max 1회)          설계 문서 저장 확인 후 에픽 규모 판단        │
-    재실패 →                 │                                      │
- DESIGN_REVIEW_ESCALATE  메인 Claude 판단:                          │
- → 메인 Claude 보고    Epic 전체 batch?                             │
-                         YES ↓           NO ↓                      │
-                     architect        architect                     │
-                  [Task Decompose]  [Module Plan]                   │
-                  impl 파일 ×N      impl 파일                       │
-                          │                    │                   │
-                          └─────────┬──────────┘                   │
-                                    └──────────────────┬───────────┘
-                                                       ↓
-                                              ┌─ impl 진입 게이트 ─┐
-                                              │ (공통 — 모든 루프)  │
-                                              └────────┬───────────┘
-                                                       ↓
-                                        validator [Plan Validation]
-                                          │               │
-                                 PLAN_VALIDATION_FAIL  PLAN_VALIDATION_PASS
-                                          │                     │
-                                   architect 재보강        READY_FOR_IMPL
-                                   (max 1회)                    │
-                                   재실패 →               유저 승인 대기
-                              PLAN_VALIDATION_ESCALATE          │
-                              → 메인 Claude 보고          → 구현 루프 진입
+```mermaid
+flowchart TD
+    PP_NEW["product-planner\n@MODE:PLANNER:PRODUCT_PLAN"]
+    PP_CHG["product-planner\n@MODE:PLANNER:PRODUCT_PLAN_CHANGE"]
+
+    PPR{"PRODUCT_PLAN_READY"}
+    PPU{"PRODUCT_PLAN_UPDATED"}
+
+    SCOPE{{"메인 Claude 판단:\n전체 구조 변경?"}}
+
+    ARC_SD["architect\n@MODE:ARCHITECT:SYSTEM_DESIGN"]
+    ARC_MP_SKIP["architect\n@MODE:ARCHITECT:MODULE_PLAN"]
+
+    SDR{"SYSTEM_DESIGN_READY"}
+
+    VAL_DV["validator\n@MODE:VALIDATOR:DESIGN_VALIDATION"]
+
+    DRF{"DESIGN_REVIEW_FAIL"}
+    DRP{"DESIGN_REVIEW_PASS"}
+
+    ARC_REDO["architect 재설계\n(max 1회)"]
+    DRE["DESIGN_REVIEW_ESCALATE"]:::escalation
+
+    EPIC{{"메인 Claude 판단:\nEpic 전체 batch?"}}
+
+    ARC_TD["architect\n@MODE:ARCHITECT:TASK_DECOMPOSE"]
+    ARC_MP["architect\n@MODE:ARCHITECT:MODULE_PLAN"]
+
+    IMPL_GATE["impl 진입 게이트\n(공통 — 모든 루프)"]
+    VAL_PV["validator\n@MODE:VALIDATOR:PLAN_VALIDATION"]
+
+    PVF{"PLAN_VALIDATION_FAIL"}
+    PVP{"PLAN_VALIDATION_PASS"}
+
+    ARC_RE["architect 재보강\n(max 1회)"]
+    PVE["PLAN_VALIDATION_ESCALATE"]:::escalation
+
+    RFI{"READY_FOR_IMPL"}
+    USER_APPROVE{{"유저 승인 대기"}}
+    IMPL_ENTRY["→ 구현 루프 진입"]
+
+    PP_NEW -->|"idea, constraints?"| PPR
+    PP_CHG -->|"plan_doc, change_request"| PPU
+
+    PPR --> ARC_SD
+    PPU --> SCOPE
+    SCOPE -->|YES| ARC_SD
+    SCOPE -->|NO| ARC_MP_SKIP
+
+    ARC_SD -->|"plan_doc, selected_option"| SDR
+    ARC_MP_SKIP -->|"design_doc, module"| RFI
+
+    SDR --> VAL_DV
+    VAL_DV -->|"design_doc"| DRF
+    VAL_DV -->|"design_doc"| DRP
+
+    DRF --> ARC_REDO
+    ARC_REDO -->|재FAIL| DRE
+    ARC_REDO -->|PASS| DRP
+
+    DRP --> EPIC
+    EPIC -->|YES| ARC_TD
+    EPIC -->|NO| ARC_MP
+
+    ARC_TD -->|"stories_doc, design_doc"| IMPL_GATE
+    ARC_MP -->|"design_doc, module"| IMPL_GATE
+
+    IMPL_GATE --> VAL_PV
+    VAL_PV -->|"impl_path"| PVF
+    VAL_PV -->|"impl_path"| PVP
+
+    PVF --> ARC_RE
+    ARC_RE -->|재FAIL| PVE
+    ARC_RE -->|PASS| PVP
+
+    PVP --> RFI
+    RFI --> USER_APPROVE
+    USER_APPROVE --> IMPL_ENTRY
+
+    classDef escalation stroke:#f00,stroke-width:2px
 ```
 
 ---

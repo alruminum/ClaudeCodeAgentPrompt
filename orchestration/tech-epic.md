@@ -4,25 +4,43 @@
 
 ---
 
-```
-진입: 기술 부채 / 성능 / 인프라 개선 요청
-      │
-      ↓
-architect [Technical Epic]
-      │
-SYSTEM_DESIGN_READY
-      │
-validator [Design Validation]  ← 기획 루프와 동일 게이트
-      │               │
-DESIGN_REVIEW_FAIL  DESIGN_REVIEW_PASS
-      │                     │
-architect 재설계        Epic+Story 이슈 생성
-(max 1회)              architect [Module Plan] ×N
-재실패 →               READY_FOR_IMPL ×N
-DESIGN_REVIEW_ESCALATE        │
-→ 메인 Claude 보고       순차 실행 (×N)
-                              │
-                        → 구현 루프 진입
+```mermaid
+flowchart TD
+    ENTRY{{"진입: 기술 부채 / 성능 / 인프라 개선 요청"}}
+
+    ARC_TE["architect\n@MODE:ARCHITECT:TECH_EPIC"]
+    SDR{"SYSTEM_DESIGN_READY"}
+
+    VAL_DV["validator\n@MODE:VALIDATOR:DESIGN_VALIDATION"]
+    DRF{"DESIGN_REVIEW_FAIL"}
+    DRP{"DESIGN_REVIEW_PASS"}
+
+    ARC_REDO["architect 재설계\n(max 1회)"]
+    DRE["DESIGN_REVIEW_ESCALATE"]:::escalation
+
+    ISSUES["Epic+Story 이슈 생성"]
+    ARC_MP["architect\n@MODE:ARCHITECT:MODULE_PLAN\n×N"]
+    RFI{"READY_FOR_IMPL ×N"}
+    SEQ["순차 실행 (×N)"]
+    IMPL_ENTRY["→ 구현 루프 진입"]
+
+    ENTRY --> ARC_TE
+    ARC_TE -->|"goal, scope"| SDR
+    SDR --> VAL_DV
+    VAL_DV -->|"design_doc"| DRF
+    VAL_DV -->|"design_doc"| DRP
+
+    DRF --> ARC_REDO
+    ARC_REDO -->|재FAIL| DRE
+    ARC_REDO -->|PASS| DRP
+
+    DRP --> ISSUES
+    ISSUES --> ARC_MP
+    ARC_MP -->|"design_doc, module"| RFI
+    RFI --> SEQ
+    SEQ --> IMPL_ENTRY
+
+    classDef escalation stroke:#f00,stroke-width:2px
 ```
 
 ---
