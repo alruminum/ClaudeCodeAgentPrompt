@@ -9,297 +9,20 @@
 
 | 상황 | 호출 |
 |------|------|
-| 신규 프로젝트 / PRD 변경 | → **루프 A** |
-| UI 변경 요청 (design_critic_passed 없음) | → **루프 B** |
-| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **루프 C** (`bash .claude/harness/executor.sh impl ...`) — plan_validation_passed 시 architect+validator 자동 스킵 |
-| 버그 보고 | → **루프 D** (`bash .claude/harness/executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기 |
-| 기술 에픽 / 리팩 / 인프라 | → **루프 E** |
-| **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 루프 A) |
+| 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
+| UI 변경 요청 (design_critic_passed 없음) | → **[디자인 루프](orchestration/design.md)** |
+| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** (`bash .claude/harness/executor.sh impl ...`) — plan_validation_passed 시 architect+validator 자동 스킵 |
+| 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** (`bash .claude/harness/executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기 |
+| 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** |
+| **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획 루프) |
 
 ---
 
-## 루프 A — 기획 루프
-
-```
-product-planner
-  │ Mode A (신규)                Mode B (변경)
-  ↓                                   ↓
-PRODUCT_PLAN_READY           PRODUCT_PLAN_UPDATED
-  │                                   │
-  │                          메인 Claude 판단:
-  │                          전체 구조 변경?
-  │                            YES → architect [System Design]
-  │                            NO  → architect [Module Plan] → READY_FOR_IMPL
-  │                                   ↓                            │
-  └───────────────────────────────────┘                            │
-                 ↓                                                  │
-    architect [System Design]                                       │
-                 │                                                  │
-        SYSTEM_DESIGN_READY                                         │
-                 │                                                  │
-    validator [Design Validation]                                   │
-          │               │                                         │
- DESIGN_REVIEW_FAIL  DESIGN_REVIEW_PASS                            │
-          │                     │                                   │
-    architect 재설계   DESIGN_REVIEW_SAVE_REQUIRED                  │
-    (max 1회)          설계 문서 저장 확인 후 에픽 규모 판단        │
-    재실패 →                 │                                      │
- DESIGN_REVIEW_ESCALATE  메인 Claude 판단:                          │
- → 메인 Claude 보고    Epic 전체 batch?                             │
-                         YES ↓           NO ↓                      │
-                     architect        architect                     │
-                  [Task Decompose]  [Module Plan]                   │
-                  impl 파일 ×N      impl 파일                       │
-                          │                    │                   │
-                          └─────────┬──────────┘                   │
-                                    └──────────────────┬───────────┘
-                                                       ↓
-                                              ┌─ impl 진입 게이트 ─┐
-                                              │ (공통 — 모든 루프)  │
-                                              └────────┬───────────┘
-                                                       ↓
-                                        validator [Plan Validation]
-                                          │               │
-                                 PLAN_VALIDATION_FAIL  PLAN_VALIDATION_PASS
-                                          │                     │
-                                   architect 재보강        READY_FOR_IMPL
-                                   (max 1회)                    │
-                                   재실패 →               유저 승인 대기
-                              PLAN_VALIDATION_ESCALATE          │
-                              → 메인 Claude 보고          → 루프 C 진입
-```
-
----
-
-## 루프 B — 디자인 루프
-
-```
-진입 조건: impl 파일에 UI 키워드 감지 + design_critic_passed 없음
-
-designer
-  │
-DESIGN_READY_FOR_REVIEW
-  │
-design-preview-{issue}.html 생성  ← designer가 Write로 직접 생성 (브라우저 시각 확인용)
-  │
-design-critic
-  │           │            │
-PICK       ITERATE      ESCALATE
-  │           │            │
-  │     designer 재시도   유저 직접 선택
-  │     (max 3회)       DESIGN_LOOP_ESCALATE
-  │     3회 초과 →
-  │     DESIGN_LOOP_ESCALATE
-  │
-  └─────────────────────────────┐
-                                ↓
-                  유저 variant 선택
-                                ↓
-              메인 Claude → DESIGN_HANDOFF 발행
-                                ↓
-                  impl 파일 영향 있음?
-                    YES → architect [Module Plan] → READY_FOR_IMPL
-                    NO  → 기존 impl 파일 유지
-                                ↓
-              /tmp/{prefix}_design_critic_passed 플래그 생성
-                                ↓
-                          유저 승인 대기
-                                ↓
-                          → 루프 C 진입
-```
-
----
-
-## 루프 C — 구현 루프
-
-### 재진입 상태 감지
-
-루프 C 재진입 시 이전 실행의 완료 단계를 감지해 스킵한다.
-
-```
-진입 시 체크:
-  1. plan_validation_passed 플래그? → architect + validator 스킵 → engineer 루프 직접 진입
-  2. impl 파일 존재? → architect 스킵 → validator Plan Validation
-  3. 둘 다 없음 → architect부터 (기본)
-```
-
-### 흐름
-
-```
-READY_FOR_IMPL (impl 파일 경로 확정)
-      │
-      ┌─────────────── attempt loop (MAX 3회) ───────────────────┐
-      ↓                                                          │
-  engineer                                               FAIL → attempt++
-      │
-SPEC_GAP_FOUND?
-  YES → architect [SPEC_GAP]
-          │
-    SPEC_GAP_RESOLVED
-          │ counter 리셋 (SPEC_GAP 리셋 max 2회)
-          │ 리셋 횟수 초과 → IMPLEMENTATION_ESCALATE
-          └──→ engineer 재시도
-      │
-  (SPEC_GAP 없음)
-      ↓
-src/** 변경 있음?
-  NO  ────────────────────────────────────────────────┐
-  YES ↓                                                │
-  test-engineer (테스트 작성)                          │
-    TESTS_FAIL 분류:                                   │
-      IMPLEMENTATION_BUG → engineer 재구현 ──────────→ FAIL
-      TEST_CODE_BUG      → test-engineer 자체 수정     │
-      FLAKY              → test-engineer 자체 수정     │
-      (자체 수정 max 2회, attempt 불변)                 │
-    TESTS_PASS                                         │
-      ↓                                                │
-  harness/impl-process.sh → vitest run  ← ground truth (LLM 주장과 독립)
-    실패 ─────────────────────────────────────────── → FAIL
-    통과                                               │
-      ↓  ←─────────────────────────────────────────────┘
-  validator [Code Validation]
-    마커 파싱: 출력에서 PASS/FAIL 포함 여부로 판정 (공백·설명 텍스트 허용)
-    FAIL ────────────────────────────────────────── → FAIL
-    PASS
-      ↓
-  [deep only]
-  pr-reviewer
-    CHANGES_REQUESTED ─────────────────────────────→ FAIL
-    LGTM                                      3회 후 → IMPLEMENTATION_ESCALATE
-      ↓                                                → 메인 Claude 보고
-  security-reviewer                                     (architect SPEC_GAP 권장)
-    VULNERABILITIES_FOUND (HIGH/MEDIUM) ───────────────→ FAIL
-    SECURE (LOW만 있으면 SECURE 판정)
-  [std: pr-reviewer·security-reviewer 스킵, 플래그 자동 생성]
-      ↓
-  git commit (feature branch에서, PR body → /tmp/{prefix}_pr_body.txt 자동 생성)
-      ↓
-  merge_to_main (--no-ff)
-    충돌 → MERGE_CONFLICT_ESCALATE → 메인 Claude 보고
-    성공 → 브랜치 삭제
-      ↓
-  HARNESS_DONE  ← pr_body 파일 경로 포함 출력
-      ↓
-  메인 Claude: stories.md 체크 + GitHub Issue 업데이트
-      ↓
-  유저 보고 후 대기 (PR 생성 시 pr_body 파일 내용 활용 권장)
-      ↓
-  유저 승인 → git push
-      ↓
-  이후 버그 발견 시 → 유저가 루프 D 트리거
-```
-
-### 루프 C — 실패 유형별 수정 전략
-
-FAIL 시 모든 유형을 동일하게 처리하지 않는다. `fail_type`에 따라 engineer에게 다른 컨텍스트와 지시를 전달한다.
-
-| fail_type | 컨텍스트 (engineer에게 전달) | 지시 |
-|---|---|---|
-| `test_fail` | vitest 출력 전체 + 실패 테스트 파일 소스 | "테스트 실패. 구현 코드를 수정. 테스트 자체 수정 금지." |
-| `validator_fail` | validator 리포트 + impl 파일 | "스펙 불일치. impl의 해당 항목 재확인 후 누락 구현." |
-| `pr_fail` | MUST FIX 항목 목록 | "코드 품질 이슈. MUST FIX 항목만 수정. 기능 변경 금지." |
-| `security_fail` | 취약점 리포트 (HIGH/MEDIUM 행) | "보안 취약점. 수정 방안 컬럼대로 적용." |
-
----
-
-## 루프 D — 버그픽스 루프
-
-### 재진입 상태 감지
-
-루프 D 재진입 시 이전 실행의 완료 단계를 감지해 스킵한다.
-
-```
-진입 시 역순 체크:
-  1. impl 파일 존재? → QA + architect 스킵 → engineer 직접 진입
-  2. GitHub issue에 QA 리포트? → QA 스킵 → issue body를 qa_out으로 → architect
-  3. 둘 다 없음 → QA부터 시작 (기본)
-```
-
-### 흐름
-
-```
-진입: bug 레이블 이슈 OR 유저 버그 직접 보고
-      │
-      ↓
-  [재진입 감지] ─── impl 있음 ──→ engineer 직접 진입
-      │               │
-      │          QA 리포트 있음 ──→ architect부터
-      │
-      ↓ (신규)
-  qa (원인 분석 + 타입 분류 + 이슈 등록 + 라우팅 추천)
-      │ 원인 특정 3회 실패 → KNOWN_ISSUE → 메인 Claude 보고 후 대기
-      │
-      ↓ qa가 분류 결과에 따라 이슈 등록 (전 경로 공통)
-      │
-  ┌───┴──────────────────────────┐
-  ↓                    ↓          ↓
-architect 경유    engineer 직접   DESIGN_ISSUE
-                  (루프 C 미진입)  → 루프 B
-SPEC_ISSUE        FUNCTIONAL_BUG
-  │                    │
-  ↓                    ↓
-architect              architect
-[Module Plan]          [Bugfix Plan(Mode F)]
-  "버그픽스 —" 명시      경량 impl 작성
-  │                    │
-  ↓                    ↓
-validator              engineer (코드 수정)
-[Plan Validation]        │
-  │                    vitest run (직접 실행)
-  ↓                      │
-→ 루프 C 진입          validator [Bugfix Validation(Mode D)]
-                         │
-                     ┌───┴───┐
-                   PASS     FAIL
-                   │       → engineer 재시도 (max 2회)
-                   ↓
-                 commit
-                 HARNESS_DONE
-```
-
-### qa 분류 → 루프 D 분기 매핑
-
-| qa 분류 | 경로 | 실행 단계 |
-|---------|------|----------|
-| FUNCTIONAL_BUG | engineer 직접 | architect Mode F → engineer → vitest → validator Mode D → commit |
-| SPEC_ISSUE | architect 경유 | architect Mode B → validator Mode C → 루프 C |
-| DESIGN_ISSUE | → 루프 B | designer → design-critic |
-
-### qa 이슈 등록 규칙
-
-qa는 분석 완료 후 **모든 경로에서** GitHub 이슈를 등록한다.
-
-| qa 분류 | 이슈 등록 위치 | 비고 |
-|---------|---------------|------|
-| FUNCTIONAL_BUG | Bugs 마일스톤 (라벨: `bug`) | 코드 버그 |
-| SPEC_ISSUE (PRD 명세 있음) | Feature 마일스톤 (해당 epic 라벨) | PRD 명세 누락 구현. 본문에 해당 epic 경로 명시 |
-| SPEC_ISSUE (PRD 명세 없음) | Feature 마일스톤 | 신규 요구사항 |
-| DESIGN_ISSUE | Feature 마일스톤 | UI/UX 문제 |
-
----
-
-## 루프 E — 기술 에픽 루프
-
-```
-진입: 기술 부채 / 성능 / 인프라 개선 요청
-      │
-      ↓
-architect [Technical Epic]
-      │
-SYSTEM_DESIGN_READY
-      │
-validator [Design Validation]  ← 루프 A와 동일 게이트
-      │               │
-DESIGN_REVIEW_FAIL  DESIGN_REVIEW_PASS
-      │                     │
-architect 재설계        Epic+Story 이슈 생성
-(max 1회)              architect [Module Plan] ×N
-재실패 →               READY_FOR_IMPL ×N
-DESIGN_REVIEW_ESCALATE        │
-→ 메인 Claude 보고       순차 실행 (×N)
-                              │
-                        → 루프 C 진입
-```
+→ 상세: [orchestration/plan.md](orchestration/plan.md)
+→ 상세: [orchestration/design.md](orchestration/design.md)
+→ 상세: [orchestration/impl.md](orchestration/impl.md)
+→ 상세: [orchestration/bugfix.md](orchestration/bugfix.md)
+→ 상세: [orchestration/tech-epic.md](orchestration/tech-epic.md)
 
 ---
 
@@ -321,45 +44,6 @@ DESIGN_REVIEW_ESCALATE        │
 
 ---
 
-## 전체 마커 레퍼런스
-
-| 마커 | 발행 주체 | 다음 행동 |
-|------|-----------|-----------|
-| `PRODUCT_PLAN_READY` | product-planner | architect System Design |
-| `PRODUCT_PLAN_UPDATED` | product-planner | 메인 Claude 범위 판단 → System Design or Module Plan |
-| `SYSTEM_DESIGN_READY` | architect | validator Design Validation |
-| `DESIGN_REVIEW_PASS` | validator Mode A | 메인 Claude 판단 → Task Decompose or Module Plan |
-| `DESIGN_REVIEW_FAIL` | validator Mode A | architect 재설계 (max 1회) |
-| `DESIGN_REVIEW_ESCALATE` | validator Mode A | 메인 Claude 보고 후 대기 |
-| `READY_FOR_IMPL` | validator Plan Validation (PASS 시) | 유저 승인 → 루프 C |
-| `DESIGN_READY_FOR_REVIEW` | designer | HTML 생성 → design-critic |
-| `DESIGN_HANDOFF` | 메인 Claude (유저 선택 후 발행) | architect Module Plan (영향 있을 때) → 루프 C |
-| `DESIGN_LOOP_ESCALATE` | designer | 유저 직접 선택 |
-| `SPEC_GAP_FOUND` | engineer / test-engineer | architect SPEC_GAP, counter 리셋 |
-| `SPEC_GAP_RESOLVED` | architect Mode C | engineer 재시도 |
-| `TESTS_PASS` / `TESTS_FAIL` | test-engineer | PASS → vitest / FAIL → retry |
-| `TEST_PLAN_GAP` | test-engineer | TESTS_PASS와 함께 갭 목록 첨부 → architect impl 보강 (별도 태스크) |
-| `PASS` / `FAIL` | validator Mode B | PASS → pr-reviewer / FAIL → retry |
-| `LGTM` / `CHANGES_REQUESTED` | pr-reviewer | LGTM → security-reviewer / CR → retry |
-| `SECURE` / `VULNERABILITIES_FOUND` | security-reviewer | SECURE → commit / VF (HIGH/MEDIUM) → retry |
-| `HARNESS_DONE` | harness/impl-process.sh | 메인 Claude: stories 체크 → 유저 보고 |
-| `HARNESS_KILLED` | harness/impl-process.sh (킬 스위치) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
-| `HARNESS_BUDGET_EXCEEDED` | harness/impl-process.sh (비용 상한) | 루프 즉시 종료. 메인 Claude 보고 후 대기 |
-| `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh | 메인 Claude 보고 후 architect SPEC_GAP 권장 |
-| `KNOWN_ISSUE` | qa | 메인 Claude 보고 후 대기 |
-| `PLAN_NEEDED` | harness/executor.sh | 유저 결정 → 루프 A or 이슈 종료 |
-| `PLAN_VALIDATION_PASS` | validator Plan Validation | 유저 게이트 → 루프 C |
-| `PLAN_VALIDATION_FAIL` | validator Plan Validation | architect 재보강 (max 1회) |
-| `PLAN_VALIDATION_ESCALATE` | validator Plan Validation | 메인 Claude 보고 후 대기 |
-| `UI_DESIGN_REQUIRED` | harness/executor.sh | 루프 B 선행 필요 안내 |
-| `DESIGN_DONE` | harness/executor.sh | 유저 시안 확인 대기 |
-| `PLAN_DONE` | harness/executor.sh | 유저 결정 대기 |
-| `SPEC_GAP_ESCALATE` | harness/executor.sh | 메인 Claude 보고 |
-| `TECH_CONSTRAINT_CONFLICT` | architect Mode C | 메인 Claude 보고 후 대기 |
-| `MERGE_CONFLICT_ESCALATE` | harness/impl-process.sh / harness/executor.sh | merge 충돌 → 메인 Claude 보고 후 대기 |
-
----
-
 ## 정책 (절대 원칙)
 
 **1. 메인 Claude — src/** 직접 Edit/Write 절대 금지**
@@ -367,27 +51,16 @@ DESIGN_REVIEW_ESCALATE        │
 반드시 `bash .claude/harness/executor.sh`를 통해서만 구현.
 
 **2. 구현 루프 예외 없음**
-`src/**` 변경이 발생하는 모든 작업은 루프 C를 반드시 거친다.
+`src/**` 변경이 발생하는 모든 작업은 구현 루프를 반드시 거친다.
 "줄 수가 적다", "간단한 수정", "빨리 해달라" — 어느 것도 루프 자체를 건너뛰는 근거가 되지 않는다.
-단, `--depth=fast` 플래그로 루프 깊이를 줄이는 것은 허용된다:
-
-| depth | 실행 단계 | 사용 조건 | 머지 조건 |
-|---|---|---|---|
-| `fast` | engineer → validator → pr-reviewer → commit → merge (테스트·보안 스킵) | impl에 `(MANUAL)` 태그만 있을 때 / 변수명·설정값 등 단순 변경 | 없음 |
-| `std` | engineer → test-engineer → vitest → validator → commit → merge (LLM 3회) | 일반 구현 (기본값) | validator_b_passed |
-| `deep` | engineer → test-engineer → vitest → validator → pr-reviewer → security-reviewer → commit → merge (LLM 5회) | impl에 `(BROWSER:DOM)` 태그 있을 때, 또는 보안·품질 게이트 필요 시 | pr_reviewer_lgtm + security_review_passed |
-
-자동 선택 규칙 (`--depth` 미지정 시):
-- impl 파일에 `(MANUAL)` 태그만 있고 `(TEST)` `(BROWSER:DOM)` 없음 → `fast` 자동
-- impl 파일에 `(BROWSER:DOM)` 태그 있음 → `deep` 자동
-- 그 외 → `std`
+단, `--depth=fast` 플래그로 루프 깊이를 줄이는 것은 허용된다. → depth 상세: [orchestration/impl.md](orchestration/impl.md)
 
 **3. 유저 게이트 — 자동 진행 절대 금지**
 
 | 게이트 | 금지 행동 |
 |--------|-----------|
-| `READY_FOR_IMPL` | 유저 명시 승인 전 루프 C 자동 진입 금지 |
-| `DESIGN_HANDOFF` | 유저 선택 전 루프 C 자동 진입 금지 |
+| `READY_FOR_IMPL` | 유저 명시 승인 전 구현 루프 자동 진입 금지 |
+| `DESIGN_HANDOFF` | 유저 선택 전 구현 루프 자동 진입 금지 |
 | `HARNESS_DONE` | 유저 보고 후 대기. 다음 모듈 자동 진입 금지 |
 | `PLAN_DONE` | 유저 결정 전 다음 단계 진입 금지 |
 | `PLAN_VALIDATION_PASS` | 유저 확인 전 impl 자동 호출 금지 |
@@ -497,15 +170,22 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 
 유저는 `/cancel` 또는 `/harness-kill`로 언제든 중단 가능.
 
+**15. 마커 동기화 — 에이전트 → 루프 → 스크립트**
+에이전트 파일(`agents/*.md`)에서 마커(인풋/아웃풋)를 추가·변경·삭제할 때:
+1. 에이전트 파일 수정
+2. 해당 루프 파일(`orchestration/*.md`) 마커 흐름 반영
+3. 하네스 스크립트 파싱 로직 반영
+단독 수정 금지. 1→2→3 순서 강제.
+
 ---
 
 ## 브랜치 전략 (Feature Branch)
 
 ### 브랜치 네이밍
-루프 C / 루프 D 실행은 feature branch에서 수행한다.
+구현 루프 / 버그픽스 루프 실행은 feature branch에서 수행한다.
 네이밍: `{type}/{milestone}-{issue}-{slug}` (# 없이 숫자만)
 
-- `type`: `feat` (루프 C) / `fix` (루프 D bugfix)
+- `type`: `feat` (구현 루프) / `fix` (버그픽스 루프 bugfix)
 - `milestone`: harness.config.json의 milestone 값 (없으면 생략)
 - `issue`: GitHub issue 번호 (숫자만)
 - `slug`: issue title에서 영문/숫자만 추출, 30자 캡. 한국어만이면 생략
@@ -575,7 +255,7 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 | 변경 내용 | 업데이트 대상 |
 |-----------|---------------|
 | 루프 순서 / 조건 변경 | `harness/executor.sh`, `harness/{impl,design,bugfix,plan}.sh`, `harness/impl-process.sh`, `docs/harness-state.md` |
-| 마커 추가 / 변경 | 해당 에이전트 md 파일 |
+| 마커 추가 / 변경 | 해당 에이전트 md 파일 + 해당 루프 파일(`orchestration/*.md`) |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 |
 | 에이전트 추가 / 삭제 | 역할 경계 표 + 해당 루프 다이어그램 + 마커 표 + 스크립트 |
 | 하네스 기능 추가 / 변경 | `docs/harness-state.md` (완료/한계 섹션) + `docs/harness-backlog.md` (항목 상태) |
