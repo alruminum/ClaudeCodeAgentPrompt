@@ -1,6 +1,10 @@
 #!/bin/bash
 # ~/.claude/harness/bugfix.sh
-# bugfix 모드: qa 라우팅 기반 4-way 분기 (engineer_direct/architect_full/design/backlog)
+# bugfix 모드: qa 라우팅 기반 4-way 분기 (functional_bug/architect_full/design/backlog)
+#
+# functional_bug 경로 세부:
+#   fast (AFFECTED_FILES ≤ 2): QA → engineer 직행 (architect 스킵)
+#   std  (그 외):              QA → architect 경량 Bugfix Plan → engineer → vitest → validator
 #
 # harness/executor.sh에서 source — 전역변수(PREFIX, IMPL_FILE, ISSUE_NUM 등) 사용
 
@@ -178,7 +182,7 @@ _bugfix_route() {
     # 폴백: grep 방식
     routing="architect"
     if grep -qF 'FUNCTIONAL_BUG' "$qa_file" 2>/dev/null; then
-      routing="engineer_direct"
+      routing="functional_bug"
     elif grep -qF 'DESIGN_ISSUE' "$qa_file" 2>/dev/null; then
       routing="design"
     elif grep -qF 'SPEC_ISSUE' "$qa_file" 2>/dev/null; then
@@ -199,7 +203,7 @@ _bugfix_route() {
   echo "[HARNESS] bugfix routing: $routing (type: ${qa_type:-unknown})"
 
   case "$routing" in
-    engineer_direct)
+    functional_bug)
       _bugfix_direct "$qa_file"
       ;;
     design)
@@ -223,8 +227,9 @@ _bugfix_route() {
   esac
 }
 
-# ── engineer 직접 경로 ─────────────────────────────────────────────
-# bugfix.md: architect Bugfix Plan → engineer → vitest → validator Bugfix Validation → commit
+# ── FUNCTIONAL_BUG 경로 ───────────────────────────────────────────
+# fast (AFFECTED_FILES ≤ 2): QA → engineer 직행
+# std  (그 외):              QA → architect 경량 Bugfix Plan → engineer → vitest → validator
 _bugfix_direct() {
   local qa_file="$1"
   local depth
@@ -232,6 +237,15 @@ _bugfix_direct() {
     depth="$DEPTH"
   else
     depth=$(detect_bugfix_depth "$qa_file")
+  fi
+
+  # 실제 실행 흐름 로그 (depth 기반)
+  if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    echo "[HARNESS] bugfix flow: functional_bug — impl 재진입 → engineer 직행"
+  elif [[ "$depth" == "fast" ]]; then
+    echo "[HARNESS] bugfix flow: functional_bug/fast → engineer 직행 (architect 스킵)"
+  else
+    echo "[HARNESS] bugfix flow: functional_bug/std → architect 경량 계획 → engineer"
   fi
   echo "[HARNESS] bugfix depth: $depth"
 
@@ -396,7 +410,7 @@ $val_ctx" \
       local merge_commit
       merge_commit=$(git rev-parse --short HEAD)
       export HARNESS_RESULT="HARNESS_DONE"
-      echo "HARNESS_DONE (engineer_direct, depth=$depth)"
+      echo "HARNESS_DONE (functional_bug, depth=$depth)"
       echo "impl: ${IMPL_FILE:-N/A}"
       echo "issue: #$ISSUE_NUM"
       echo "commit: $merge_commit"
@@ -415,7 +429,7 @@ $val_ctx" \
 
   rm -f "/tmp/${PREFIX}_plan_validation_passed"
   export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
-  echo "IMPLEMENTATION_ESCALATE (engineer_direct ${MAX_HOTFIX}회 실패)"
+  echo "IMPLEMENTATION_ESCALATE (functional_bug ${MAX_HOTFIX}회 실패)"
   echo "branch: ${FEATURE_BRANCH:-unknown}"
   exit 1
 }

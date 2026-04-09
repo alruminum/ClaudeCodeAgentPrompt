@@ -24,6 +24,9 @@ INFRA_PATTERNS = [
     "harness-executor",
 ]
 
+# agent-config/는 의도된 프로젝트 컨텍스트 읽기 — INFRA 분류 제외
+INFRA_EXCLUSIONS = ["agent-config/"]
+
 EXPECTED_ELAPSED = {
     "engineer": 900,
     "test-engineer": 600,
@@ -38,7 +41,7 @@ EXPECTED_ELAPSED = {
 # 모드별 예상 에이전트 순서 (orchestration-rules.md 기준)
 EXPECTED_SEQUENCE = {
     "bugfix": {
-        "engineer_direct": ["qa", "architect", "engineer", "validator"],
+        "functional_bug": ["qa", "architect", "engineer", "validator"],
         "architect":       ["qa", "architect", "validator", "engineer"],
         "design":          ["qa", "designer", "design-critic"],
     },
@@ -75,7 +78,7 @@ def find_latest_logs(prefix, count=1):
     d = os.path.join(LOG_DIR, prefix)
     if not os.path.isdir(d):
         return []
-    files = sorted(glob.glob(os.path.join(d, "run_*.jsonl")), reverse=True)
+    files = sorted(glob.glob(os.path.join(d, "run_*.jsonl")), key=os.path.getmtime, reverse=True)
     return files[:count]
 
 
@@ -268,7 +271,7 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
 
     # WASTE_INFRA_READ: 인프라 파일 탐색
     for agent, files in all_files.items():
-        infra_hits = [f for f in files if any(p in f for p in INFRA_PATTERNS)]
+        infra_hits = [f for f in files if any(p in f for p in INFRA_PATTERNS) and not any(e in f for e in INFRA_EXCLUSIONS)]
         if infra_hits:
             patterns.append({
                 "type": "WASTE_INFRA_READ",
@@ -421,7 +424,7 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
     for agent, files in all_files.items():
         for f in files:
             # 인프라 파일은 이미 WASTE_INFRA_READ에서 잡으므로 제외
-            if not any(p in f for p in INFRA_PATTERNS):
+            if not any(p in f for p in INFRA_PATTERNS) or any(e in f for e in INFRA_EXCLUSIONS):
                 file_readers[f].append(agent)
     for filepath, readers in file_readers.items():
         if len(readers) >= 3:
@@ -523,7 +526,7 @@ def detect_flow_issues(run_info, timeline, events):
         qa_type = _extract_qa_type(events)
         next_agent = agents_ran[1] if len(agents_ran) > 1 else None
         expected_next = {
-            "FUNCTIONAL_BUG": "architect",  # Mode F
+            "FUNCTIONAL_BUG": "engineer",   # bugfix.sh: FUNCTIONAL_BUG → functional_bug 라우팅
             "SPEC_ISSUE": "architect",       # Mode B
             "DESIGN_ISSUE": "designer",
         }
@@ -644,7 +647,7 @@ def generate_flow_diagram(run_info, timeline, events):
     if mode == "bugfix":
         seq_map = EXPECTED_SEQUENCE.get("bugfix", {})
         if qa_type == "FUNCTIONAL_BUG":
-            expected = seq_map.get("engineer_direct", [])
+            expected = seq_map.get("functional_bug", [])
         elif qa_type == "DESIGN_ISSUE":
             expected = seq_map.get("design", [])
         else:
@@ -672,7 +675,7 @@ def generate_flow_diagram(run_info, timeline, events):
 
         # QA routing 표시
         if agent == "qa" and qa_type:
-            routing = "engineer_direct" if qa_type == "FUNCTIONAL_BUG" else \
+            routing = "functional_bug" if qa_type == "FUNCTIONAL_BUG" else \
                       "design" if qa_type == "DESIGN_ISSUE" else "architect_full"
             sub_prefix = "│  └─" if not is_last else "   └─"
             lines.append(f"{sub_prefix} routing: {routing} ({qa_type})")
@@ -773,7 +776,7 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
             lines.append("Read/Glob 대상:")
             for f in files:
                 flag = ""
-                if any(p in f for p in INFRA_PATTERNS):
+                if any(p in f for p in INFRA_PATTERNS) and not any(e in f for e in INFRA_EXCLUSIONS):
                     flag = " **INFRA**"
                 lines.append(f"- `{f}`{flag}")
         lines.append("")
@@ -876,12 +879,126 @@ def analyze_file(filepath):
     )
 
 
+def _build_menu_items(candidates):
+    """candidates 파일 목록 → (label, filepath) 튜플 리스트."""
+    items = []
+    for fp in candidates:
+        info = _quick_run_info(fp)
+        ts     = datetime.fromtimestamp(os.path.getmtime(fp)).strftime("%m-%d %H:%M")
+        result = info.get("result", "?")
+        mode   = info.get("mode", "?")
+        pname  = info.get("prefix", os.path.basename(os.path.dirname(fp)))
+        label  = f"[{ts}] {pname}  mode={mode}  result={result}"
+        items.append((label, fp))
+    return items
+
+
+def _select_with_curses(items):
+    """curses 화살표 선택 UI. 선택한 filepath 반환, 취소 시 None."""
+    import curses
+
+    def _menu(stdscr, items):
+        curses.curs_set(0)
+        curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        selected = 0
+        while True:
+            stdscr.clear()
+            stdscr.addstr(0, 0, "최근 하네스 실행  (↑↓ 이동 / Enter 분석 / q 취소)\n", curses.A_BOLD)
+            for i, (label, _) in enumerate(items):
+                if i == selected:
+                    stdscr.addstr(i + 2, 0, f"  ▶ {label}", curses.color_pair(1))
+                else:
+                    stdscr.addstr(i + 2, 0, f"    {label}")
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key == curses.KEY_UP and selected > 0:
+                selected -= 1
+            elif key == curses.KEY_DOWN and selected < len(items) - 1:
+                selected += 1
+            elif key in (curses.KEY_ENTER, 10, 13):
+                return items[selected][1]
+            elif key in (ord('q'), ord('Q'), 27):  # q / Q / ESC
+                return None
+
+    return curses.wrapper(_menu, items)
+
+
+def _select_interactive(candidates):
+    """TTY면 curses, 아니면 번호 입력 폴백. 선택한 filepath 반환."""
+    items = _build_menu_items(candidates)
+
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        try:
+            return _select_with_curses(items)
+        except Exception:
+            pass  # curses 실패 → 폴백
+
+    # 폴백: 번호 입력
+    print("최근 하네스 실행:\n")
+    for i, (label, fp) in enumerate(items, 1):
+        print(f"  {i}. {label}")
+        print(f"     {fp}")
+    print()
+    try:
+        val = input("번호 선택 (1-5, Enter=취소): ").strip()
+        if not val:
+            return None
+        idx = int(val) - 1
+        return items[idx][1] if 0 <= idx < len(items) else None
+    except (ValueError, EOFError):
+        return None
+
+
+def _quick_run_info(filepath):
+    """run_start / run_end 이벤트만 읽어 요약 dict 반환 (풀 분석 없음)."""
+    info = {}
+    try:
+        with open(filepath) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+                ev = e.get("event", "")
+                if ev == "run_start":
+                    info["prefix"] = e.get("prefix", "?")
+                    info["mode"]   = e.get("mode", "?")
+                elif ev == "run_end":
+                    info["result"] = e.get("result", "?")
+                    break  # run_end 찾으면 충분
+    except Exception:
+        pass
+    return info
+
+
 def main():
     parser = argparse.ArgumentParser(description="하네스 JSONL 로그 리뷰")
     parser.add_argument("file", nargs="?", help="JSONL 파일 경로")
     parser.add_argument("--prefix", "-p", help="프로젝트 prefix (최신 로그 자동 탐색)")
     parser.add_argument("--last", "-n", type=int, default=1, help="최근 N개 로그 분석")
+    parser.add_argument("--list", action="store_true", help="최신 5개 목록만 출력하고 종료")
     args = parser.parse_args()
+
+    all_recent = sorted(
+        glob.glob(os.path.join(LOG_DIR, "*", "run_*.jsonl")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+
+    # --list 또는 인자 없음 → 목록 출력 후 종료 (Claude가 번호 받아서 재호출)
+    if args.list or (not args.file and not args.prefix):
+        if not all_recent:
+            print(f"[ERROR] 로그 없음: {LOG_DIR}/")
+            sys.exit(1)
+        items = _build_menu_items(all_recent[:5])
+        print("최근 하네스 실행:\n")
+        for i, (label, fp) in enumerate(items, 1):
+            print(f"  {i}. {label}")
+            print(f"     {fp}")
+        return
 
     if args.file:
         files = [args.file]
@@ -890,13 +1007,6 @@ def main():
         if not files:
             print(f"[ERROR] {args.prefix} prefix 로그 없음: {LOG_DIR}/{args.prefix}/")
             sys.exit(1)
-    else:
-        # 모든 prefix에서 최신 1개
-        all_files = sorted(glob.glob(os.path.join(LOG_DIR, "*", "run_*.jsonl")), reverse=True)
-        if not all_files:
-            print(f"[ERROR] 로그 없음: {LOG_DIR}/")
-            sys.exit(1)
-        files = all_files[:args.last]
 
     for filepath in files:
         report = analyze_file(filepath)
