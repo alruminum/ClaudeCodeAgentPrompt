@@ -173,6 +173,73 @@ run_design_validation() {
   return 1
 }
 
+# ── 소스 파일 경로 추출 (impl 또는 error trace에서) ───────────────────
+# impl 파일에서 참조된 src/ 경로를 추출
+extract_src_refs() {
+  local file="$1"
+  grep -oE 'src/[^ `"'"'"']+\.(ts|tsx|js|jsx)' "$file" 2>/dev/null | sort -u | head -5 || true
+}
+
+# error trace에서 src/ 경로 역추적
+extract_files_from_error() {
+  echo "$1" | grep -oE 'src/[^ :()]+\.(ts|tsx|js|jsx)' | sort -u | head -5 || true
+}
+
+# ── 스마트 컨텍스트 구성 ──────────────────────────────────────────────
+# 파일 통째가 아닌 관련 청크만 선별 포함 (30KB 캡)
+# 사용법: build_smart_context <impl_or_doc> <attempt_n> [error_trace]
+#   attempt_n=0: impl 내용 + 참조 소스 (각 3KB 캡)
+#   attempt_n>0: error trace 관련 파일만
+build_smart_context() {
+  local impl="$1" attempt_n="$2" err_trace="${3:-}"
+  local ctx=""
+
+  if [[ $attempt_n -eq 0 ]]; then
+    ctx=$(cat "$impl")
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      [[ -f "$f" ]] && ctx="${ctx}
+=== ${f} ===
+$(head -c 3000 "$f")"
+    done < <(extract_src_refs "$impl")
+  else
+    local failed_files
+    failed_files=$(extract_files_from_error "$err_trace")
+    if [[ -n "$failed_files" ]]; then
+      while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        [[ -f "$f" ]] && ctx="${ctx}
+=== ${f} ===
+$(cat "$f")"
+      done <<< "$failed_files"
+    else
+      ctx=$(cat "$impl")
+    fi
+  fi
+
+  echo "$ctx" | head -c 30000
+}
+
+# ── validator용 변경 diff 컨텍스트 ────────────────────────────────────
+# validator에게 impl + 변경된 파일 diff를 함께 전달해 Read 호출 절약
+# 사용법: build_validator_context <impl_file>
+build_validator_context() {
+  local impl_file="$1"
+  local ctx=""
+  # impl 내용
+  [[ -f "$impl_file" ]] && ctx=$(head -c 10000 "$impl_file")
+  # 변경된 파일의 diff (staged + unstaged)
+  local diff_out
+  diff_out=$(git diff HEAD 2>/dev/null | head -c 15000 || true)
+  if [[ -n "$diff_out" ]]; then
+    ctx="${ctx}
+
+=== git diff (changed files) ===
+${diff_out}"
+  fi
+  echo "$ctx" | head -c 25000
+}
+
 # ── Feature branch 생성 ──────────────────────────────────────────────
 # 사용법: create_feature_branch <type> <issue_num>
 # 반환: 브랜치 이름 (stdout)

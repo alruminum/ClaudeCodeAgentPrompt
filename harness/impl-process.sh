@@ -157,47 +157,8 @@ append_success() {
   rm -f "$tmp_entry"
 }
 
-extract_files_from_error() {
-  # errorTrace에서 "src/..." 패턴 역추적
-  echo "$1" | grep -oE 'src/[^ :()]+\.(ts|tsx|js|jsx)' | sort -u | head -5 || true
-}
-
-build_smart_context() {
-  # 스마트 컨텍스트 구성 — 파일 통째가 아닌 관련 청크만
-  local impl="$1" attempt_n="$2" err_trace="$3"
-  local ctx=""
-
-  if [[ $attempt_n -eq 0 ]]; then
-    # impl 파일 자체
-    ctx=$(cat "$impl")
-    # impl에서 언급된 소스 파일 내용 추가 (각 파일 3KB 캡)
-    while IFS= read -r f; do
-      [[ -z "$f" ]] && continue
-      if [[ -f "$f" ]]; then
-        ctx="${ctx}
-=== ${f} ===
-$(head -c 3000 "$f")"
-      fi
-    done < <(grep -oE 'src/[^ `"'"'"']+\.(ts|tsx)' "$impl" 2>/dev/null | sort -u | head -5)
-  else
-    # 재시도: error trace에서 관련 파일만
-    local failed_files
-    failed_files=$(extract_files_from_error "$err_trace")
-    if [[ -n "$failed_files" ]]; then
-      while IFS= read -r f; do
-        [[ -z "$f" ]] && continue
-        [[ -f "$f" ]] && ctx="${ctx}
-=== ${f} ===
-$(cat "$f")"
-      done <<< "$failed_files"
-    else
-      ctx=$(cat "$impl")
-    fi
-  fi
-
-  # 30KB 캡 (토큰 폭발 방지)
-  echo "$ctx" | head -c 30000
-}
+# extract_files_from_error() → harness/utils.sh로 이동 (공용)
+# build_smart_context() → harness/utils.sh로 이동 (공용)
 
 run_automated_checks() {
   local impl_file="$1"
@@ -659,9 +620,12 @@ $changed_files
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
     hlog "validator 시작 (depth=$DEPTH, timeout=300s)"
     kill_check
+    val_context=$(build_validator_context "$IMPL_FILE")
     AGENT_EXIT=0
     _agent_call "validator" 300 \
-      "Mode B — impl: $IMPL_FILE" \
+      "Mode B — impl: $IMPL_FILE
+context:
+$val_context" \
       "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
     hlog "validator 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi

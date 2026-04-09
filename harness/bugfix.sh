@@ -264,15 +264,17 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
 
   local attempt=0
   local MAX_HOTFIX=3
+  local error_trace=""
   while [[ $attempt -lt $MAX_HOTFIX ]]; do
     attempt=$((attempt + 1))
     kill_check
     echo "[HARNESS] engineer 직접 (attempt $attempt/$MAX_HOTFIX, depth=$depth)"
 
+    # 스마트 컨텍스트: impl 참조 소스를 프롬프트에 사전 포함 (Read 호출 절약)
     local eng_prompt=""
     if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
       local context
-      context=$(head -c 30000 "$IMPL_FILE")
+      context=$(build_smart_context "$IMPL_FILE" "$((attempt - 1))" "${error_trace:-}")
       eng_prompt="impl: $IMPL_FILE
 issue: #$ISSUE_NUM
 task: Bugfix Plan의 버그 수정 이행
@@ -314,13 +316,18 @@ $CONSTRAINTS"
       else
         # std: validator Bugfix Validation (Mode D)
         echo "[HARNESS] validator Bugfix Validation(Mode D) 호출 중"
+        local val_ctx
+        val_ctx=$(build_validator_context "$IMPL_FILE")
         _agent_call "validator" 300 \
-          "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS" \
+          "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS
+context:
+$val_ctx" \
           "/tmp/${PREFIX}_val_bf_out.txt"
         local bf_result
         bf_result=$(parse_marker "/tmp/${PREFIX}_val_bf_out.txt" "BUGFIX_PASS|BUGFIX_FAIL|PASS|FAIL")
 
         if [[ "$bf_result" != "BUGFIX_PASS" && "$bf_result" != "PASS" ]]; then
+          error_trace=$(cat "/tmp/${PREFIX}_val_bf_out.txt" 2>/dev/null | head -c 5000 || echo "BUGFIX_FAIL")
           echo "[HARNESS] validator BUGFIX_FAIL — engineer 재시도"
           continue
         fi
@@ -340,6 +347,7 @@ $CONSTRAINTS"
       echo "commit: $merge_commit"
       exit 0
     else
+      error_trace=$(cat "/tmp/${PREFIX}_vitest_out.txt" 2>/dev/null | head -c 5000 || echo "vitest exit=$vitest_exit")
       echo "[HARNESS] vitest 실패 (exit=$vitest_exit) — engineer 재시도"
     fi
   done
