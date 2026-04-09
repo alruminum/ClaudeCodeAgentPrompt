@@ -352,30 +352,57 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
       git commit -m "$(generate_commit_msg) [fast-mode]"
     fi
 
-    # ── fast: validator Mode B ────────────────────────────────
+    # ── fast: pr-reviewer ────────────────────────────────────
     kill_check
-    log_phase "validator"
-    echo "[HARNESS/fast] validator Mode B 호출 중"
-    hlog "validator 시작 (depth=fast, timeout=300s)"
-    touch "/tmp/${PREFIX}_test_engineer_passed"  # validator Mode B 게이트 통과용
+    log_phase "pr-reviewer"
+    echo "[HARNESS/fast] pr-reviewer 호출 중"
+    hlog "pr-reviewer 시작 (depth=fast, timeout=180s)"
+    local fast_diff
+    fast_diff=$(git diff HEAD 2>&1 | head -300)
     AGENT_EXIT=0
-    _agent_call "validator" 300 \
-      "Mode B — impl: $IMPL_FILE" \
-      "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
-    hlog "validator 종료 (exit=${AGENT_EXIT})"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi
-    budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
+    _agent_call "pr-reviewer" 180 \
+      "@MODE:PR_REVIEWER:REVIEW
+@PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$(git diff --name-only HEAD 2>/dev/null | tr '\n' ' ')\" }
+변경 diff:
+$fast_diff" \
+      "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
+    hlog "pr-reviewer 종료 (exit=${AGENT_EXIT})"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "pr-reviewer timeout"; fi
+    budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
 
-    val_result=$(parse_marker "/tmp/${PREFIX}_val_out.txt" "PASS|FAIL")
-    echo "[HARNESS/fast] validator 결과: $val_result"
-    if [[ "$val_result" == "PASS" ]]; then
-      touch "/tmp/${PREFIX}_validator_b_passed"
-    else
-      echo "[HARNESS/fast] validator FAIL — fast mode에서는 재시도 없이 경고만 출력"
-      hlog "validator FAIL (fast — no retry, validator_b_passed 미설정)"
+    pr_result=$(parse_marker "/tmp/${PREFIX}_pr_out.txt" "LGTM|CHANGES_REQUESTED")
+    echo "[HARNESS/fast] pr-reviewer 결과: $pr_result"
+
+    if [[ "$pr_result" == "CHANGES_REQUESTED" ]]; then
+      # fast: CHANGES_REQUESTED → engineer에게 추가커밋 요청 (1회)
+      pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null | head -c 5000)
+      AGENT_EXIT=0
+      _agent_call "engineer" 900 \
+        "impl: $IMPL_FILE
+issue: #$ISSUE_NUM
+task: [코드 품질 수정] pr-reviewer MUST FIX 항목만 수정하라. 기능 변경 금지.
+pr_review:
+$pr_out
+constraints:
+$CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
+      budget_check "engineer" "/tmp/${PREFIX}_eng_fix_out.txt"
+
+      # 추가 변경 커밋
+      local fix_list
+      fix_list=$(collect_changed_files || true)
+      if [[ -n "$fix_list" ]]; then
+        echo "$fix_list" | while IFS= read -r _cf; do
+          [[ -n "$_cf" ]] && git add -- "$_cf"
+        done
+        git commit -m "$(generate_commit_msg) [fast-pr-fix]"
+        hlog "pr-reviewer CHANGES_REQUESTED → 추가커밋 완료"
+      fi
     fi
 
-    # ── fast: merge to main (게이트 없음) ─────────────────────
+    touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+    echo "[HARNESS/fast] pr-reviewer LGTM (또는 fix 완료)"
+
+    # ── fast: merge to main ───────────────────────────────────
     impl_commit=$(git rev-parse --short HEAD)
     if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "fast" "$PREFIX"; then
       export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
@@ -400,9 +427,10 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
   fi
 
   # ══════════════════════════════════════════════════════════════
-  # std / deep mode: engineer → test-engineer → vitest → validator
-  #                  [deep: + pr-reviewer → security-reviewer]
-  #                  → commit → merge
+  # std / deep mode: engineer → commit → test-engineer → vitest
+  #                  → validator → pr-reviewer
+  #                  [deep: + security-reviewer]
+  #                  → merge
   # ══════════════════════════════════════════════════════════════
   attempt=0
   spec_gap_count=0

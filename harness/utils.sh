@@ -284,12 +284,13 @@ except: pass
 
   # 이미 동일 브랜치 존재 → 체크아웃만 (재진입)
   if git show-ref --verify --quiet "refs/heads/${branch_name}" 2>/dev/null; then
-    git checkout "$branch_name"
+    # >/dev/null 2>&1: 수정된 추적 파일 목록이 stdout으로 출력되어 브랜치명 오염 방지
+    git checkout "$branch_name" >/dev/null 2>&1
     echo "$branch_name"
     return 0
   fi
 
-  git checkout -b "$branch_name" "$default_branch"
+  git checkout -b "$branch_name" "$default_branch" >/dev/null 2>&1
   echo "$branch_name"
 }
 
@@ -303,23 +304,26 @@ merge_to_main() {
   default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
     | sed 's@^refs/remotes/origin/@@' || echo "main")
 
-  # 머지 전 게이트 (depth별 3-way 분기)
-  if [[ "$depth" == "deep" ]]; then
+  # 머지 전 게이트 (depth별 분기)
+  # fast/std/deep 모두 pr_reviewer_lgtm 필수
+  if [[ "$depth" == "deep" || "$depth" == "std" || "$depth" == "fast" ]]; then
     if [[ ! -f "/tmp/${prefix}_pr_reviewer_lgtm" ]]; then
-      echo "[HARNESS] merge 거부: pr_reviewer_lgtm 없음 (deep)"
+      echo "[HARNESS] merge 거부: pr_reviewer_lgtm 없음 ($depth)"
       return 1
     fi
+  fi
+  if [[ "$depth" == "deep" ]]; then
     if [[ ! -f "/tmp/${prefix}_security_review_passed" ]]; then
       echo "[HARNESS] merge 거부: security_review_passed 없음 (deep)"
       return 1
     fi
-  elif [[ "$depth" == "std" || "$depth" == "bugfix" ]]; then
+  fi
+  if [[ "$depth" == "bugfix" ]]; then
     if [[ ! -f "/tmp/${prefix}_validator_b_passed" ]]; then
-      echo "[HARNESS] merge 거부: validator_b_passed 없음 ($depth)"
+      echo "[HARNESS] merge 거부: validator_b_passed 없음 (bugfix)"
       return 1
     fi
   fi
-  # fast: 게이트 없음 — engineer 커밋만으로 머지
 
   git checkout "$default_branch"
 
@@ -564,7 +568,13 @@ except Exception:
   # 에이전트 active 플래그 해제
   rm -f "/tmp/${_prefix_for_flag}_${agent}_active" 2>/dev/null
 
-  echo "[HARNESS] ${agent} 완료 ($((t_end - t_start))s, exit=${_call_exit})"
+  if [[ $_call_exit -eq 0 ]]; then
+    echo "[HARNESS] ${agent} 완료 ($((t_end - t_start))s)"
+  elif [[ $_call_exit -eq 124 || $_call_exit -eq 142 ]]; then
+    echo "[HARNESS] ${agent} 타임아웃 ($((t_end - t_start))s, exit=${_call_exit})"
+  else
+    echo "[HARNESS] ${agent} 실패 ($((t_end - t_start))s, exit=${_call_exit})"
+  fi
 
   # 에이전트 결과 요약을 harness output log에 출력 (tail -f로 실시간 확인용)
   if [[ -s "$out_file" ]]; then
