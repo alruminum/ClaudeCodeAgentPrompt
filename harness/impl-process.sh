@@ -595,8 +595,23 @@ $spec_gap_context" \
     fi
     echo "[HARNESS] automated_checks PASS"
 
+    # ── 즉시 커밋: engineer 변경을 feature branch에 즉시 기록 ──────────
+    if collect_changed_files > /dev/null 2>&1; then
+      collect_changed_files | while IFS= read -r _cf; do
+        [[ -n "$_cf" ]] && git add -- "$_cf"
+      done
+      local commit_suffix=""
+      [[ $attempt -gt 0 ]] && commit_suffix=" [attempt-${attempt}-fix]"
+      git commit -m "$(generate_commit_msg)${commit_suffix}"
+      local early_commit; early_commit=$(git rev-parse --short HEAD)
+      [[ -n "$RUN_LOG" ]] && printf '{"event":"commit","hash":"%s","attempt":%d,"t":%d}\n' \
+        "$early_commit" "$((attempt+1))" "$(date +%s)" >> "$RUN_LOG"
+      hlog "early commit: $early_commit (attempt=$((attempt+1)))"
+    fi
+
     # ── 워커 2: test-engineer ─────────────────────────────────────
-    changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' | tr '\n' ' ' || echo "")
+    changed_files=$(git diff HEAD~1 --name-only 2>/dev/null | tr '\n' ' ' || \
+      git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' | tr '\n' ' ' || echo "")
     log_phase "test-engineer"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
     hlog "test-engineer 시작 (depth=$DEPTH, timeout=600s)"
@@ -711,60 +726,62 @@ $val_context" \
     fi
     touch "/tmp/${PREFIX}_validator_b_passed"
 
-    # ── 워커 4+5: pr-reviewer / security-reviewer (deep only) ────────
-    if [[ "$DEPTH" == "deep" ]]; then
-      git add -A
-      diff_out=$(git diff HEAD 2>&1 | head -300)
-      log_phase "pr-reviewer"
-      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
-      hlog "pr-reviewer 시작 (deep only, timeout=180s)"
-      kill_check
-      AGENT_EXIT=0
-      _agent_call "pr-reviewer" 180 \
-        "변경 내용 리뷰:
+    # ── 워커 4: pr-reviewer (fast/std/deep 모두) ─────────────────────
+    log_phase "pr-reviewer"
+    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
+    hlog "pr-reviewer 시작 (depth=$DEPTH, timeout=180s)"
+    kill_check
+    diff_out=$(git diff HEAD~1 2>&1 | head -300 || git diff HEAD 2>&1 | head -300)
+    AGENT_EXIT=0
+    _agent_call "pr-reviewer" 180 \
+      "@MODE:PR_REVIEWER:REVIEW
+@PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$(git diff HEAD~1 --name-only 2>/dev/null | tr '\n' ' ' || true)\" }
+변경 diff:
 $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
-      hlog "pr-reviewer 종료 (exit=${AGENT_EXIT})"
-      if [[ $AGENT_EXIT -eq 124 ]]; then hlog "pr-reviewer timeout"; fi
-      budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
+    hlog "pr-reviewer 종료 (exit=${AGENT_EXIT})"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "pr-reviewer timeout"; fi
+    budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
 
-      # ── S39: pr-reviewer 출력 가드 ───────────────────────────────────
-      if ! check_agent_output "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"; then
-        fail_type="pr_fail"
-        error_trace="pr-reviewer agent produced no output (exit=${AGENT_EXIT})"
-        append_failure "$fail_type" "$error_trace"
-        rollback_attempt $attempt
-        attempt=$((attempt+1))
-        continue
-      fi
+    # ── S39: pr-reviewer 출력 가드 ───────────────────────────────────
+    if ! check_agent_output "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"; then
+      fail_type="pr_fail"
+      error_trace="pr-reviewer agent produced no output (exit=${AGENT_EXIT})"
+      append_failure "$fail_type" "$error_trace"
+      rollback_attempt $attempt
+      attempt=$((attempt+1))
+      continue
+    fi
 
-      pr_result=$(parse_marker "/tmp/${PREFIX}_pr_out.txt" "LGTM|CHANGES_REQUESTED")
-      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
-      if [[ "$pr_result" != "LGTM" ]]; then
-        pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
-        error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10 || true)
-        [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
-        fail_type="pr_fail"
-        log_decision "fail_type" "$fail_type" "pr-reviewer result=$pr_result"
-        append_failure "pr_fail" "$error_trace"
-        rollback_attempt $attempt
-        attempt=$((attempt+1))
-        continue
-      fi
-      touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
-      echo "[HARNESS] LGTM"
+    pr_result=$(parse_marker "/tmp/${PREFIX}_pr_out.txt" "LGTM|CHANGES_REQUESTED")
+    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
+    if [[ "$pr_result" != "LGTM" ]]; then
+      pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
+      error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10 || true)
+      [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
+      fail_type="pr_fail"
+      log_decision "fail_type" "$fail_type" "pr-reviewer result=$pr_result"
+      append_failure "pr_fail" "$error_trace"
+      rollback_attempt $attempt
+      attempt=$((attempt+1))
+      continue
+    fi
+    touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+    echo "[HARNESS] LGTM"
 
+    # ── 워커 5: security-reviewer (deep only) ────────────────────────
+    if [[ "$DEPTH" == "deep" ]]; then
       log_phase "security-reviewer"
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
       hlog "security-reviewer 시작 (deep only, timeout=180s)"
       kill_check
-      changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ' || true)
+      changed_src=$(git diff HEAD~1 --name-only 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ' || true)
       AGENT_EXIT=0
       _agent_call "security-reviewer" 180 \
         "보안 리뷰 대상 파일:
 $changed_src
 
 변경 diff:
-$(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
+$(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       hlog "security-reviewer 종료 (exit=${AGENT_EXIT})"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "security-reviewer timeout"; fi
       budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
@@ -795,25 +812,21 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       touch "/tmp/${PREFIX}_security_review_passed"
       echo "[HARNESS] SECURE"
     else
-      # std: pr-reviewer·security-reviewer 스킵, 플래그만 자동 생성
-      touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+      # std: security-reviewer 스킵, 플래그만 자동 생성
       touch "/tmp/${PREFIX}_security_review_passed"
-      hlog "pr-reviewer/security-reviewer 스킵 (depth=$DEPTH)"
+      hlog "security-reviewer 스킵 (depth=$DEPTH)"
     fi
 
-    # ── git commit ────────────────────────────────────────────────
-    # test-engineer가 테스트 파일 추가했을 수 있으므로 commit 직전 재계산
+    # ── merge to main ─────────────────────────────────────────────
+    # test-engineer가 추가한 테스트 파일 등 미커밋 변경 처리
     if collect_changed_files > /dev/null 2>&1; then
       collect_changed_files | while IFS= read -r _cf; do
         [[ -n "$_cf" ]] && git add -- "$_cf"
       done
-    else
-      git add -u
+      git commit -m "$(generate_commit_msg) [test-files]"
+      hlog "test 파일 추가 커밋 완료"
     fi
-    git commit -m "$(generate_commit_msg)"
     impl_commit=$(git rev-parse --short HEAD)
-    [[ -n "$RUN_LOG" ]] && printf '{"event":"commit","hash":"%s","attempt":%d,"t":%d}\n' \
-      "$impl_commit" "$((attempt+1))" "$(date +%s)" >> "$RUN_LOG"
 
     # ── merge to main ────────────────────────────────────────────
     if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "$DEPTH" "$PREFIX"; then
