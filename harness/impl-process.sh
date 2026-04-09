@@ -108,7 +108,7 @@ append_failure() {
         > "$tmp_promo"
       cat "$tmp_promo" >> "$MEM_LOCAL"
       rm -f "$tmp_promo"
-      echo "[HARNESS] ⚠️ 실패 패턴 자동 프로모션: ${pattern_key} (${count}회)"
+      echo "[HARNESS] 실패 패턴 자동 프로모션: ${pattern_key} (${count}회)"
     fi
   fi
 
@@ -138,8 +138,8 @@ rollback_attempt() {
 check_agent_output() {
   local agent_name="$1" out_file="$2"
   if [[ ! -s "$out_file" ]]; then
-    hlog "⚠️ ${agent_name} 출력 파일 없음 또는 비어있음 — agent 호출 실패"
-    echo "[HARNESS] ⚠️ ${agent_name} agent가 출력을 생성하지 못함"
+    hlog "WARNING: ${agent_name} 출력 파일 없음 또는 비어있음 — agent 호출 실패"
+    echo "[HARNESS] WARNING: ${agent_name} agent가 출력을 생성하지 못함"
     return 1
   fi
   return 0
@@ -308,17 +308,15 @@ trap cleanup EXIT
 TOTAL_COST=0
 MAX_TOTAL_COST=10  # 달러 — 전체 루프 비용 상한
 
-# kill_check() → harness/utils.sh로 이동 (executor와 공유)
-
 budget_check() {
   local agent_name="$1" out_file="$2"
   local cost_file="${out_file%.txt}_cost.txt"
   local agent_cost
   agent_cost=$(cat "$cost_file" 2>/dev/null || echo "0")
   TOTAL_COST=$(echo "$TOTAL_COST + $agent_cost" | bc 2>/dev/null || echo "$TOTAL_COST")
-  hlog "💰 ${agent_name} 비용: \$${agent_cost} | 누적: \$${TOTAL_COST}/${MAX_TOTAL_COST}"
-  if [ "$(echo "$TOTAL_COST > $MAX_TOTAL_COST" | bc 2>/dev/null)" = "1" ]; then
-    hlog "🚨 비용 상한 초과 (\$${TOTAL_COST} > \$${MAX_TOTAL_COST}) — 즉시 중단"
+  hlog "COST: ${agent_name} \$${agent_cost} | total: \$${TOTAL_COST}/${MAX_TOTAL_COST}"
+  if [[ "$(echo "$TOTAL_COST > $MAX_TOTAL_COST" | bc 2>/dev/null)" == "1" ]]; then
+    hlog "BUDGET EXCEEDED (\$${TOTAL_COST} > \$${MAX_TOTAL_COST})"
     export HARNESS_RESULT="HARNESS_BUDGET_EXCEEDED"
     echo "HARNESS_BUDGET_EXCEEDED: \$${TOTAL_COST} spent, limit \$${MAX_TOTAL_COST}"
     rm -f "/tmp/${PREFIX}_harness_active"
@@ -342,18 +340,21 @@ if [[ "$MODE" == "impl" ]]; then
   [[ -n "$RUN_LOG" ]] && printf '{"event":"branch_create","branch":"%s","t":%d}\n' \
     "$FEATURE_BRANCH" "$(date +%s)" >> "$RUN_LOG"
 
-  # ── fast mode: engineer → validator → pr-reviewer → commit (테스트·보안 스킵) ──
+  # ══════════════════════════════════════════════════════════════
+  # fast mode: engineer → validator → commit → merge
+  # (테스트·보안·리뷰 스킵, LLM 2회)
+  # ══════════════════════════════════════════════════════════════
   if [[ "$DEPTH" == "fast" ]]; then
     hlog "=== 하네스 루프 시작 (depth=fast) ==="
     [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"fast","max_retries":1,"constraints_chars":%d}\n' \
       "$IMPL_FILE" "$ISSUE_NUM" "${#CONSTRAINTS}" >> "$RUN_LOG"
 
-    # ── fast 워커 1: engineer ────────────────────────────────────
+    # ── fast: engineer ────────────────────────────────────────
     kill_check
     log_phase "engineer"
     echo "[HARNESS/fast] engineer 호출 중"
-    context=$(cat "$IMPL_FILE" | head -c 30000)
-    hlog "▶ engineer 시작 (depth=fast, timeout=900s)"
+    context=$(head -c 30000 "$IMPL_FILE")
+    hlog "engineer 시작 (depth=fast, timeout=900s)"
     head_before=$(git rev-parse HEAD)
     AGENT_EXIT=0
     _agent_call "engineer" 900 \
@@ -364,8 +365,8 @@ context:
 $context
 constraints:
 $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
-    hlog "◀ engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
+    hlog "engineer 종료 (exit=${AGENT_EXIT})"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "engineer timeout"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
     # engineer가 커밋했는지 + 미커밋 변경이 있는지 확인
@@ -373,75 +374,47 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     engineer_committed=false
     [[ "$head_before" != "$head_after" ]] && engineer_committed=true
 
-    commit_files=()
-    while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
-      < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+    changed_list=$(collect_changed_files || true)
 
-    if [[ "$engineer_committed" == "false" && ${#commit_files[@]} -eq 0 ]]; then
+    if [[ "$engineer_committed" == "false" && -z "$changed_list" ]]; then
       export HARNESS_RESULT="HARNESS_DONE"
       echo "[HARNESS/fast] 변경사항 없음"
-      hlog "=== 하네스 루프 종료 (결과=no_changes, 시도=1) ==="
+      hlog "=== 루프 종료 (no_changes) ==="
       exit 0
     fi
 
     # 미커밋 변경이 있으면 하네스가 커밋
-    if [[ ${#commit_files[@]} -gt 0 ]]; then
-      git add -- "${commit_files[@]}"
+    if [[ -n "$changed_list" ]]; then
+      echo "$changed_list" | while IFS= read -r _cf; do
+        [[ -n "$_cf" ]] && git add -- "$_cf"
+      done
       git commit -m "$(generate_commit_msg) [fast-mode]"
     fi
 
-    # ── fast 워커 2: validator Mode B ────────────────────────────
+    # ── fast: validator Mode B ────────────────────────────────
     kill_check
     log_phase "validator"
     echo "[HARNESS/fast] validator Mode B 호출 중"
-    hlog "▶ validator 시작 (depth=fast, timeout=300s)"
+    hlog "validator 시작 (depth=fast, timeout=300s)"
     touch "/tmp/${PREFIX}_test_engineer_passed"  # validator Mode B 게이트 통과용
     AGENT_EXIT=0
     _agent_call "validator" 300 \
       "Mode B — impl: $IMPL_FILE" \
       "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
-    hlog "◀ validator 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ validator timeout — skip to pr-reviewer"; fi
+    hlog "validator 종료 (exit=${AGENT_EXIT})"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi
     budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
 
-    val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
-    if echo "$val_out" | grep -qi "PASS"; then
-      val_result="PASS"
-    elif echo "$val_out" | grep -qi "FAIL"; then
-      val_result="FAIL"
-    else
-      val_result="UNKNOWN"
-    fi
+    val_result=$(parse_marker "/tmp/${PREFIX}_val_out.txt" "PASS|FAIL")
     echo "[HARNESS/fast] validator 결과: $val_result"
-    if [[ "$val_result" != "PASS" ]]; then
+    if [[ "$val_result" == "PASS" ]]; then
+      touch "/tmp/${PREFIX}_validator_b_passed"
+    else
       echo "[HARNESS/fast] validator FAIL — fast mode에서는 재시도 없이 경고만 출력"
-      hlog "⚠️ validator FAIL (fast — no retry)"
-    fi
-    touch "/tmp/${PREFIX}_validator_b_passed"
-
-    # ── fast 워커 3: pr-reviewer ─────────────────────────────────
-    kill_check
-    log_phase "pr-reviewer"
-    diff_out=$(git diff HEAD~1 2>&1 | head -300)
-    echo "[HARNESS/fast] pr-reviewer 호출 중"
-    hlog "▶ pr-reviewer 시작 (depth=fast, timeout=180s)"
-    AGENT_EXIT=0
-    _agent_call "pr-reviewer" 180 \
-      "변경 내용 리뷰:
-$diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
-    hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
-    budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
-
-    pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
-    if echo "$pr_out" | grep -qi "LGTM"; then
-      echo "[HARNESS/fast] pr-reviewer: LGTM"
-    elif echo "$pr_out" | grep -qi "CHANGES_REQUESTED"; then
-      echo "[HARNESS/fast] pr-reviewer: CHANGES_REQUESTED — fast mode에서는 경고만 출력"
-      hlog "⚠️ pr-reviewer CHANGES_REQUESTED (fast — no retry)"
+      hlog "validator FAIL (fast — no retry, validator_b_passed 미설정)"
     fi
 
-    # ── merge to main ──────────────────────────────────────────
+    # ── fast: merge to main (게이트 없음) ─────────────────────
     impl_commit=$(git rev-parse --short HEAD)
     if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "fast" "$PREFIX"; then
       export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
@@ -455,19 +428,27 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     [[ -n "$RUN_LOG" ]] && printf '{"event":"branch_merge","branch":"%s","impl_commit":"%s","merge_commit":"%s","t":%d}\n' \
       "$FEATURE_BRANCH" "$impl_commit" "$merge_commit" "$(date +%s)" >> "$RUN_LOG"
 
-    # ── 완료 ─────────────────────────────────────────────────────
+    # ── fast: 완료 ────────────────────────────────────────────
     export HARNESS_RESULT="HARNESS_DONE"
     echo "HARNESS_DONE (fast)"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
     echo "commit: $merge_commit"
-    echo "⚠️ fast mode: 테스트·보안 검사 스킵됨. 중요 변경엔 --depth=std 사용."
-    hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=1) ==="
+    hlog "=== 루프 종료 (HARNESS_DONE, fast) ==="
     exit 0
   fi
 
+  # ══════════════════════════════════════════════════════════════
+  # std / deep mode: engineer → test-engineer → vitest → validator
+  #                  [deep: + pr-reviewer → security-reviewer]
+  #                  → commit → merge
+  # ══════════════════════════════════════════════════════════════
   attempt=0
+  spec_gap_count=0
+  spec_gap_context=""
+  sg_result=""
   MAX=3
+  MAX_SPEC_GAP=2
   error_trace=""
   fail_type=""
   hlog "=== 하네스 루프 시작 (depth=$DEPTH, max_retries=$MAX) ==="
@@ -530,7 +511,7 @@ ${error_1line}
     # ── 워커 1: engineer ──────────────────────────────────────────
     log_phase "engineer"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 호출 중"
-    hlog "▶ engineer 시작 (depth=$DEPTH, timeout=900s)"
+    hlog "engineer 시작 (depth=$DEPTH, timeout=900s)"
     kill_check
     AGENT_EXIT=0
     _agent_call "engineer" 900 \
@@ -542,8 +523,8 @@ context:
 $context
 constraints:
 $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
-    hlog "◀ engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ engineer timeout — skip"; fi
+    hlog "engineer 종료 (exit=${AGENT_EXIT})"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "engineer timeout"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
 
     # ── S39: engineer 출력 가드 ──────────────────────────────────────
@@ -554,6 +535,63 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
+    fi
+
+    # ── SPEC_GAP 감지 (정책 15: attempt 동결, spec_gap_count 별도) ──
+    if grep -q "SPEC_GAP_FOUND" "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null; then
+      spec_gap_count=$((spec_gap_count + 1))
+      hlog "SPEC_GAP_FOUND (spec_gap_count=${spec_gap_count}/${MAX_SPEC_GAP})"
+      log_decision "spec_gap" "$spec_gap_count" "SPEC_GAP_FOUND in engineer output"
+
+      if [[ $spec_gap_count -gt $MAX_SPEC_GAP ]]; then
+        hlog "SPEC_GAP 동결 초과 → IMPLEMENTATION_ESCALATE"
+        export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
+        echo "IMPLEMENTATION_ESCALATE (spec_gap_count ${spec_gap_count} > ${MAX_SPEC_GAP})"
+        echo "branch: ${FEATURE_BRANCH:-unknown}"
+        exit 1
+      fi
+
+      # architect SPEC_GAP 호출
+      log_phase "architect-spec-gap"
+      echo "[HARNESS] SPEC_GAP → architect SPEC_GAP 호출 중"
+      spec_gap_context=$(tail -50 "/tmp/${PREFIX}_eng_out.txt")
+      _agent_call "architect" 900 \
+        "SPEC_GAP(Mode C) — engineer가 SPEC_GAP_FOUND 보고. impl: $IMPL_FILE issue: #$ISSUE_NUM
+engineer 보고:
+$spec_gap_context" \
+        "/tmp/${PREFIX}_arch_sg_out.txt"
+      budget_check "architect" "/tmp/${PREFIX}_arch_sg_out.txt"
+
+      # architect 결과 3-way 분기
+      sg_result=$(parse_marker "/tmp/${PREFIX}_arch_sg_out.txt" "SPEC_GAP_RESOLVED|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+
+      case "$sg_result" in
+        SPEC_GAP_RESOLVED)
+          hlog "SPEC_GAP_RESOLVED → engineer 재시도 (attempt 동결)"
+          # attempt 증가 없이 루프 처음으로 (동결). error_trace 초기화.
+          error_trace=""
+          fail_type=""
+          continue
+          ;;
+        PRODUCT_PLANNER_ESCALATION_NEEDED)
+          export HARNESS_RESULT="PRODUCT_PLANNER_ESCALATION_NEEDED"
+          echo "PRODUCT_PLANNER_ESCALATION_NEEDED"
+          echo "branch: ${FEATURE_BRANCH:-unknown}"
+          exit 1
+          ;;
+        TECH_CONSTRAINT_CONFLICT)
+          export HARNESS_RESULT="TECH_CONSTRAINT_CONFLICT"
+          echo "TECH_CONSTRAINT_CONFLICT"
+          echo "branch: ${FEATURE_BRANCH:-unknown}"
+          exit 1
+          ;;
+        *)
+          hlog "architect SPEC_GAP 결과 불명확: $sg_result → engineer 재시도 (attempt 동결)"
+          error_trace=""
+          fail_type=""
+          continue
+          ;;
+      esac
     fi
 
     # ── S17-2: pre-evaluator automated_checks ────────────────────────
@@ -572,7 +610,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
     log_phase "test-engineer"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
-    hlog "▶ test-engineer 시작 (depth=$DEPTH, timeout=600s)"
+    hlog "test-engineer 시작 (depth=$DEPTH, timeout=600s)"
     kill_check
     AGENT_EXIT=0
     _agent_call "test-engineer" 600 \
@@ -580,8 +618,8 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
 $changed_files
 
 테스트 작성 후 npx vitest run. issue: #$ISSUE_NUM" "/tmp/${PREFIX}_te_out.txt" || AGENT_EXIT=$?
-    hlog "◀ test-engineer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_te_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ test-engineer timeout — skip"; fi
+    hlog "test-engineer 종료 (exit=${AGENT_EXIT})"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "test-engineer timeout"; fi
     budget_check "test-engineer" "/tmp/${PREFIX}_te_out.txt"
 
     # ── S39: test-engineer 출력 가드 ─────────────────────────────────
@@ -596,13 +634,13 @@ $changed_files
 
     # ── Ground truth: 실제 테스트 실행 (LLM 주장과 독립) ──────────
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — npx vitest run"
-    hlog "▶ vitest 시작"
+    hlog "vitest 시작"
     kill_check
     set +e
     npx vitest run > "/tmp/${PREFIX}_test_out.txt" 2>&1
     test_exit=$?
     set -e
-    hlog "◀ vitest 종료 (exit=$test_exit)"
+    hlog "vitest 종료 (exit=$test_exit)"
     if [[ $test_exit -ne 0 ]]; then
       echo "[HARNESS] TESTS_FAIL"
       error_trace=$(cat "/tmp/${PREFIX}_test_out.txt")
@@ -619,14 +657,14 @@ $changed_files
     # ── 워커 3: validator Mode B ──────────────────────────────────
     log_phase "validator"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
-    hlog "▶ validator 시작 (depth=$DEPTH, timeout=300s)"
+    hlog "validator 시작 (depth=$DEPTH, timeout=300s)"
     kill_check
     AGENT_EXIT=0
     _agent_call "validator" 300 \
       "Mode B — impl: $IMPL_FILE" \
       "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
-    hlog "◀ validator 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo 0)bytes)"
-    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ validator timeout — skip"; fi
+    hlog "validator 종료 (exit=${AGENT_EXIT})"
+    if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi
     budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
 
     # ── S39: validator 출력 가드 ─────────────────────────────────────
@@ -639,17 +677,26 @@ $changed_files
       continue
     fi
 
-    val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
-    if echo "$val_out" | grep -qi "PASS"; then
-      val_result="PASS"
-    elif echo "$val_out" | grep -qi "FAIL"; then
-      val_result="FAIL"
-    else
-      val_result="UNKNOWN"
-      echo "[HARNESS] ⚠️ validator 출력에서 마커(PASS/FAIL)를 찾지 못함"
-    fi
+    val_result=$(parse_marker "/tmp/${PREFIX}_val_out.txt" "PASS|FAIL|SPEC_MISSING")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 결과: $val_result"
+
+    # SPEC_MISSING → architect MODULE_PLAN (impl 복구)
+    if [[ "$val_result" == "SPEC_MISSING" ]]; then
+      hlog "SPEC_MISSING → architect MODULE_PLAN 복구"
+      _agent_call "architect" 900 \
+        "Module Plan(Mode B) — SPEC_MISSING 복구. impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+        "/tmp/${PREFIX}_arch_sm_out.txt"
+      budget_check "architect" "/tmp/${PREFIX}_arch_sm_out.txt"
+      # impl 파일 복구 후 재시도
+      fail_type="validator_fail"
+      error_trace="SPEC_MISSING: impl 파일 복구 후 재시도"
+      rollback_attempt $attempt
+      attempt=$((attempt+1))
+      continue
+    fi
+
     if [[ "$val_result" != "PASS" ]]; then
+      val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
       error_trace=$(echo "$val_out" | grep -A5 "FAIL" | head -6 || true)
       [[ -z "$error_trace" ]] && error_trace=$(echo "$val_out" | tail -6)
       fail_type="validator_fail"
@@ -667,14 +714,14 @@ $changed_files
       diff_out=$(git diff HEAD 2>&1 | head -300)
       log_phase "pr-reviewer"
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
-      hlog "▶ pr-reviewer 시작 (deep only, timeout=180s)"
+      hlog "pr-reviewer 시작 (deep only, timeout=180s)"
       kill_check
       AGENT_EXIT=0
       _agent_call "pr-reviewer" 180 \
         "변경 내용 리뷰:
 $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
-      hlog "◀ pr-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo 0)bytes)"
-      if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ pr-reviewer timeout — skip"; fi
+      hlog "pr-reviewer 종료 (exit=${AGENT_EXIT})"
+      if [[ $AGENT_EXIT -eq 124 ]]; then hlog "pr-reviewer timeout"; fi
       budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
 
       # ── S39: pr-reviewer 출력 가드 ───────────────────────────────────
@@ -687,17 +734,10 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
         continue
       fi
 
-      pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
-      if echo "$pr_out" | grep -qi "LGTM"; then
-        pr_result="PASS"
-      elif echo "$pr_out" | grep -qi "CHANGES_REQUESTED"; then
-        pr_result="FAIL"
-      else
-        pr_result="UNKNOWN"
-        echo "[HARNESS] ⚠️ pr-reviewer 출력에서 마커(LGTM/CHANGES_REQUESTED)를 찾지 못함"
-      fi
+      pr_result=$(parse_marker "/tmp/${PREFIX}_pr_out.txt" "LGTM|CHANGES_REQUESTED")
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
-      if [[ "$pr_result" != "PASS" ]]; then
+      if [[ "$pr_result" != "LGTM" ]]; then
+        pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
         error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10 || true)
         [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
         fail_type="pr_fail"
@@ -712,7 +752,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
 
       log_phase "security-reviewer"
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
-      hlog "▶ security-reviewer 시작 (deep only, timeout=180s)"
+      hlog "security-reviewer 시작 (deep only, timeout=180s)"
       kill_check
       changed_src=$(git diff --name-only HEAD 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ' || true)
       AGENT_EXIT=0
@@ -722,8 +762,8 @@ $changed_src
 
 변경 diff:
 $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
-      hlog "◀ security-reviewer 종료 (exit=${AGENT_EXIT}, $(wc -c < "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo 0)bytes)"
-      if [[ $AGENT_EXIT -eq 124 ]]; then hlog "⏰ security-reviewer timeout — skip"; fi
+      hlog "security-reviewer 종료 (exit=${AGENT_EXIT})"
+      if [[ $AGENT_EXIT -eq 124 ]]; then hlog "security-reviewer timeout"; fi
       budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
 
       # ── S39: security-reviewer 출력 가드 ─────────────────────────────
@@ -736,18 +776,10 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
         continue
       fi
 
-      sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo "")
-      if echo "$sec_out" | grep -qi "SECURE"; then
-        sec_result="PASS"
-      elif echo "$sec_out" | grep -qi "VULNERABILITIES_FOUND"; then
-        sec_result="FAIL"
-      else
-        sec_result="UNKNOWN"
-        echo "[HARNESS] ⚠️ security-reviewer 출력에서 마커(SECURE/VULNERABILITIES_FOUND)를 찾지 못함"
-      fi
+      sec_result=$(parse_marker "/tmp/${PREFIX}_sec_out.txt" "SECURE|VULNERABILITIES_FOUND")
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
-      if [[ "$sec_result" != "PASS" ]]; then
-        # HIGH/MEDIUM만 차단, LOW만 있으면 SECURE 판정이므로 FAIL 도달 시 HIGH/MEDIUM 존재
+      if [[ "$sec_result" != "SECURE" ]]; then
+        sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo "")
         error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10 || true)
         [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
         fail_type="security_fail"
@@ -760,20 +792,18 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
       touch "/tmp/${PREFIX}_security_review_passed"
       echo "[HARNESS] SECURE"
     else
-      # std/fast: pr-reviewer·security-reviewer 스킵, 플래그만 자동 생성
+      # std: pr-reviewer·security-reviewer 스킵, 플래그만 자동 생성
       touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
       touch "/tmp/${PREFIX}_security_review_passed"
-      hlog "⏭ pr-reviewer/security-reviewer 스킵 (depth=$DEPTH)"
+      hlog "pr-reviewer/security-reviewer 스킵 (depth=$DEPTH)"
     fi
 
     # ── git commit ────────────────────────────────────────────────
     # test-engineer가 테스트 파일 추가했을 수 있으므로 commit 직전 재계산
-    # 배열로 관리해 파일명 공백 이슈 방지
-    commit_files=()
-    while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
-      < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
-    if [[ ${#commit_files[@]} -gt 0 ]]; then
-      git add -- "${commit_files[@]}"
+    if collect_changed_files > /dev/null 2>&1; then
+      collect_changed_files | while IFS= read -r _cf; do
+        [[ -n "$_cf" ]] && git add -- "$_cf"
+      done
     else
       git add -u
     fi
@@ -804,7 +834,7 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
     echo "$ISSUE_NUM" > "/tmp/${PREFIX}_last_issue"
 
     export HARNESS_RESULT="HARNESS_DONE"
-    hlog "=== 하네스 루프 종료 (결과=HARNESS_DONE, 시도=$((attempt+1))) ==="
+    hlog "=== 루프 종료 (HARNESS_DONE, attempt=$((attempt+1))) ==="
     echo "HARNESS_DONE"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
@@ -816,13 +846,13 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
     candidate_file="/tmp/${PREFIX}_memory_candidate.md"
     if [[ -f "$candidate_file" ]]; then
       echo ""
-      echo "💾 [HARNESS MEMORY] 이번 루프에서 실패 패턴이 감지됐습니다."
+      echo "[HARNESS MEMORY] 이번 루프에서 실패 패턴이 감지됐습니다."
       echo "   아래 후보를 harness-memory.md에 기록하면 다음 루프의 CONSTRAINTS로 활용됩니다."
       echo "   파일: $candidate_file"
       echo "   내용:"
       cat "$candidate_file"
       echo ""
-      echo "   → 기록할까요? (메인 Claude에게 'Y' 또는 'N' 응답 요청)"
+      echo "   기록 여부: 메인 Claude에게 Y/N 응답"
       echo "memory_candidate: $candidate_file"
     fi
 
@@ -833,9 +863,10 @@ $(git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
   # 3회 모두 실패 — plan_validation_passed 플래그 정리 (재진입 시 stale 방지)
   rm -f "/tmp/${PREFIX}_plan_validation_passed"
   export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
-  hlog "=== 하네스 루프 종료 (결과=IMPLEMENTATION_ESCALATE, 시도=$MAX) ==="
+  hlog "=== 루프 종료 (IMPLEMENTATION_ESCALATE, attempt=$MAX) ==="
   echo "IMPLEMENTATION_ESCALATE"
   echo "attempts: $MAX"
+  echo "spec_gap_count: $spec_gap_count"
   echo "branch: ${FEATURE_BRANCH:-unknown}"
   echo "마지막 에러:"
   echo "$error_trace" | head -20

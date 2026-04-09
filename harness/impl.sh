@@ -18,6 +18,7 @@ run_impl() {
 
   # Phase 0.5 — UI 키워드 감지
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+    local ui_kw
     ui_kw=$(grep -iE "화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이" "$IMPL_FILE" || true)
     if [[ -n "$ui_kw" && ! -f "/tmp/${PREFIX}_design_critic_passed" ]]; then
       export HARNESS_RESULT="UI_DESIGN_REQUIRED"
@@ -34,7 +35,7 @@ run_impl() {
 
   # Phase 0.7 — impl 파일 없으면 architect 호출
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
-    echo "[HARNESS] Phase 0.7 — architect Mode B 호출 중"
+    echo "[HARNESS] Phase 0.7 — architect Module Plan 호출 중"
     _agent_call "architect" 900 \
       "Module Plan(Mode B) — issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
       "/tmp/${PREFIX}_arch_out.txt"
@@ -48,41 +49,9 @@ run_impl() {
     exit 1
   fi
 
-  # Phase 0.8 — validator Plan Validation (Mode C)
-  echo "[HARNESS] Phase 0.8 — validator Plan Validation 호출 중"
-  _agent_call "validator" 300 \
-    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_val_pv_out.txt"
-  val_result=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out.txt") || val_result="UNKNOWN"
-  echo "[HARNESS] Phase 0.8 — Plan Validation 결과: $val_result"
-
-  if [[ "$val_result" == "PASS" ]]; then
-    touch "/tmp/${PREFIX}_plan_validation_passed"
-    echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
-    export HARNESS_RESULT="PLAN_VALIDATION_PASS"
-    echo "PLAN_VALIDATION_PASS"
-    echo "impl: $IMPL_FILE"
-    echo "issue: #$ISSUE_NUM"
-    echo "필요 조치: 계획 확인 후 mode:impl 로 재호출"
-    exit 0
-  fi
-
-  # FAIL → architect 재보강 1회 → 재검증
-  echo "[HARNESS] Phase 0.8 — FAIL → architect 재보강 중"
-  fail_feedback=$(tail -20 "/tmp/${PREFIX}_val_pv_out.txt")
-  _agent_call "architect" 900 \
-    "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $IMPL_FILE feedback: ${fail_feedback}" \
-    "/tmp/${PREFIX}_arch_fix_out.txt"
-  echo "[HARNESS] Phase 0.8 — architect 재보강 완료, 재검증 중"
-
-  _agent_call "validator" 300 \
-    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_val_pv_out2.txt"
-  val_result2=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out2.txt") || val_result2="UNKNOWN"
-  echo "[HARNESS] Phase 0.8 — 재검증 결과: $val_result2"
-
-  if [[ "$val_result2" == "PASS" ]]; then
-    touch "/tmp/${PREFIX}_plan_validation_passed"
+  # Phase 0.8 — validator Plan Validation (공용 함수 활용)
+  echo "[HARNESS] Phase 0.8 — validator Plan Validation"
+  if run_plan_validation "$IMPL_FILE" "$ISSUE_NUM" "$PREFIX" 1; then
     echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
     export HARNESS_RESULT="PLAN_VALIDATION_PASS"
     echo "PLAN_VALIDATION_PASS"
@@ -94,6 +63,5 @@ run_impl() {
 
   export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
   echo "PLAN_VALIDATION_ESCALATE"
-  tail -20 "/tmp/${PREFIX}_val_pv_out2.txt"
   exit 1
 }

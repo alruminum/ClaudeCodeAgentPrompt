@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-07 (S34+S35+S39 + rollback_attempt)
+> 최종 업데이트: 2026-04-09 (S62~S68 — 스크립트↔룰 동기화 일괄)
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -72,6 +72,13 @@
 | S10 | 납품 게이트 (/deliver, B2B 납품 전 체크) | S | ✅ 완료 |
 | S11 | Smart Context 명세화 (hot-file 선택 로직) | S | ⬜ 보류 |
 | S12 | 루프 체크포인트 재개 (루프 C/D 상태 감지 + 재진입 스킵) | S | 🔧 진행 |
+| **S62** | **스크립트↔룰 동기화 — e32ce43 이후 스크립트 미반영 일괄 수정** | S | 🔧 진행 |
+| **S63** | **utils.sh 공용 함수 추출 — parse_marker()/run_plan_validation() + 코드 품질 정비** | S | 🔧 진행 |
+| **S64** | **impl-process.sh fast 모드 정정 — pr-reviewer 제거 + validator_b_passed 조건부 설정** | S | 🔧 진행 |
+| **S65** | **impl-process.sh SPEC_GAP 핸들링 — spec_gap_count 동결/에스컬레이션 (정책 15)** | S | 🔧 진행 |
+| **S66** | **bugfix.sh 라우팅 정비 — backlog/KNOWN_ISSUE 경로 + qa 마일스톤 규칙 정정** | S | 🔧 진행 |
+| **S67** | **plan.sh 흐름 완성 — validator DV + Task Decompose/Module Plan + Plan Validation** | S | 🔧 진행 |
+| **S68** | **design.sh 흐름 완성 — post-PICK DESIGN_HANDOFF + IMPL_CHK + FLAG 생성** | S | 🔧 진행 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
 | S14 | 커버리지 게이트 신규파일 60% | S | ⬜ 보류 |
 | S15 | BROWSER:DOM 자동 검증 (opt-in Playwright) | S | ⬜ 보류 |

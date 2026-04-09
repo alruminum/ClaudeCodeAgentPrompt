@@ -9,8 +9,8 @@
 # 4가지 mode:
 #   impl   — harness/impl.sh (계획) + harness/impl-process.sh (실행)
 #   design — harness/design.sh (designer → design-critic)
-#   bugfix — harness/bugfix.sh (qa → 4-way 분기)
-#   plan   — harness/plan.sh (product-planner → architect)
+#   bugfix — harness/bugfix.sh (qa → 5-way 분기: engineer_direct/architect/design/backlog/KNOWN_ISSUE)
+#   plan   — harness/plan.sh (product-planner → architect → validator)
 
 set -euo pipefail
 
@@ -81,10 +81,8 @@ _harness_heartbeat &
 HB_PID=$!
 
 # EXIT trap: 성공/실패/크래시/kill 모두 lock 해제
-# (SIGKILL 제외 — kill -9는 어쩔 수 없음, TTL이 120s 후 자동 해제)
 trap 'kill "$HB_PID" 2>/dev/null; rm -f "$LOCK_FILE" "/tmp/${PREFIX}_harness_kill"; write_run_end' EXIT
 
-# router가 O_EXCL로 빈 파일 생성 → JSON 내용 채우기
 _write_lease
 
 # ── depth 자동 감지 (--depth 미지정 또는 auto 시) ─────────────────────

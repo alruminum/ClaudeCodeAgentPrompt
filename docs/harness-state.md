@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-07 (S54+S55+S56 — PREFIX 통일, 훅 등록, file-ownership 통합)
+> 최종 업데이트: 2026-04-09 (S62~S68 — 스크립트↔룰 동기화, 공용 함수 추출, SPEC_GAP, bugfix 라우팅, plan/design 흐름 완성)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -27,12 +27,13 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 
 | 파일 | 역할 | 의존 |
 |---|---|---|
+| `harness/utils.sh` | 공용 유틸: `_agent_call()`, `kill_check()`, `parse_marker()`, `run_plan_validation()`, `run_design_validation()`, `create_feature_branch()`, `merge_to_main()`, `generate_commit_msg()`, `rotate_harness_logs()`, `write_run_end()` | 모든 harness 스크립트에서 source |
 | `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,bugfix,plan}.sh |
-| `harness/impl.sh` | impl 모드: architect → validator → PLAN_VALIDATION_PASS → engineer 루프 | harness/impl-process.sh |
-| `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep depth 분기, 3회 재시도) + memory candidate | /tmp/{p}_* 플래그들 |
+| `harness/impl.sh` | impl 모드: 재진입 감지 → architect → `run_plan_validation()` → engineer 루프 | harness/impl-process.sh |
+| `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep depth 분기, 3회 재시도, SPEC_GAP 동결) + memory candidate | /tmp/{p}_* 플래그들 |
 | `harness/design.sh` | design 모드: designer → design-critic → DESIGN_DONE | 에이전트들 |
-| `harness/bugfix.sh` | bugfix 모드: qa → 4-way 분기 (engineer_direct/architect_full/design) | 에이전트들 |
-| `harness/plan.sh` | plan 모드: product-planner → architect Mode A → PLAN_DONE | 에이전트들 |
+| `harness/bugfix.sh` | bugfix 모드: qa → 5-way 분기 (engineer_direct/architect_full/design/backlog/KNOWN_ISSUE) + `run_plan_validation()` 활용 | 에이전트들 |
+| `harness/plan.sh` | plan 모드: product-planner → architect SD → `run_design_validation()` → architect MP → `run_plan_validation()` → PLAN_VALIDATION_PASS | 에이전트들 |
 | `setup-harness.sh` | 프로젝트별 훅 설치 → `.claude/settings.json` + `harness.config.json` | - |
 | `setup-agents.sh` | 프로젝트별 에이전트 파일 초기화 (9개) + GitHub milestone/label 생성 | - |
 | `harness-memory.md` | 크로스 프로젝트 실패/성공 패턴 저장 (S5 반자동: FAIL 시 초안 생성 → 유저 승인) | harness/impl-process.sh (CONSTRAINTS 로드) |
@@ -154,6 +155,13 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S51 | harness-review 토큰 낭비 진단 | WASTE_CONTEXT_EXCESS(역할별 프롬프트 상한), WASTE_SPARSE_PROMPT(컨텍스트 부족→재조회), WASTE_DUPLICATE_READ(3+에이전트 동일파일) | 2026-04-07 |
 | S52 | run_end result 마커 기록 | HARNESS_RESULT 환경변수 → write_run_end() result 필드. 6개 종료 경로 전수 설정. harness-review EARLY_EXIT 오탐 수정 | 2026-04-07 |
 | S53 | 로그 분석 기반 5건 수정 | validator/pr/security 마커 파싱 완화(`grep -qi`), test-engineer timeout 300→600s, engineer Agent 금지, build_smart_context 소스파일 3KB캡+전체 30KB캡 | 2026-04-07 |
+| S62 | 스크립트↔룰 동기화 | e32ce43 이후 6개 스크립트 오케스트레이션 룰 반영. fast pr-reviewer 제거, SPEC_GAP 핸들링, bugfix KNOWN_ISSUE/backlog, plan DV+PV 추가, design ITERATE feedback 등 | 2026-04-09 |
+| S63 | utils.sh 공용 함수 추출 | `parse_marker()`, `run_plan_validation()`, `run_design_validation()` 추출. `kill_check()` `[` → `[[` 정비. impl.sh/bugfix.sh 중복 Plan Validation 코드 제거 | 2026-04-09 |
+| S64 | impl-process.sh fast 모드 정정 | fast에서 pr-reviewer 제거 (LLM 2회로 통일). validator FAIL 시 `validator_b_passed` 미설정 (이전: 무조건 touch) | 2026-04-09 |
+| S65 | impl-process.sh SPEC_GAP 핸들링 | `SPEC_GAP_FOUND` → architect SPEC_GAP → 3-way 분기 (RESOLVED/PP_ESCALATION/TECH_CONSTRAINT). `spec_gap_count` 동결 카운터 (max 2, 정책 15) | 2026-04-09 |
+| S66 | bugfix.sh 라우팅 정비 | `backlog` → 이슈 생성 후 대기. `KNOWN_ISSUE` → 즉시 에스컬레이션. `DESIGN_ISSUE` → 디자인 루프 전환. qa 마일스톤 규칙 정정 (Bugs only). `grep -q '...\|...'` → `grep -qE`/`-qF` | 2026-04-09 |
+| S67 | plan.sh 흐름 완성 | 2단계(pp→architect) → 6단계(pp→architect SD→validator DV→architect MP→validator PV→PLAN_VALIDATION_PASS). `run_design_validation()` 공용 함수 활용 | 2026-04-09 |
+| S68 | design.sh 흐름 완성 | ITERATE feedback 전달. ESCALATE 분기 추가. DESIGN_LOOP_ESCALATE 마커. `parse_marker()` 활용 | 2026-04-09 |
 
 ---
 

@@ -54,12 +54,121 @@ write_run_end() {
 
 # ── 킬 스위치 체크 (executor + loop 양쪽에서 사용) ────────────────────
 kill_check() {
-  if [ -f "/tmp/${PREFIX}_harness_kill" ]; then
+  if [[ -f "/tmp/${PREFIX}_harness_kill" ]]; then
     rm -f "/tmp/${PREFIX}_harness_active" "/tmp/${PREFIX}_harness_kill"
     export HARNESS_RESULT="HARNESS_KILLED"
     echo "HARNESS_KILLED: 사용자 요청으로 중단됨"
     exit 0
   fi
+}
+
+# ── 에이전트 출력에서 마커 파싱 ───────────────────────────────────────
+# 사용법: parse_marker <out_file> <marker_list>
+#   marker_list: "PASS|FAIL" 또는 "LGTM|CHANGES_REQUESTED" 등
+# 반환: 매칭된 마커 (없으면 "UNKNOWN")
+parse_marker() {
+  local out_file="$1" marker_list="$2"
+  local result=""
+  result=$(grep -oEm1 "\\b(${marker_list})\\b" "$out_file" 2>/dev/null) || result=""
+  if [[ -z "$result" ]]; then
+    echo "UNKNOWN"
+  else
+    echo "$result"
+  fi
+}
+
+# ── Plan Validation 공통 로직 ─────────────────────────────────────────
+# 사용법: run_plan_validation <impl_file> <issue_num> <prefix> [max_rework]
+# 반환: 0=PASS, 1=ESCALATE
+# 부수효과: plan_validation_passed 플래그 생성 (PASS 시)
+run_plan_validation() {
+  local impl_file="$1" issue_num="$2" prefix="$3" max_rework="${4:-1}"
+  local val_out_file="/tmp/${prefix}_val_pv_out.txt"
+
+  echo "[HARNESS] validator Plan Validation 호출 중"
+  _agent_call "validator" 300 \
+    "Mode C — Plan Validation — impl: $impl_file issue: #$issue_num" \
+    "$val_out_file"
+  local val_result
+  val_result=$(parse_marker "$val_out_file" "PASS|FAIL")
+  echo "[HARNESS] Plan Validation 결과: $val_result"
+
+  if [[ "$val_result" == "PASS" ]]; then
+    touch "/tmp/${prefix}_plan_validation_passed"
+    return 0
+  fi
+
+  # FAIL → architect 재보강 (max_rework회)
+  local rework=0
+  while [[ $rework -lt $max_rework ]]; do
+    rework=$((rework + 1))
+    echo "[HARNESS] Plan Validation FAIL → architect 재보강 ($rework/$max_rework)"
+    local fail_feedback
+    fail_feedback=$(tail -20 "$val_out_file")
+    _agent_call "architect" 900 \
+      "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $impl_file feedback: ${fail_feedback}" \
+      "/tmp/${prefix}_arch_fix_out.txt"
+
+    local val_out_file2="/tmp/${prefix}_val_pv_out${rework}.txt"
+    _agent_call "validator" 300 \
+      "Mode C — Plan Validation — impl: $impl_file issue: #$issue_num" \
+      "$val_out_file2"
+    val_result=$(parse_marker "$val_out_file2" "PASS|FAIL")
+    echo "[HARNESS] Plan Validation 재검증 결과: $val_result"
+
+    if [[ "$val_result" == "PASS" ]]; then
+      touch "/tmp/${prefix}_plan_validation_passed"
+      return 0
+    fi
+  done
+
+  # 재보강 후에도 FAIL → ESCALATE
+  return 1
+}
+
+# ── Design Validation 공통 로직 ───────────────────────────────────────
+# 사용법: run_design_validation <design_doc> <issue_num> <prefix> [max_rework]
+# 반환: 0=PASS, 1=ESCALATE
+run_design_validation() {
+  local design_doc="$1" issue_num="$2" prefix="$3" max_rework="${4:-1}"
+  local val_out_file="/tmp/${prefix}_val_dv_out.txt"
+
+  echo "[HARNESS] validator Design Validation 호출 중"
+  _agent_call "validator" 300 \
+    "Mode A — Design Validation — design_doc: $design_doc issue: #$issue_num" \
+    "$val_out_file"
+  local val_result
+  val_result=$(parse_marker "$val_out_file" "PASS|FAIL")
+  echo "[HARNESS] Design Validation 결과: $val_result"
+
+  if [[ "$val_result" == "PASS" ]]; then
+    return 0
+  fi
+
+  # FAIL → architect 재설계 (max_rework회)
+  local rework=0
+  while [[ $rework -lt $max_rework ]]; do
+    rework=$((rework + 1))
+    echo "[HARNESS] Design Validation FAIL → architect 재설계 ($rework/$max_rework)"
+    local fail_feedback
+    fail_feedback=$(tail -20 "$val_out_file")
+    _agent_call "architect" 900 \
+      "System Design 재설계 — Design Validation FAIL 피드백 반영. design_doc: $design_doc feedback: ${fail_feedback}" \
+      "/tmp/${prefix}_arch_dv_fix_out.txt"
+
+    local val_out_file2="/tmp/${prefix}_val_dv_out${rework}.txt"
+    _agent_call "validator" 300 \
+      "Mode A — Design Validation — design_doc: $design_doc issue: #$issue_num" \
+      "$val_out_file2"
+    val_result=$(parse_marker "$val_out_file2" "PASS|FAIL")
+    echo "[HARNESS] Design Validation 재검증 결과: $val_result"
+
+    if [[ "$val_result" == "PASS" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 # ── Feature branch 생성 ──────────────────────────────────────────────
@@ -180,6 +289,53 @@ Closes #${ISSUE_NUM}
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 MSGEOF
+}
+
+# ── 변경된 파일 수집 ──────────────────────────────────────────────────
+# 사용법: collect_changed_files
+# stdout: 변경된 파일 목록 (개행 구분)
+# 반환: 0=변경 있음, 1=변경 없음
+collect_changed_files() {
+  local files
+  files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
+  if [[ -z "$files" ]]; then
+    return 1
+  fi
+  echo "$files"
+  return 0
+}
+
+# ── 커밋 + 머지 + HARNESS_DONE 일괄 처리 ─────────────────────────────
+# 사용법: harness_commit_and_merge <branch> <issue> <depth> <prefix> [suffix]
+# suffix: 커밋 메시지 접미사 (예: "[fast-mode]", "[bugfix-std]")
+# 반환: 0=성공(HARNESS_DONE), 1=머지 실패(MERGE_CONFLICT_ESCALATE)
+# 부수효과: HARNESS_RESULT 설정, exit 수행하지 않음 (호출자가 exit)
+harness_commit_and_merge() {
+  local branch="$1" issue="$2" depth="$3" prefix="$4" suffix="${5:-}"
+
+  # 미커밋 변경이 있으면 커밋
+  local commit_files_arr=()
+  while IFS= read -r _f; do
+    [[ -n "$_f" ]] && commit_files_arr+=("$_f")
+  done < <(collect_changed_files)
+
+  if [[ ${#commit_files_arr[@]} -gt 0 ]]; then
+    git add -- "${commit_files_arr[@]}"
+    local msg
+    msg=$(generate_commit_msg)
+    [[ -n "$suffix" ]] && msg="${msg} ${suffix}"
+    git commit -m "$msg"
+  fi
+
+  # merge to main (engineer가 이미 커밋했을 수 있으므로 항상 시도)
+  if ! merge_to_main "$branch" "$issue" "$depth" "$prefix"; then
+    export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
+    echo "MERGE_CONFLICT_ESCALATE"
+    echo "branch: $branch"
+    return 1
+  fi
+
+  return 0
 }
 
 # ── 에이전트 호출 래퍼 ────────────────────────────────────────────────

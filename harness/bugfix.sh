@@ -32,10 +32,10 @@ run_bugfix() {
   if [[ -n "$ISSUE_NUM" && "$ISSUE_NUM" != "N" ]]; then
     local issue_body
     issue_body=$(gh issue view "$ISSUE_NUM" --json body -q .body 2>/dev/null || echo "")
-    if echo "$issue_body" | grep -q 'QA_REPORT\|QA_SUMMARY\|FUNCTIONAL_BUG\|SPEC_ISSUE\|DESIGN_ISSUE'; then
+    if echo "$issue_body" | grep -qE 'QA_REPORT|QA_SUMMARY|FUNCTIONAL_BUG|SPEC_ISSUE|DESIGN_ISSUE'; then
       echo "[HARNESS] 재진입: GitHub issue #${ISSUE_NUM}에 QA 리포트 존재 → QA 스킵"
       echo "$issue_body" > "/tmp/${PREFIX}_qa_out.txt"
-      bugfix_run  # QA_SUMMARY 파싱 + 폴백 라우팅
+      _bugfix_route
       return
     fi
   fi
@@ -67,10 +67,10 @@ $recent_bugs"
     "[하네스 경유 — 역질문 금지. 가용 정보로 즉시 판단하라]
 bug: $BUG_DESC issue: #$ISSUE_NUM${existing_issues_block}${issue_skip_note}
 분석 완료 후 이슈를 등록하라 (DUPLICATE_OF이거나 기존 이슈가 전달된 경우 생성 금지).
+QA는 Bugs 마일스톤에만 이슈를 생성한다. Feature 마일스톤 이슈 생성 권한 없음.
 - FUNCTIONAL_BUG → Bugs 마일스톤 (라벨: bug)
-- SPEC_ISSUE (PRD 명세 있음) → Feature 마일스톤 (해당 epic 라벨, 본문에 epic 경로 명시)
-- SPEC_ISSUE (PRD 명세 없음) → Feature 마일스톤
-- DESIGN_ISSUE → Feature 마일스톤" \
+- SPEC_ISSUE → Bugs 마일스톤 (라벨: bug, spec-gap)
+- DESIGN_ISSUE → Bugs 마일스톤 (라벨: bug, design-fix)" \
     "/tmp/${PREFIX}_qa_out.txt"
 
   # ── DUPLICATE_OF 감지: 중복이면 기존 이슈로 리다이렉트 ──
@@ -82,7 +82,7 @@ bug: $BUG_DESC issue: #$ISSUE_NUM${existing_issues_block}${issue_skip_note}
     ISSUE_NUM="$dup_num"
   fi
 
-  bugfix_run  # harness/bugfix.sh 함수
+  _bugfix_route
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -95,7 +95,7 @@ _parse_qa_summary() {
   local field="$2"
   local value=""
   value=$(sed -n '/---QA_SUMMARY---/,/---END_QA_SUMMARY---/p' "$qa_file" \
-    | grep "${field}:" | sed "s/.*${field}: //" | tr -d '[:space:]')
+    | grep -F "${field}:" | sed "s/.*${field}: //" | tr -d '[:space:]')
   echo "$value"
 }
 
@@ -129,21 +129,41 @@ detect_bugfix_depth() {
   fi
 }
 
-# ── 메인 진입점: QA_SUMMARY 파싱 → 라우팅 분기 ────────────────────
-bugfix_run() {
+# ── 메인 라우팅: QA_SUMMARY 파싱 → 4-way 분기 ────────────────────
+_bugfix_route() {
   local qa_file="/tmp/${PREFIX}_qa_out.txt"
 
-  # QA_SUMMARY footer 우선 파싱
+  # KNOWN_ISSUE 감지: qa가 원인 특정 불가 → 즉시 에스컬레이션
+  if grep -qF 'KNOWN_ISSUE' "$qa_file" 2>/dev/null; then
+    export HARNESS_RESULT="KNOWN_ISSUE"
+    echo "KNOWN_ISSUE: qa가 1회 분석으로 원인을 특정하지 못함"
+    echo "issue: #$ISSUE_NUM"
+    head -50 "$qa_file" | grep -A5 'KNOWN_ISSUE' 2>/dev/null || true
+    exit 1
+  fi
+
+  # SCOPE_ESCALATE: 관련 모듈/파일 = 0 → 신규 기능, 즉시 중단
   local routing=""
   routing=$(_parse_qa_summary "$qa_file" "ROUTING")
 
+  if [[ "$routing" == "scope_escalate" ]] || grep -qF 'SCOPE_ESCALATE' "$qa_file" 2>/dev/null; then
+    export HARNESS_RESULT="SCOPE_ESCALATE"
+    echo "SCOPE_ESCALATE: 관련 모듈/파일 없음 — 신규 기능으로 판정"
+    echo "issue: #$ISSUE_NUM"
+    head -50 "$qa_file" | grep -A5 'SCOPE_ESCALATE' 2>/dev/null || true
+    exit 1
+  fi
+
+  # QA_SUMMARY footer 우선 파싱
   if [[ -z "$routing" ]]; then
-    # 폴백: 기존 grep 방식
+    # 폴백: grep 방식
     routing="architect"
-    if grep -q 'FUNCTIONAL_BUG' "$qa_file" 2>/dev/null; then
+    if grep -qF 'FUNCTIONAL_BUG' "$qa_file" 2>/dev/null; then
       routing="engineer_direct"
-    elif grep -q 'DESIGN_ISSUE' "$qa_file" 2>/dev/null; then
+    elif grep -qF 'DESIGN_ISSUE' "$qa_file" 2>/dev/null; then
       routing="design"
+    elif grep -qF 'SPEC_ISSUE' "$qa_file" 2>/dev/null; then
+      routing="architect"
     fi
   fi
 
@@ -151,31 +171,32 @@ bugfix_run() {
   qa_type=$(_parse_qa_summary "$qa_file" "TYPE")
   if [[ -z "$qa_type" ]]; then
     # 폴백
-    if grep -q 'FUNCTIONAL_BUG' "$qa_file" 2>/dev/null; then qa_type="FUNCTIONAL_BUG"
-    elif grep -q 'DESIGN_ISSUE' "$qa_file" 2>/dev/null; then qa_type="DESIGN_ISSUE"
-    elif grep -q 'SPEC_ISSUE' "$qa_file" 2>/dev/null; then qa_type="SPEC_ISSUE"
+    if grep -qF 'FUNCTIONAL_BUG' "$qa_file" 2>/dev/null; then qa_type="FUNCTIONAL_BUG"
+    elif grep -qF 'DESIGN_ISSUE' "$qa_file" 2>/dev/null; then qa_type="DESIGN_ISSUE"
+    elif grep -qF 'SPEC_ISSUE' "$qa_file" 2>/dev/null; then qa_type="SPEC_ISSUE"
     fi
   fi
 
   echo "[HARNESS] bugfix routing: $routing (type: ${qa_type:-unknown})"
-
-  # SCOPE_ESCALATE: 관련 모듈/파일 = 0 → 신규 기능, 즉시 중단
-  if [[ "$routing" == "scope_escalate" ]] || grep -q 'SCOPE_ESCALATE' "$qa_file" 2>/dev/null; then
-    export HARNESS_RESULT="SCOPE_ESCALATE"
-    echo "SCOPE_ESCALATE: 관련 모듈/파일 없음 — 신규 기능으로 판정"
-    echo "type: ${qa_type:-unknown}"
-    echo "issue: #$ISSUE_NUM"
-    head -50 "$qa_file" | grep -A5 'SCOPE_ESCALATE' 2>/dev/null || true
-    exit 1
-  fi
 
   case "$routing" in
     engineer_direct)
       _bugfix_direct "$qa_file"
       ;;
     design)
-      echo "[HARNESS] DESIGN_ISSUE → 루프 B 전환"
-      run_design
+      echo "[HARNESS] DESIGN_ISSUE → 디자인 루프 전환"
+      export HARNESS_RESULT="DESIGN_ISSUE"
+      echo "DESIGN_ISSUE: 디자인 루프로 전환 필요"
+      echo "issue: #$ISSUE_NUM"
+      echo "필요 조치: mode:design 완료 후 mode:impl 재호출"
+      exit 0
+      ;;
+    backlog)
+      echo "[HARNESS] BACKLOG — 이슈 생성 후 대기 (즉시 수정 불필요)"
+      export HARNESS_RESULT="BACKLOG"
+      echo "BACKLOG: 기능 요청/저우선 → 이슈 생성 후 대기"
+      echo "issue: #$ISSUE_NUM"
+      exit 0
       ;;
     architect_full|architect|*)
       _bugfix_full "$qa_file"
@@ -184,6 +205,7 @@ bugfix_run() {
 }
 
 # ── engineer 직접 경로 ─────────────────────────────────────────────
+# bugfix.md: architect Bugfix Plan → engineer → vitest → validator Bugfix Validation → commit
 _bugfix_direct() {
   local qa_file="$1"
   local depth
@@ -194,7 +216,21 @@ _bugfix_direct() {
   fi
   echo "[HARNESS] bugfix depth: $depth"
 
-  # config 이벤트 기록 — harness-review.py가 depth를 파싱할 수 있도록
+  # CONSTRAINTS 로딩 (impl-process.sh와 동일 로직)
+  if [[ -z "$CONSTRAINTS" ]]; then
+    local mem_global="${HOME}/.claude/harness-memory.md"
+    local mem_local=".claude/harness-memory.md"
+    [[ -f "$mem_global" ]] && CONSTRAINTS="${CONSTRAINTS}
+$(tail -20 "$mem_global")"
+    [[ -f "$mem_local" ]] && CONSTRAINTS="${CONSTRAINTS}
+$(tail -20 "$mem_local")"
+    if [[ -f "CLAUDE.md" ]]; then
+      CONSTRAINTS="${CONSTRAINTS}
+$(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/,/^---/p' CLAUDE.md | head -c 10000)"
+    fi
+  fi
+
+  # config 이벤트 기록
   [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"%s","max_retries":3,"constraints_chars":%d}\n' \
     "${IMPL_FILE:-}" "$ISSUE_NUM" "$depth" "${#CONSTRAINTS}" >> "$RUN_LOG"
 
@@ -236,7 +272,7 @@ _bugfix_direct() {
     local eng_prompt=""
     if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
       local context
-      context=$(cat "$IMPL_FILE" 2>/dev/null | head -c 30000)
+      context=$(head -c 30000 "$IMPL_FILE")
       eng_prompt="impl: $IMPL_FILE
 issue: #$ISSUE_NUM
 task: Bugfix Plan의 버그 수정 이행
@@ -276,13 +312,13 @@ $CONSTRAINTS"
         # fast: validator 스킵 → 바로 commit
         echo "[HARNESS] depth=fast → validator 스킵"
       else
-        # std: validator Mode D
+        # std: validator Bugfix Validation (Mode D)
         echo "[HARNESS] validator Bugfix Validation(Mode D) 호출 중"
         _agent_call "validator" 300 \
           "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS" \
           "/tmp/${PREFIX}_val_bf_out.txt"
         local bf_result
-        bf_result=$(grep -oEm1 'BUGFIX_PASS|BUGFIX_FAIL|\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_bf_out.txt") || bf_result="UNKNOWN"
+        bf_result=$(parse_marker "/tmp/${PREFIX}_val_bf_out.txt" "BUGFIX_PASS|BUGFIX_FAIL|PASS|FAIL")
 
         if [[ "$bf_result" != "BUGFIX_PASS" && "$bf_result" != "PASS" ]]; then
           echo "[HARNESS] validator BUGFIX_FAIL — engineer 재시도"
@@ -291,35 +327,18 @@ $CONSTRAINTS"
         touch "/tmp/${PREFIX}_validator_b_passed"
       fi
 
-      # commit
-      commit_files=()
-      while IFS= read -r _f; do [[ -n "$_f" ]] && commit_files+=("$_f"); done \
-        < <(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}')
-      if [[ ${#commit_files[@]} -gt 0 ]]; then
-        git add -- "${commit_files[@]}"
-        git commit -m "$(generate_commit_msg) [bugfix-${depth}]"
-        local impl_commit merge_commit
-        impl_commit=$(git rev-parse --short HEAD)
-        # merge to main — fast는 게이트 없음, std는 validator_b_passed 필요
-        if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "$depth" "$PREFIX"; then
-          export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
-          echo "MERGE_CONFLICT_ESCALATE"
-          echo "branch: $FEATURE_BRANCH"
-          echo "impl_commit: $impl_commit"
-          exit 1
-        fi
-        merge_commit=$(git rev-parse --short HEAD)
-        export HARNESS_RESULT="HARNESS_DONE"
-        echo "HARNESS_DONE (engineer_direct, depth=$depth)"
-        echo "impl: ${IMPL_FILE:-N/A}"
-        echo "issue: #$ISSUE_NUM"
-        echo "commit: $merge_commit"
-        exit 0
-      else
-        export HARNESS_RESULT="HARNESS_DONE"
-        echo "[HARNESS] 변경사항 없음"
-        exit 0
+      # commit + merge
+      if ! harness_commit_and_merge "$FEATURE_BRANCH" "$ISSUE_NUM" "$depth" "$PREFIX" "[bugfix-${depth}]"; then
+        exit 1  # MERGE_CONFLICT_ESCALATE (harness_commit_and_merge가 설정)
       fi
+      local merge_commit
+      merge_commit=$(git rev-parse --short HEAD)
+      export HARNESS_RESULT="HARNESS_DONE"
+      echo "HARNESS_DONE (engineer_direct, depth=$depth)"
+      echo "impl: ${IMPL_FILE:-N/A}"
+      echo "issue: #$ISSUE_NUM"
+      echo "commit: $merge_commit"
+      exit 0
     else
       echo "[HARNESS] vitest 실패 (exit=$vitest_exit) — engineer 재시도"
     fi
@@ -333,8 +352,6 @@ $CONSTRAINTS"
 }
 
 # ── full 경로: architect Mode B → validator Plan Validation → engineer 직접 ──
-# NOTE: run_impl은 exit 0으로 전체 스크립트를 종료하므로 호출하지 않는다.
-#       validator를 인라인 처리하고, PASS 시 _bugfix_direct로 위임한다.
 _bugfix_full() {
   local qa_file="$1"
   local qa_out
@@ -353,39 +370,14 @@ _bugfix_full() {
     exit 1
   fi
 
-  # ── Inline Plan Validation (Mode C) — run_impl의 exit 0 문제 회피 ──
-  echo "[HARNESS] Phase B2.5 — validator Plan Validation (Mode C) 호출 중"
-  _agent_call "validator" 300 \
-    "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_val_pv_out.txt"
-  local val_result
-  val_result=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out.txt") || val_result="UNKNOWN"
-  echo "[HARNESS] Phase B2.5 — Plan Validation 결과: $val_result"
-
-  if [[ "$val_result" != "PASS" ]]; then
-    # FAIL → architect 재보강 1회 → 재검증
-    echo "[HARNESS] Phase B2.5 — FAIL → architect 재보강 중"
-    local fail_feedback
-    fail_feedback=$(tail -20 "/tmp/${PREFIX}_val_pv_out.txt")
-    _agent_call "architect" 900 \
-      "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $IMPL_FILE feedback: ${fail_feedback}" \
-      "/tmp/${PREFIX}_arch_fix_out.txt"
-
-    _agent_call "validator" 300 \
-      "Mode C — Plan Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM" \
-      "/tmp/${PREFIX}_val_pv_out2.txt"
-    val_result=$(grep -oEm1 '\bPASS\b|\bFAIL\b' "/tmp/${PREFIX}_val_pv_out2.txt") || val_result="UNKNOWN"
-    echo "[HARNESS] Phase B2.5 — 재검증 결과: $val_result"
-
-    if [[ "$val_result" != "PASS" ]]; then
-      export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
-      echo "PLAN_VALIDATION_ESCALATE (bugfix_full)"
-      tail -20 "/tmp/${PREFIX}_val_pv_out2.txt"
-      exit 1
-    fi
+  # ── Plan Validation (공용 함수 활용) ──
+  echo "[HARNESS] Phase B2.5 — Plan Validation"
+  if ! run_plan_validation "$IMPL_FILE" "$ISSUE_NUM" "$PREFIX" 1; then
+    export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
+    echo "PLAN_VALIDATION_ESCALATE (bugfix_full)"
+    exit 1
   fi
 
-  touch "/tmp/${PREFIX}_plan_validation_passed"
   echo "[HARNESS] Plan Validation PASS → engineer 직접 경로로 전환"
 
   # _bugfix_direct: IMPL_FILE 설정 상태를 감지해 architect 스킵 → engineer 루프 직행
