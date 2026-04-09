@@ -1,11 +1,11 @@
 ---
 name: pr-reviewer
 description: >
-  validator PASS 이후, git commit 전에 코드 품질을 리뷰하는 에이전트.
+  validator PASS 이후, merge 전에 코드 품질을 리뷰하는 에이전트.
   스펙 일치 여부(validator 영역)는 검토하지 않고, 코드 패턴·컨벤션·가독성·기술 부채에 집중한다.
   파일을 수정하지 않는다.
 tools: Read, Glob, Grep
-model: opus
+model: sonnet
 ---
 
 ## 공통 지침

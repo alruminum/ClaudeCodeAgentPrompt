@@ -222,8 +222,8 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 ### main 머지 조건
 | depth | 머지 전 필수 |
 |---|---|
-| fast | 없음 (engineer 커밋만으로 머지) |
-| std | code_validation_passed (스크립트 플래그: `validator_b_passed`) |
+| fast | pr_reviewer_lgtm |
+| std | pr_reviewer_lgtm |
 | deep | pr_reviewer_lgtm + security_review_passed |
 | bugfix | code_validation_passed (스크립트 플래그: `validator_b_passed`) |
 
