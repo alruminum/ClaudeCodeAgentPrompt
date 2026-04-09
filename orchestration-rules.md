@@ -11,9 +11,9 @@
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
 | UI 변경 요청 (design_critic_passed 없음) | → **[디자인 루프](orchestration/design.md)** (Pencil MCP v2) |
-| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** (`bash .claude/harness/executor.sh impl ...`) — plan_validation_passed 시 architect+validator 자동 스킵 |
-| 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** (`bash .claude/harness/executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기. `SEVERITY:HIGH → depth=std 강제` |
-| 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** |
+| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth fast\|std\|deep]` |
+| 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** — `bash ~/.claude/harness/executor.sh bugfix --bug "<설명>" [--issue <N>] [--prefix <P>]` — qa 라우팅 기반 4-way 분기. SEVERITY:HIGH → depth=std 강제 |
+| 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>]` |
 | **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획 루프) |
 
 ---
@@ -49,7 +49,22 @@
 
 **1. 메인 Claude — src/** 직접 Edit/Write 절대 금지**
 이유 불문. 규모 불문. 상황 불문.
-반드시 `bash .claude/harness/executor.sh`를 통해서만 구현.
+반드시 `bash ~/.claude/harness/executor.sh`를 통해서만 구현.
+
+**1b. 메인 Claude — 에이전트 직접 호출 절대 금지**
+qa, architect, engineer, validator, designer 등 하네스 내부 에이전트를 메인 Claude가 Agent 도구로 직접 호출 금지.
+반드시 `bash ~/.claude/harness/executor.sh <mode> ...` 를 통해서만 에이전트를 실행한다.
+
+금지 예시:
+- 버그 보고 수신 → qa 에이전트 직접 호출 ❌ → `executor.sh bugfix` 로 진입 ✅
+- 구현 전 analyst 직접 호출 ❌ → `executor.sh impl` 로 진입 ✅
+
+이유: qa/architect 등은 하네스 내부 워크플로우의 일부이다. 직접 호출 시 라우팅·플래그·이슈 생성·재진입 감지 등 하네스 인프라가 전부 누락된다.
+
+**1c. 메인 Claude — 하네스 진입 전 GitHub 이슈 직접 생성 금지**
+`create_issue` MCP를 하네스 진입 전 메인 Claude가 직접 호출 금지.
+이슈 생성은 bugfix 하네스의 qa 에이전트가 내부에서 처리한다.
+유저가 이슈 번호를 직접 지정한 경우에만 `--issue <N>` 플래그로 전달하면 된다.
 
 **2. 구현 루프 예외 없음**
 `src/**` 변경이 발생하는 모든 작업은 구현 루프를 반드시 거친다.
@@ -67,7 +82,7 @@
 | `PLAN_VALIDATION_PASS` | 유저 확인 전 impl 자동 호출 금지 |
 
 **4. 서브에이전트 포어그라운드 순차 실행**
-메인 Claude가 Bash 도구로 `harness/executor.sh`를 직접 실행한다.
+메인 Claude가 Bash 도구로 `~/.claude/harness/executor.sh`를 직접 실행한다.
 백그라운드 스폰(Popen) 금지. 한 에이전트가 완료된 후 다음 에이전트 호출.
 실행 중 출력은 대화창에 그대로 노출되며, /cancel로 중단 가능.
 
@@ -154,7 +169,7 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 | 3회 실패 | `IMPLEMENTATION_ESCALATE` |
 | 킬 스위치 | `HARNESS_KILLED` |
 | 비용 상한 초과 | `HARNESS_BUDGET_EXCEEDED` |
-| bugfix engineer_direct 성공 | `HARNESS_DONE` |
+| bugfix functional_bug 성공 | `HARNESS_DONE` |
 | 크래시/unhandled exit | `HARNESS_CRASH` (write_run_end이 unknown 감지 시 자동 변환) |
 | merge 충돌 | `MERGE_CONFLICT_ESCALATE` |
 

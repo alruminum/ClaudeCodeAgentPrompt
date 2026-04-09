@@ -52,11 +52,17 @@ def main():
         if not flag("bugfix_plan_ready"):
             deny(f"❌ engineer 전 Plan Validation PASS 필요. /tmp/{PREFIX}_plan_validation_passed 없음.")
 
-    # 3b. engineer는 harness/executor.sh 경유 필수
-    if agent == "engineer" and not flag("harness_active"):
-        deny(f"❌ engineer는 harness/executor.sh를 통해서만 호출 가능. "
+    # 3b. 하네스 내부 에이전트는 harness/executor.sh 경유 필수
+    HARNESS_ONLY_AGENTS = ("engineer", "qa", "architect")
+    if agent in HARNESS_ONLY_AGENTS and not flag("harness_active"):
+        cmds = {
+            "engineer": "bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N>",
+            "qa":       "bash ~/.claude/harness/executor.sh bugfix --bug '<설명>' [--issue <N>]",
+            "architect": "bash ~/.claude/harness/executor.sh bugfix|impl|plan ...",
+        }
+        deny(f"❌ {agent}는 harness/executor.sh를 통해서만 호출 가능. "
              f"/tmp/{PREFIX}_harness_active 없음. "
-             "메인 Claude에서 직접 engineer 호출 금지 — bash .claude/harness/executor.sh impl로 호출하라.")
+             f"직접 호출 금지 → {cmds.get(agent, 'executor.sh')}")
 
     # 3c. engineer는 feature branch에서만 실행 (main 직접 작업 방지)
     if agent == "engineer" and flag("harness_active"):
