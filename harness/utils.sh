@@ -40,7 +40,9 @@ write_run_end() {
     result="HARNESS_CRASH"
   fi
   local t_end; t_end=$(date +%s)
+  # branch_name: 제어문자/탭/개행 제거 (git status 출력 혼입 방지)
   local branch_name="${HARNESS_BRANCH:-}"
+  branch_name=$(printf '%s' "$branch_name" | tr -d '\t\n\r' | head -c 100)
   printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s","branch":"%s"}\n' \
     "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" "$branch_name" >> "$RUN_LOG"
   # 크래시/실패 시 자동 리뷰 트리거 (백그라운드 — 하네스 종료를 블로킹하지 않음)
