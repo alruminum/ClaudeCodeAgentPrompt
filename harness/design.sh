@@ -17,23 +17,35 @@ run_design() {
   rotate_harness_logs "$PREFIX" "design"
   local attempt=0
   local MAX=3
+  # Phase A: LOOP_OUT_DIR — attempt별 design 출력 보존
+  local LOOP_OUT_DIR="/tmp/${PREFIX}_design_loop_out"
+  mkdir -p "$LOOP_OUT_DIR"
 
   while [[ $attempt -lt $MAX ]]; do
     kill_check
     hlog "Phase D1 attempt $((attempt+1))/$MAX — designer 호출 중 (Pencil MCP)"
-    _agent_call "designer" 360 \
-      "@MODE:DESIGNER:DEFAULT
+    # Phase A: ITERATE 시 이전 피드백 인라인 주입 대신 탐색 지시
+    local designer_prompt="@MODE:DESIGNER:DEFAULT
 issue: #${ISSUE_NUM}
-context: ${CONTEXT}" \
-      "/tmp/${PREFIX}_des_out.txt"
+context: ${CONTEXT}"
+    if [[ $attempt -gt 0 ]]; then
+      designer_prompt="${designer_prompt}
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/round-$((attempt-1))-critic.log")
+design-critic 피드백을 직접 확인하고 개선된 variant를 생성하라."
+    fi
+    _agent_call "designer" 360 "$designer_prompt" "/tmp/${PREFIX}_des_out.txt"
+    # Phase A: designer 출력 보존
+    cp "/tmp/${PREFIX}_des_out.txt" "${LOOP_OUT_DIR}/round-${attempt}-designer.log" 2>/dev/null || true
 
     hlog "Phase D2 attempt $((attempt+1))/$MAX — design-critic 호출 중"
-    local des_out
-    des_out=$(cat "/tmp/${PREFIX}_des_out.txt")
+    # Phase A: critic에게 designer 출력 파일 경로만 전달 (인라인 주입 제거)
     _agent_call "design-critic" 300 \
       "@MODE:CRITIC:REVIEW
-${des_out}" \
+designer 출력 파일: ${LOOP_OUT_DIR}/round-${attempt}-designer.log
+이 파일을 직접 읽어 variant 3개를 심사하라." \
       "/tmp/${PREFIX}_dc_out.txt"
+    # Phase A: critic 출력 보존
+    cp "/tmp/${PREFIX}_dc_out.txt" "${LOOP_OUT_DIR}/round-${attempt}-critic.log" 2>/dev/null || true
     local dc_result
     dc_result=$(parse_marker "/tmp/${PREFIX}_dc_out.txt" "PICK|ITERATE|ESCALATE")
 
@@ -59,20 +71,15 @@ ${des_out}" \
         export HARNESS_RESULT="DESIGN_DONE"
         echo "DESIGN_DONE"
         echo "issue: #${ISSUE_NUM}"
-        echo "variants: /tmp/${PREFIX}_des_out.txt"
-        echo "critic: /tmp/${PREFIX}_dc_out.txt"
+        echo "variants: ${LOOP_OUT_DIR}/round-${attempt}-designer.log"
+        echo "critic: ${LOOP_OUT_DIR}/round-${attempt}-critic.log"
         echo "필요 조치: Pencil 캔버스에서 variant 확인 후 선택 입력 (A/B/C) → DESIGN_HANDOFF 진행"
         exit 0
         ;;
       ITERATE)
         attempt=$((attempt+1))
-        hlog "ITERATE — designer 재시도 ($attempt/$MAX), 이전 피드백 누적"
-        local iterate_feedback
-        iterate_feedback=$(tail -40 "/tmp/${PREFIX}_dc_out.txt")
-        CONTEXT="${CONTEXT}
-
-[design-critic 피드백 라운드 ${attempt}]:
-${iterate_feedback}"
+        hlog "ITERATE — designer 재시도 ($attempt/$MAX)"
+        # Phase A: 인라인 피드백 CONTEXT 누적 제거 — designer가 LOOP_OUT_DIR에서 자율 탐색
         continue
         ;;
       ESCALATE)

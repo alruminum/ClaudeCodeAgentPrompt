@@ -240,6 +240,25 @@ ${diff_out}"
   echo "$ctx" | head -c 20000
 }
 
+# ── 에이전트 자율 탐색 지시 템플릿 (정책 18) ─────────────────────────
+# 에이전트가 이전 시도 결과를 스스로 탐색하게 한다 (인라인 요약 전달 금지)
+# 사용법: explore_instruction <loop_out_dir> [hint_file]
+#   loop_out_dir: 이전 시도 출력이 저장된 디렉토리 (e.g. /tmp/${PREFIX}_loop_out)
+#   hint_file:    특히 관련성 높은 파일 경로 힌트 (선택 — 읽을지 말지는 에이전트 판단)
+explore_instruction() {
+  local out_dir="$1" hint_file="${2:-}"
+  local instr="이전 시도의 출력 파일이 아래 경로에 있다:
+  ${out_dir}/
+이 디렉토리를 ls로 확인하고, 필요한 파일을 직접 골라 읽어라.
+특히 이전 에이전트의 출력, 에러 로그, diff를 확인하라.
+어떤 파일을 읽을지는 네가 판단하라."
+  if [[ -n "$hint_file" ]]; then
+    instr="${instr}
+힌트: ${hint_file} 에 직접적인 실패 정보가 있다."
+  fi
+  echo "$instr"
+}
+
 # ── Feature branch 생성 ──────────────────────────────────────────────
 # 사용법: create_feature_branch <type> <issue_num>
 # 반환: 브랜치 이름 (stdout)

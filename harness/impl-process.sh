@@ -441,6 +441,10 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
   fail_type=""
   hlog "=== 하네스 루프 시작 (depth=$DEPTH, max_retries=$MAX) ==="
 
+  # ── Phase A: LOOP_OUT_DIR — attempt별 에이전트 출력 보존 경로 ─────
+  LOOP_OUT_DIR="/tmp/${PREFIX}_loop_out"
+  mkdir -p "$LOOP_OUT_DIR"
+
   # config 이벤트: 루프 설정 스냅샷
   [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"%s","max_retries":%d,"constraints_chars":%d}\n' \
     "$IMPL_FILE" "$ISSUE_NUM" "$DEPTH" "$MAX" "${#CONSTRAINTS}" >> "$RUN_LOG"
@@ -450,43 +454,44 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
     kill_check
 
     # ── Context GC: 스마트 컨텍스트 (관련 청크만 로드) ──────────────
-    context=$(build_smart_context "$IMPL_FILE" "$attempt" "$error_trace")
+    # Phase A: 재시도 시 error_trace 전달 제거 → 에이전트가 LOOP_OUT_DIR에서 자율 탐색
+    context=$(build_smart_context "$IMPL_FILE" 0)
     if [[ $attempt -eq 0 ]]; then
       task="impl 파일의 구현 명세 전체 이행"
     else
-      # ── C1: 실패 유형별 수정 전략 ────────────────────────────────
-      error_1line=$(echo "$error_trace" | head -1 | cut -c1-200)
+      # ── C1: 실패 유형별 수정 전략 (Phase A: 인라인 요약 → 탐색 지시) ─
       # working tree 컨텍스트 prefix (feature branch에서 이전 변경 유지)
       wt_prefix="[주의] 이전 attempt의 변경이 working tree에 남아있음. 추가 수정으로 해결하라 (stash/reset 금지).
 "
       case "$fail_type" in
         autocheck_fail)
-          task="[사전 검사 실패] 시도 ${attempt}회. 검사 결과:
-${error_1line}
+          task="[사전 검사 실패] 시도 ${attempt}회.
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-autocheck.log")
 위 문제를 해결한 뒤 다시 구현하라. 테스트·벨리데이터 호출은 검사 통과 후 진행된다."
           ;;
         test_fail)
-          task="[테스트 실패] 시도 ${attempt}회. 테스트 출력:
-${error_1line}
+          task="[테스트 실패] 시도 ${attempt}회.
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-test.log")
 구현 코드를 수정하라. 테스트 코드 자체는 수정 금지."
           ;;
         validator_fail)
-          task="[스펙 불일치] 시도 ${attempt}회. validator 리포트:
-${error_1line}
+          task="[스펙 불일치] 시도 ${attempt}회.
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-validator.log")
 impl 파일의 해당 항목을 다시 확인하고 누락된 부분을 구현하라."
           ;;
         pr_fail)
-          task="[코드 품질] 시도 ${attempt}회. MUST FIX:
-${error_1line}
-위 MUST FIX 항목만 수정하라. 기능 변경 금지."
+          task="[코드 품질] 시도 ${attempt}회.
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-pr.log")
+MUST FIX 항목만 수정하라. 기능 변경 금지."
           ;;
         security_fail)
-          task="[보안 취약점] 시도 ${attempt}회. 취약점:
-${error_1line}
-위 취약점의 수정 방안대로 적용하라."
+          task="[보안 취약점] 시도 ${attempt}회.
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-security.log")
+취약점의 수정 방안대로 적용하라."
           ;;
         *)
-          task="이전 시도(${attempt}회) 에러: ${error_1line}. 해당 부분만 수정."
+          task="[재시도] 시도 ${attempt}회.
+$(explore_instruction "$LOOP_OUT_DIR")"
           ;;
       esac
       task="${wt_prefix}${task}"
@@ -514,6 +519,8 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     hlog "engineer 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "engineer timeout"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
+    # Phase A: attempt별 engineer 출력 보존 (에이전트 자율 탐색용)
+    cp "/tmp/${PREFIX}_eng_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-engineer.log" 2>/dev/null || true
 
     # ── S39: engineer 출력 가드 ──────────────────────────────────────
     if ! check_agent_output "engineer" "/tmp/${PREFIX}_eng_out.txt"; then
@@ -588,6 +595,8 @@ $spec_gap_context" \
       fail_type="autocheck_fail"
       log_decision "fail_type" "$fail_type" "automated_checks failed"
       append_failure "autocheck_fail" "$error_trace"
+      # Phase A: autocheck 결과 보존
+      cp "/tmp/${PREFIX}_autocheck_fail.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-autocheck.log" 2>/dev/null || true
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -661,6 +670,9 @@ issue: #$ISSUE_NUM"
       fail_type="test_fail"
       log_decision "fail_type" "$fail_type" "vitest exit=$test_exit"
       append_failure "test_fail" "$error_trace"
+      # Phase A: 테스트 실패 결과 보존 (다음 attempt 에이전트 자율 탐색용)
+      cp "/tmp/${PREFIX}_test_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-test.log" 2>/dev/null || true
+      cp "/tmp/${PREFIX}_te_out.txt"   "${LOOP_OUT_DIR}/attempt-${attempt}-test-engineer.log" 2>/dev/null || true
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -683,6 +695,8 @@ $val_context" \
     hlog "validator 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi
     budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
+    # Phase A: validator 출력 보존
+    cp "/tmp/${PREFIX}_val_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-validator.log" 2>/dev/null || true
 
     # ── S39: validator 출력 가드 ─────────────────────────────────────
     if ! check_agent_output "validator" "/tmp/${PREFIX}_val_out.txt"; then
@@ -713,12 +727,9 @@ $val_context" \
     fi
 
     if [[ "$val_result" != "PASS" ]]; then
-      val_out=$(cat "/tmp/${PREFIX}_val_out.txt" 2>/dev/null || echo "")
-      error_trace=$(echo "$val_out" | grep -A5 "FAIL" | head -6 || true)
-      [[ -z "$error_trace" ]] && error_trace=$(echo "$val_out" | tail -6)
       fail_type="validator_fail"
       log_decision "fail_type" "$fail_type" "validator result=$val_result"
-      append_failure "validator_fail" "$error_trace"
+      append_failure "validator_fail" "validator FAIL (see ${LOOP_OUT_DIR}/attempt-${attempt}-validator.log)"
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -740,6 +751,8 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     hlog "pr-reviewer 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "pr-reviewer timeout"; fi
     budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
+    # Phase A: pr-reviewer 출력 보존
+    cp "/tmp/${PREFIX}_pr_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-pr.log" 2>/dev/null || true
 
     # ── S39: pr-reviewer 출력 가드 ───────────────────────────────────
     if ! check_agent_output "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"; then
@@ -754,12 +767,9 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     pr_result=$(parse_marker "/tmp/${PREFIX}_pr_out.txt" "LGTM|CHANGES_REQUESTED")
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
     if [[ "$pr_result" != "LGTM" ]]; then
-      pr_out=$(cat "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null || echo "")
-      error_trace=$(echo "$pr_out" | grep -A10 "MUST FIX" | head -10 || true)
-      [[ -z "$error_trace" ]] && error_trace=$(echo "$pr_out" | tail -6)
       fail_type="pr_fail"
       log_decision "fail_type" "$fail_type" "pr-reviewer result=$pr_result"
-      append_failure "pr_fail" "$error_trace"
+      append_failure "pr_fail" "pr-reviewer CHANGES_REQUESTED (see ${LOOP_OUT_DIR}/attempt-${attempt}-pr.log)"
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -784,6 +794,8 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       hlog "security-reviewer 종료 (exit=${AGENT_EXIT})"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "security-reviewer timeout"; fi
       budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
+      # Phase A: security-reviewer 출력 보존
+      cp "/tmp/${PREFIX}_sec_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-security.log" 2>/dev/null || true
 
       # ── S39: security-reviewer 출력 가드 ─────────────────────────────
       if ! check_agent_output "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"; then
@@ -798,12 +810,9 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       sec_result=$(parse_marker "/tmp/${PREFIX}_sec_out.txt" "SECURE|VULNERABILITIES_FOUND")
       echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
       if [[ "$sec_result" != "SECURE" ]]; then
-        sec_out=$(cat "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null || echo "")
-        error_trace=$(echo "$sec_out" | grep -E 'HIGH|MEDIUM' | head -10 || true)
-        [[ -z "$error_trace" ]] && error_trace=$(echo "$sec_out" | tail -6)
         fail_type="security_fail"
         log_decision "fail_type" "$fail_type" "security result=$sec_result"
-        append_failure "security_fail" "$error_trace"
+        append_failure "security_fail" "security VULNERABILITIES_FOUND (see ${LOOP_OUT_DIR}/attempt-${attempt}-security.log)"
         rollback_attempt $attempt
         attempt=$((attempt+1))
         continue

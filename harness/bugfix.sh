@@ -277,27 +277,40 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
   local attempt=0
   local MAX_HOTFIX=3
   local error_trace=""
+  # Phase A: LOOP_OUT_DIR — attempt별 bugfix 출력 보존
+  local LOOP_OUT_DIR="/tmp/${PREFIX}_bf_loop_out"
+  mkdir -p "$LOOP_OUT_DIR"
   while [[ $attempt -lt $MAX_HOTFIX ]]; do
     attempt=$((attempt + 1))
     kill_check
     echo "[HARNESS] engineer 직접 (attempt $attempt/$MAX_HOTFIX, depth=$depth)"
 
-    # 스마트 컨텍스트: impl 참조 소스를 프롬프트에 사전 포함 (Read 호출 절약)
+    # Phase A: 스마트 컨텍스트 — 재시도 시 error_trace 전달 제거, 에이전트 자율 탐색
     local eng_prompt=""
     if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
       local context
-      context=$(build_smart_context "$IMPL_FILE" "$((attempt - 1))" "${error_trace:-}")
+      context=$(build_smart_context "$IMPL_FILE" 0)
+      local explore_instr=""
+      if [[ $attempt -gt 1 ]]; then
+        explore_instr="
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-vitest.log")"
+      fi
       eng_prompt="impl: $IMPL_FILE
 issue: #$ISSUE_NUM
-task: Bugfix Plan의 버그 수정 이행
+task: Bugfix Plan의 버그 수정 이행${explore_instr}
 context:
 $context
 constraints:
 $CONSTRAINTS"
     else
-      # fast: impl 없이 QA 출력 직접 전달
+      # fast: impl 없이 QA 출력 직접 전달 (qa_out은 QA 에이전트 원본 분석 — 인라인 유지)
+      local explore_instr=""
+      if [[ $attempt -gt 1 ]]; then
+        explore_instr="
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-vitest.log")"
+      fi
       eng_prompt="issue: #$ISSUE_NUM
-task: 버그 수정 (QA 분석 기반)
+task: 버그 수정 (QA 분석 기반)${explore_instr}
 qa_analysis:
 $qa_out
 constraints:
@@ -306,6 +319,8 @@ $CONSTRAINTS"
 
     local AGENT_EXIT=0
     _agent_call "engineer" 900 "$eng_prompt" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
+    # Phase A: engineer 출력 보존
+    cp "/tmp/${PREFIX}_eng_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-engineer.log" 2>/dev/null || true
 
     if [[ $AGENT_EXIT -eq 124 ]]; then
       echo "[HARNESS] engineer timeout — 재시도"
@@ -374,6 +389,8 @@ $val_ctx" \
       exit 0
     else
       error_trace=$(cat "/tmp/${PREFIX}_vitest_out.txt" 2>/dev/null | head -c 5000 || echo "vitest exit=$vitest_exit")
+      # Phase A: vitest 실패 결과 보존
+      cp "/tmp/${PREFIX}_vitest_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-vitest.log" 2>/dev/null || true
       echo "[HARNESS] vitest 실패 (exit=$vitest_exit) — engineer 재시도"
     fi
   done

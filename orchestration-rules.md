@@ -196,6 +196,16 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 3. 하네스 스크립트 파싱 로직 반영
 단독 수정 금지. 1→2→3 순서 강제.
 
+**18. 에이전트 자율 탐색 원칙 (Phase A — Feedback Compression 금지)**
+에이전트 간 결과 전달 시 요약/발췌를 인라인 주입하지 않는다.
+대신 `explore_instruction()` 함수(`harness/utils.sh`)로 이전 출력 파일 경로를 전달하고, 에이전트가 스스로 필요한 파일을 선택해 읽게 한다.
+
+- **금지**: `task="[테스트 실패] ${error_1line} …"` 처럼 에러 발췌를 인라인으로 붙이는 것
+- **허용**: 특정 파일의 **경로 힌트**(hint)만 제공하는 것 (읽을지 말지는 에이전트 판단)
+- `explore_instruction <loop_out_dir> [hint_file]` → 표준 탐색 지시 문자열 반환
+- 루프 출력 파일은 `LOOP_OUT_DIR=/tmp/${PREFIX}_loop_out/` 에 attempt별로 보존
+- 이 원칙은 impl/bugfix/design/plan 모든 루프에 적용
+
 ---
 
 ## 브랜치 전략 (Feature Branch)
