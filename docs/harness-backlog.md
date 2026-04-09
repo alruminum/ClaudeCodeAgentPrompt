@@ -79,6 +79,8 @@
 | **S66** | **bugfix.sh 라우팅 정비 — backlog/KNOWN_ISSUE 경로 + qa 마일스톤 규칙 정정** | S | 🔧 진행 |
 | **S67** | **plan.sh 흐름 완성 — validator DV + Task Decompose/Module Plan + Plan Validation** | S | 🔧 진행 |
 | **S68** | **design.sh 흐름 완성 — post-PICK DESIGN_HANDOFF + IMPL_CHK + FLAG 생성** | S | 🔧 진행 |
+| **S69** | **스마트 컨텍스트 공용화 + validator diff 패싱** | S | ✅ 완료 |
+| **S70** | **훅 전수 감사 — orch-rules-first 패턴 오류, drift-check 매핑 불완전, file-ownership-gate 데드코드 삭제, 테스트 추가** | S | 🔧 진행 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
 | S14 | 커버리지 게이트 신규파일 60% | S | ⬜ 보류 |
 | S15 | BROWSER:DOM 자동 검증 (opt-in Playwright) | S | ⬜ 보류 |

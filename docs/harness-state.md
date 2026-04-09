@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-09 (S62~S68 — 스크립트↔룰 동기화, 공용 함수 추출, SPEC_GAP, bugfix 라우팅, plan/design 흐름 완성)
+> 최종 업데이트: 2026-04-09 (S70 — 훅 전수 감사: orch-rules-first 패턴 수정, drift-check 매핑 보완, file-ownership-gate 삭제, 테스트 16건 추가)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -46,7 +46,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 |---|---|---|
 | `harness_common.py` | (모듈) | `get_prefix()`, `deny()`, `flag_path()` 공유 유틸 (S54) |
 | `harness-router.py` | UserPromptSubmit (global) | fast_classify(regex) → extract_intent(Haiku LLM) → 워크플로우 상태/Adaptive Interview 주입 |
-| `harness-stop-gate.sh` | Stop (global) | harness_active 존재 시 exit 2 → 종료 차단 (S33) |
+| ~~`harness-stop-gate.sh`~~ | ~~Stop (global)~~ | ~~S33~~ **폐기** — 정책 11(포어그라운드 강제)으로 Stop 트리거 자체 미발생. 파일 삭제됨 |
 | `harness-session-start.py` | SessionStart (global) | `/tmp/{prefix}_*` 플래그 전체 초기화 (timeout=5 추가: S56) |
 | `orch-rules-first.py` | PreToolUse(Edit/Write) (global) | `orchestration-rules.md` 선행 수정 물리적 강제 |
 | `agent-boundary.py` | PreToolUse(Edit/Write/Read) (global) | 에이전트별 경로 제한 + 메인 Claude file-ownership 차단 통합 (S55) |
@@ -60,10 +60,8 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 
 | 파일 | 역할 |
 |---|---|
-| `settings.json` | PreToolUse(Edit/Write: orch-rules-first + agent-boundary) + PreToolUse(Read: agent-boundary) + PreToolUse(Bash: drift-check + commit-gate) + PreToolUse(Agent: agent-gate) + PostToolUse(Edit: settings-watcher) + PostToolUse(Bash: post-commit-cleanup) + PostToolUse(Agent: post-agent-flags) |
+| `settings.json` | `env` + `allowedTools`만 — 훅 없음 (전역 전용) |
 | `harness.config.json` | `{"prefix": "xx"}` — 프로젝트별 플래그 prefix (최대 6자) |
-| `harness/executor.sh` | setup-agents.sh가 글로벌에서 복사 |
-| `harness/impl-process.sh` | setup-agents.sh가 글로벌에서 복사 |
 | `agents/*.md` | setup-agents.sh가 초기화한 9개 에이전트 파일 |
 
 ---
@@ -162,6 +160,8 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S66 | bugfix.sh 라우팅 정비 | `backlog` → 이슈 생성 후 대기. `KNOWN_ISSUE` → 즉시 에스컬레이션. `DESIGN_ISSUE` → 디자인 루프 전환. qa 마일스톤 규칙 정정 (Bugs only). `grep -q '...\|...'` → `grep -qE`/`-qF` | 2026-04-09 |
 | S67 | plan.sh 흐름 완성 | 2단계(pp→architect) → 6단계(pp→architect SD→validator DV→architect MP→validator PV→PLAN_VALIDATION_PASS). `run_design_validation()` 공용 함수 활용 | 2026-04-09 |
 | S68 | design.sh 흐름 완성 | ITERATE feedback 전달. ESCALATE 분기 추가. DESIGN_LOOP_ESCALATE 마커. `parse_marker()` 활용 | 2026-04-09 |
+| S69 | 스마트 컨텍스트 공용화 + validator diff 패싱 | `build_smart_context()`, `build_validator_context()` harness/utils.sh로 이동. validator에 git diff 사전 전달 | 2026-04-09 |
+| S70 | 훅 전수 감사 | `orch-rules-first.py` HARNESS_INFRA_PATTERNS 구 파일명→실제 경로 수정 + hooks/*.py 전체 포함. `harness-drift-check.py` DRIFT_MAP 5개 에이전트 매핑 추가 (designer/design-critic/product-planner/pr-reviewer/security-reviewer). `file-ownership-gate.py` 삭제 (S55에서 agent-boundary.py에 통합 완료). BATS 테스트 16건 추가 (총 115건). harness-stop-gate.sh 참조 폐기 표기 | 2026-04-09 |
 
 ---
 

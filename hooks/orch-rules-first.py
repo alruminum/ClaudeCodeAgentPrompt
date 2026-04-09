@@ -25,16 +25,19 @@ FLAG = "/tmp/_orch_rules_touched"
 SESSION_TIMEOUT = 7200
 
 HARNESS_INFRA_PATTERNS = [
-    r'harness-executor\.sh',
-    r'harness-impl-plan\.sh',
-    r'harness-impl-process\.sh',
-    r'harness-design\.sh',
-    r'harness-bugfix\.sh',
-    r'harness-plan\.sh',
+    # harness/*.sh 스크립트 (디렉토리 구조)
+    r'harness/executor\.sh',
+    r'harness/impl\.sh',
+    r'harness/impl-process\.sh',
+    r'harness/design\.sh',
+    r'harness/bugfix\.sh',
+    r'harness/plan\.sh',
+    r'harness/utils\.sh',
+    # 셋업 스크립트
     r'setup-harness\.sh',
     r'setup-agents\.sh',
-    r'hooks/harness-router\.py',
-    r'hooks/harness-session-start\.py',
+    # 모든 훅 파이썬 파일
+    r'hooks/[^/]+\.py$',
 ]
 
 def is_orch_rules(fp):

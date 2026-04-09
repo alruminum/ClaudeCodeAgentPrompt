@@ -22,12 +22,22 @@ BYPASS_TTL = 300  # 5분 내 재시도만 허용
 
 # 규칙/에이전트 → 연동 스크립트 매핑
 DRIFT_MAP = {
-    'orchestration-rules.md': ['harness/executor.sh', 'harness/impl-process.sh'],
-    'agents/qa.md': ['harness/executor.sh'],
-    'agents/architect.md': ['harness/executor.sh'],
-    'agents/validator.md': ['harness/impl-process.sh', 'harness/executor.sh'],
-    'agents/engineer.md': ['harness/impl-process.sh'],
+    'orchestration-rules.md': [
+        'harness/executor.sh', 'harness/impl-process.sh',
+        'harness/impl.sh', 'harness/bugfix.sh',
+        'harness/design.sh', 'harness/plan.sh',
+        'harness/utils.sh',
+    ],
+    'agents/qa.md': ['harness/bugfix.sh'],
+    'agents/architect.md': ['harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh'],
+    'agents/validator.md': ['harness/impl-process.sh', 'harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh'],
+    'agents/engineer.md': ['harness/impl-process.sh', 'harness/bugfix.sh'],
     'agents/test-engineer.md': ['harness/impl-process.sh'],
+    'agents/designer.md': ['harness/design.sh'],
+    'agents/design-critic.md': ['harness/design.sh'],
+    'agents/product-planner.md': ['harness/plan.sh'],
+    'agents/pr-reviewer.md': ['harness/impl-process.sh'],
+    'agents/security-reviewer.md': ['harness/impl-process.sh'],
 }
 
 
