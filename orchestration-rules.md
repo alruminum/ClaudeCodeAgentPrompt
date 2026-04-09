@@ -12,7 +12,7 @@
 | 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
 | UI 변경 요청 (design_critic_passed 없음) | → **[디자인 루프](orchestration/design.md)** |
 | 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** (`bash .claude/harness/executor.sh impl ...`) — plan_validation_passed 시 architect+validator 자동 스킵 |
-| 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** (`bash .claude/harness/executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기 |
+| 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** (`bash .claude/harness/executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기. `SEVERITY:HIGH → depth=std 강제` |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** |
 | **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획 루프) |
 
@@ -33,7 +33,8 @@
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | `VALIDATION_ESCALATE` | validator Code Validation (3회 초과) | 메인 Claude 보고 |
 | `REVIEW_LOOP_ESCALATE` | pr-reviewer (3라운드 초과) | 메인 Claude 보고 |
-| `KNOWN_ISSUE` | qa (원인 특정 3회 실패) | 메인 Claude 보고 |
+| `KNOWN_ISSUE` | qa (1회 분석으로 원인 특정 불가) | 메인 Claude 보고 |
+| `SCOPE_ESCALATE` | qa (관련 모듈/파일 = 0 → 신규 기능 판정) | 메인 Claude 보고 — product-planner 라우팅 |
 | `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
 | `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 리셋 초과) | architect SPEC_GAP 권장 |

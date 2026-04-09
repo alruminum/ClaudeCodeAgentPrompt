@@ -42,20 +42,45 @@ run_bugfix() {
 
   # 3. 신규 — QA부터 시작
 
+  # ── 기존 이슈 목록 수집 (중복 방지용, 실패해도 무시) ──
+  local recent_bugs=""
+  recent_bugs=$(gh issue list --limit 5 --label bug --state open \
+    --json number,title -q '.[] | "#\(.number) \(.title)"' 2>/dev/null || echo "")
+
   # ── Phase B1: qa 분석 ──
   echo "[HARNESS] Phase B1 — qa 호출 중"
+  local existing_issues_block=""
+  if [[ -n "$recent_bugs" ]]; then
+    existing_issues_block="
+기존 이슈 목록 (중복 시 DUPLICATE_OF로 보고, 신규 이슈 생성 금지):
+$recent_bugs"
+  fi
+
+  # --issue가 있으면 신규 이슈 생성 스킵 지시
+  local issue_skip_note=""
+  if [[ -n "$ISSUE_NUM" && "$ISSUE_NUM" != "N" ]]; then
+    issue_skip_note="
+기존 이슈 #$ISSUE_NUM 이 전달됨 — 신규 이슈 생성 금지. 분석 결과만 출력하라."
+  fi
+
   _agent_call "qa" 300 \
-    "bug: $BUG_DESC issue: #$ISSUE_NUM
-탐색 범위: 이슈에 직접 관련된 파일만 분석하라. 전체 코드베이스 스캔 금지.
-- 이슈 설명에서 언급된 파일/컴포넌트부터 시작
-- 연관 파일은 import 체인 1단계까지만
-- Glob 최대 2회, Read 최대 10회
-분석 완료 후 반드시 mcp__github__create_issue로 이슈를 등록하라.
+    "[하네스 경유 — 역질문 금지. 가용 정보로 즉시 판단하라]
+bug: $BUG_DESC issue: #$ISSUE_NUM${existing_issues_block}${issue_skip_note}
+분석 완료 후 이슈를 등록하라 (DUPLICATE_OF이거나 기존 이슈가 전달된 경우 생성 금지).
 - FUNCTIONAL_BUG → Bugs 마일스톤 (라벨: bug)
 - SPEC_ISSUE (PRD 명세 있음) → Feature 마일스톤 (해당 epic 라벨, 본문에 epic 경로 명시)
 - SPEC_ISSUE (PRD 명세 없음) → Feature 마일스톤
 - DESIGN_ISSUE → Feature 마일스톤" \
     "/tmp/${PREFIX}_qa_out.txt"
+
+  # ── DUPLICATE_OF 감지: 중복이면 기존 이슈로 리다이렉트 ──
+  local dup_of=""
+  dup_of=$(_parse_qa_summary "/tmp/${PREFIX}_qa_out.txt" "DUPLICATE_OF")
+  if [[ -n "$dup_of" && "$dup_of" != "N" ]]; then
+    local dup_num="${dup_of//#/}"
+    echo "[HARNESS] 중복 이슈 감지: #$dup_num → 기존 이슈로 라우팅"
+    ISSUE_NUM="$dup_num"
+  fi
 
   bugfix_run  # harness/bugfix.sh 함수
 }
@@ -87,6 +112,14 @@ detect_bugfix_depth() {
     if grep -q 'FUNCTIONAL_BUG' "$qa_file" 2>/dev/null; then
       qa_type="FUNCTIONAL_BUG"
     fi
+  fi
+
+  # SEVERITY:HIGH → std 강제
+  local severity=""
+  severity=$(_parse_qa_summary "$qa_file" "SEVERITY")
+  if [[ "$severity" == "HIGH" ]]; then
+    echo "std"
+    return
   fi
 
   if [[ "$qa_type" == "FUNCTIONAL_BUG" ]] && [[ -n "$affected" ]] && [[ "$affected" -le 2 ]] 2>/dev/null; then
@@ -125,6 +158,16 @@ bugfix_run() {
   fi
 
   echo "[HARNESS] bugfix routing: $routing (type: ${qa_type:-unknown})"
+
+  # SCOPE_ESCALATE: 관련 모듈/파일 = 0 → 신규 기능, 즉시 중단
+  if [[ "$routing" == "scope_escalate" ]] || grep -q 'SCOPE_ESCALATE' "$qa_file" 2>/dev/null; then
+    export HARNESS_RESULT="SCOPE_ESCALATE"
+    echo "SCOPE_ESCALATE: 관련 모듈/파일 없음 — 신규 기능으로 판정"
+    echo "type: ${qa_type:-unknown}"
+    echo "issue: #$ISSUE_NUM"
+    head -50 "$qa_file" | grep -A5 'SCOPE_ESCALATE' 2>/dev/null || true
+    exit 1
+  fi
 
   case "$routing" in
     engineer_direct)

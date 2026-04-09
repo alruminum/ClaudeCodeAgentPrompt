@@ -19,3 +19,4 @@ mcp-needs-auth-cache.json
 image-cache/
 tasks/
 agents/archive/
+harness-logs/
