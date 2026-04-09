@@ -66,6 +66,22 @@ model: sonnet
 - [ ] 컴포넌트 간 데이터 흐름(props 전달 경로)이 명확한가
 - [ ] 병렬 impl 충돌: 현재 에픽의 다른 impl 파일이 동일한 파일을 수정하는지 확인했는가 (충돌 발견 시 → `SPEC_GAP_FOUND`로 보고 후 architect에게 구현 순서 결정 요청)
 
+### Props 동작 사전 체크 (컴포넌트 구현 시 필수)
+
+Phase 1 소스 읽기 후, 구현 시작 전에 아래를 수행한다:
+
+1. impl 파일의 `## 수용 기준` 또는 인터페이스 섹션에서 **모든 Props와 그 동작**을 목록화
+   ```
+   예: hidden: true → interval 정지, elapsed 고정
+       hidden: false → interval 재개
+       isBreaking: true → 600ms 후 null 반환
+   ```
+2. 실제 소스 파일에서 해당 Props가 어떻게 사용되는지 확인 (props drilling 경로 포함)
+3. **구현 전 동작별 체크리스트 작성**: 각 Props 값 조합에 대해 구현할 동작을 명시
+4. 구현 완료 후 체크리스트 대조 — 미처리 항목이 있으면 코드 수정 후 제출
+
+> **목적**: test-engineer가 추가하는 Props 동작 테스트(예: visibility.test.tsx)가 처음부터 통과하도록 해서 attempt 1 재시도를 방지한다.
+
 **수용 기준 태그 검증** (Phase 1 필수):
 - impl 파일의 `## 수용 기준` 섹션에서 각 항목에 `(TEST)` / `(BROWSER:DOM)` / `(MANUAL)` 태그 존재 확인
 - 태그 없는 항목 발견 시 → `SPEC_GAP_FOUND`로 보고 ("수용 기준 태그 누락")
@@ -95,13 +111,7 @@ SPEC_GAP_FOUND
    - 더미 데이터 → 실제 store/props 연결
    - Notes for Engineer의 연결 포인트 참고
 2-a. **기존 컴포넌트 영향도 확인**: 변경되는 CSS 변수 또는 클래스가 다른 컴포넌트에서도 사용되는지 Grep으로 확인. 영향받는 파일 목록을 완료 보고에 포함
-3. **FIGMA**: Figma MCP로 frame 읽기 → 스펙 추출 → React 구현
-   ```
-   # Figma 스펙 읽기 (Figma MCP 필요)
-   링크: [DESIGN_HANDOFF의 Figma Link]
-   추출 대상: 색상 변수, 레이아웃, 타이포그래피, 컴포넌트 구조
-   ```
-4. View 레이어만 교체. Model 레이어(store, hooks, 비즈니스 로직) 변경 금지
+3. View 레이어만 교체. Model 레이어(store, hooks, 비즈니스 로직) 변경 금지
 
 ---
 

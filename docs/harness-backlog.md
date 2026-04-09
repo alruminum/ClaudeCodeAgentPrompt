@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-09 (S62~S68 — 스크립트↔룰 동기화 일괄)
+> 최종 업데이트: 2026-04-09 (S71 — 디자인 워크플로우 v2 완료)
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -81,6 +81,7 @@
 | **S68** | **design.sh 흐름 완성 — post-PICK DESIGN_HANDOFF + IMPL_CHK + FLAG 생성** | S | 🔧 진행 |
 | **S69** | **스마트 컨텍스트 공용화 + validator diff 패싱** | S | ✅ 완료 |
 | **S70** | **훅 전수 감사 — orch-rules-first 패턴 오류, drift-check 매핑 불완전, file-ownership-gate 데드코드 삭제, 테스트 추가** | S | 🔧 진행 |
+| **S71** | **디자인 워크플로우 v2 — Pencil MCP 기반 재설계 (designer/design-critic/design.sh/orchestration/design.md 일괄 업데이트, HTML 프리뷰 제거, Figma 모드 제거)** | S | ✅ 완료 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
 | S14 | 커버리지 게이트 신규파일 60% | S | ⬜ 보류 |
 | S15 | BROWSER:DOM 자동 검증 (opt-in Playwright) | S | ⬜ 보류 |

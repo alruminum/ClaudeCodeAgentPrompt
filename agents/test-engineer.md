@@ -43,8 +43,11 @@ model: sonnet
 아래 순서로 파일을 읽는다:
 
 1. 해당 모듈 계획 파일 (`docs/impl/NN-*.md` 또는 유사 형식)
-2. 구현 파일 읽기 (실제 인터페이스·함수 시그니처 확인)
-3. 의존 모듈 소스 (경계 확인)
+2. 구현 파일 읽기 (실제 인터페이스·함수 시그니처 확인) — **프롬프트에 `src_files`가 있으면 그것만 읽는다. 별도 탐색 금지.**
+3. 의존 모듈 소스 (경계 확인) — **src/** 파일만. `docs/game-logic.md`, `docs/architecture.md` 등 domain/architecture 문서는 읽지 않는다.**
+
+> **읽기 제한**: Phase 1에서 읽는 파일은 impl 계획 파일 + src/** 구현 파일로 한정한다.
+> docs/ 아래 domain 문서(game-logic, architecture, db-schema, ui-spec 등)는 테스트 작성에 필요하지 않으므로 읽지 않는다.
 
 ### 테스트 케이스 도출 기준
 
@@ -62,8 +65,11 @@ model: sonnet
 
 Phase 1 완료 후, 테스트 작성 전에 테스트 플랜과 대조하여 갭을 식별한다.
 
-1. 프로젝트 루트 `docs/test-plan.md` 존재 여부 확인 (Glob)
-2. 존재하면: 해당 모듈 섹션을 읽어 플랜 TC 목록 추출
+> **1회 읽기 규칙**: `docs/test-plan.md`는 이 Phase에서 **정확히 1회**만 읽는다.
+> 읽은 후 관련 섹션을 작업 메모에 정리하고, 이후 재읽기 금지. (동일 세션 내 재읽기는 WASTE_DUPLICATE_READ)
+
+1. 프로젝트 루트 `docs/test-plan.md` 존재 여부 확인 (Glob) — 이미 이전에 확인했다면 스킵
+2. 존재하면: **Grep으로 해당 모듈 섹션만 추출** (`grep -n "모듈명\|파일명" docs/test-plan.md` 후 해당 줄 범위만 Read). 전체 파일 읽기 금지.
 3. 구현 파일에서 확인된 함수/동작 목록과 대조
 4. 아래 두 유형의 갭을 식별한다:
 

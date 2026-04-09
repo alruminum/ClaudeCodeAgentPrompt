@@ -36,7 +36,7 @@ ALLOW_MATRIX = {
         r'(^|/)backlog\.md$',           # backlog.md
     ],
     "designer": [
-        r'design-preview-[^/]*\.html$', # design-preview-*.html
+        r'(^|/)design-variants/',       # design-variants/** (Pencil MCP 코드 출력)
         r'(^|/)docs/ui-spec',           # docs/ui-spec*
     ],
     "test-engineer": [

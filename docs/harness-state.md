@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-09 (S70 — 훅 전수 감사: orch-rules-first 패턴 수정, drift-check 매핑 보완, file-ownership-gate 삭제, 테스트 16건 추가)
+> 최종 업데이트: 2026-04-09 (S71 — 디자인 워크플로우 v2: Pencil MCP 기반 재설계, HTML 프리뷰 제거, Figma 모드 제거, Phase 0~4 구조 도입)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -31,7 +31,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,bugfix,plan}.sh |
 | `harness/impl.sh` | impl 모드: 재진입 감지 → architect → `run_plan_validation()` → engineer 루프 | harness/impl-process.sh |
 | `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep depth 분기, 3회 재시도, SPEC_GAP 동결) + memory candidate | /tmp/{p}_* 플래그들 |
-| `harness/design.sh` | design 모드: designer → design-critic → DESIGN_DONE | 에이전트들 |
+| `harness/design.sh` | design 모드 v2: designer (Pencil MCP Phase 0~1) → design-critic (스크린샷) → Phase 3 유저 선택 안내 → DESIGN_DONE. HTML 프리뷰 제거. | 에이전트들 |
 | `harness/bugfix.sh` | bugfix 모드: qa → 5-way 분기 (engineer_direct/architect_full/design/backlog/KNOWN_ISSUE) + `run_plan_validation()` 활용 | 에이전트들 |
 | `harness/plan.sh` | plan 모드: product-planner → architect SD → `run_design_validation()` → architect MP → `run_plan_validation()` → PLAN_VALIDATION_PASS | 에이전트들 |
 | `setup-harness.sh` | 프로젝트별 훅 설치 → `.claude/settings.json` + `harness.config.json` | - |
@@ -173,7 +173,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 |---|---|---|
 | engineer | `src/**` (테스트 포함) | 설계 문서 수정 |
 | architect | `docs/**`, `backlog.md` | `src/**` 수정 |
-| designer | `design-preview-*.html`, `docs/ui-spec*` | architecture 계열, src |
+| designer | `design-variants/**`, `docs/ui-spec*` | architecture 계열, src, design-preview-*.html (Pencil MCP로 대체됨) |
 | test-engineer | `src/__tests__/**` | src 본체 수정 |
 | product-planner | `prd.md`, `trd.md` | 코드·설계 문서 |
 | validator, design-critic, pr-reviewer, qa, security-reviewer | *(없음 — ReadOnly)* | 모든 Write/Edit |

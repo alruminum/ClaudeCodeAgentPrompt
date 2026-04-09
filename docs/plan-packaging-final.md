@@ -81,14 +81,28 @@ claude-orchestration/                    # ← GitHub repo (새 프로젝트)
 │   │   ├── post-commit-cleanup.py
 │   │   └── harness-settings-watcher.py
 │   │
-│   ├── harness/                         # 하네스 엔진 (7개)
+│   ├── harness/                         # 하네스 엔진 (7개 + providers)
 │   │   ├── executor.sh
 │   │   ├── impl.sh
 │   │   ├── impl-process.sh
 │   │   ├── design.sh
 │   │   ├── bugfix.sh
 │   │   ├── plan.sh
-│   │   └── utils.sh
+│   │   ├── utils.sh
+│   │   └── providers/                   # 플랫폼 추상화 provider 스크립트
+│   │       ├── issues/
+│   │       │   ├── github.sh
+│   │       │   ├── gitlab.sh
+│   │       │   └── none.sh
+│   │       ├── test_runner/
+│   │       │   ├── vitest.sh
+│   │       │   ├── jest.sh
+│   │       │   ├── pytest.sh
+│   │       │   └── go.sh
+│   │       └── notification/
+│   │           ├── afplay.sh
+│   │           ├── paplay.sh
+│   │           └── none.sh
 │   │
 │   ├── orchestration/                   # 루프 정의 (6개)
 │   │   ├── impl.md
@@ -231,6 +245,363 @@ global_executor = os.path.expanduser("~/.claude/harness/executor.sh")
 harness_root = get_harness_root()
 global_executor = os.path.join(harness_root, 'harness', 'executor.sh')
 ```
+
+---
+
+## 4B. Provider 추상화: 플랫폼 독립성
+
+### 4B.1 문제
+
+현재 시스템은 아래 외부 서비스/도구에 하드코딩되어 있어, 다른 환경의 유저가 그대로 쓸 수 없다.
+
+| 카테고리 | 하드코딩 대상 | 영향 파일 | 심각도 |
+|---|---|---|---|
+| **이슈 트래커** | `mcp__github__*` (18개 도구), `gh issue/api`, `Closes #NNN` | settings.json, agents/architect.md, agents/qa.md, setup-agents.sh, CLAUDE-base.md, harness/bugfix.sh, harness/utils.sh | CRITICAL |
+| **테스트 러너** | `npx vitest run` (ground truth) | harness/impl-process.sh, harness/bugfix.sh, agents/test-engineer.md, orchestration/impl.md | HIGH |
+| **UI 프레임워크** | React 코드 생성, TypeScript Props 가정 | agents/designer.md, agents/engineer.md, agents/architect/*.md | HIGH |
+| **패키지 매니저** | `npm install/run/build`, `npx` | CLAUDE-base.md, setup-agents.sh, commands/deliver.md | MEDIUM |
+| **브라우저 자동화** | `mcp__playwright__*` (22개 도구) | settings.json, agents/design-critic.md | MEDIUM |
+| **디자인 도구** | Figma MCP, Stitch MCP | agents/designer.md, agents/engineer.md | MEDIUM |
+| **OS 알림** | `afplay` (macOS 전용) | settings.json | LOW |
+
+### 4B.2 추상화 전략: `providers` 설정 + 룩업 테이블
+
+**참고 패턴** (실제 프로젝트 검증):
+
+| 패턴 | 복잡도 | 실사용처 | 우리 적용 대상 |
+|---|---|---|---|
+| **정적 룩업 테이블** | 최저 | `ni` (패키지매니저 감지) | 패키지 매니저, 테스트 러너, OS 알림 |
+| **설정 타입 셀렉터** | 낮음 | Turborepo `turbo.json` | 빌드/테스트 명령어 |
+| **코어 인터페이스 + capability** | 중간 | git-town (3메서드 코어 + 선택 capability) | 이슈 트래커, Git 호스팅 |
+
+**핵심 원칙**: 무거운 플러그인 아키텍처 없이 **설정 파일 + 룩업 테이블**로 80% 커버.
+
+### 4B.3 `harness.config.json` 확장
+
+```json
+// .claude/harness.config.json (프로젝트별)
+{
+  "prefix": "mb",
+  "providers": {
+    "issues": "github",
+    "test_runner": "vitest",
+    "package_manager": "pnpm",
+    "ui_framework": "react",
+    "browser": "playwright",
+    "notification": "afplay"
+  },
+  "commands": {
+    "test": "npx vitest run",
+    "build": "pnpm run build",
+    "typecheck": "pnpm run typecheck",
+    "dev": "pnpm run dev",
+    "install": "pnpm install"
+  }
+}
+```
+
+- `providers` — 어떤 플랫폼을 쓸지 선언. **항상 구체적인 값으로 저장** (auto 없음).
+- `commands` — 실제 실행 명령어 오버라이드. 하네스 스크립트는 이 명령어를 직접 사용.
+
+### 4B.3a Provider 감지 흐름: 자동 감지 → 유저 확인
+
+`setup-harness.sh` 실행 시 **자동 감지 후 유저에게 확인**을 받는다. 자동 감지 결과를 무조건 적용하지 않는다.
+
+```
+$ bash ~/.claude/setup-harness.sh
+
+📌 프로젝트 prefix: mb_
+🔍 Provider 자동 감지 중...
+
+  이슈 트래커:    github      (git remote: github.com/user/repo)
+  테스트 러너:    vitest      (vitest.config.ts 발견)
+  패키지 매니저:  pnpm        (pnpm-lock.yaml 발견)
+  UI 프레임워크:  react       (package.json → react 의존성)
+  브라우저:       playwright  (기본값)
+  알림:           afplay      (macOS 감지)
+
+  이대로 진행? [Y/n/편집]
+```
+
+- **`Y` (기본)**: 감지 결과를 `harness.config.json`에 저장
+- **`n`**: 중단
+- **`편집`**: 개별 항목 변경 후 저장
+
+#### 자동 감지 가능 수준 (provider별)
+
+| Provider | 감지 방법 | 신뢰도 | 감지 불가 시 |
+|---|---|---|---|
+| **패키지 매니저** | lockfile (`yarn.lock`, `pnpm-lock.yaml`, `bun.lockb`) | 확실 | `npm` 폴백 |
+| **테스트 러너** | config 파일 (`vitest.config.ts`, `jest.config.js`, `pytest.ini`, `go.mod`) | 높음 | 유저에게 질문 |
+| **알림** | OS 감지 (`uname` → macOS/Linux/WSL) | 확실 | `none` 폴백 |
+| **이슈 트래커** | git remote URL에서 `github.com` / `gitlab.com` 추출 | 부분 | 유저에게 질문 (self-hosted, Jira, Linear 등) |
+| **UI 프레임워크** | `package.json` dependencies (`react`, `vue`, `svelte`) | 부분 | 유저에게 질문 (비JS 프로젝트) |
+| **브라우저** | 감지 불가 | — | `playwright` 기본값, 유저 변경 가능 |
+
+#### 감지 로직 (setup-harness.sh 내부)
+
+```bash
+detect_providers() {
+  # 이슈 트래커: git remote URL에서 추론
+  local remote_url
+  remote_url=$(git remote get-url origin 2>/dev/null || echo "")
+  case "$remote_url" in
+    *github.com*)  DETECTED_ISSUES="github" ;;
+    *gitlab.com*)  DETECTED_ISSUES="gitlab" ;;
+    *)             DETECTED_ISSUES="???" ;;   # 유저에게 질문
+  esac
+
+  # 테스트 러너: config 파일 존재 여부
+  if   [[ -f "vitest.config.ts" || -f "vitest.config.js" ]]; then DETECTED_TEST="vitest"
+  elif [[ -f "jest.config.js"   || -f "jest.config.ts"   ]]; then DETECTED_TEST="jest"
+  elif [[ -f "pytest.ini"       || -f "pyproject.toml"   ]]; then DETECTED_TEST="pytest"
+  elif [[ -f "go.mod"           ]];                          then DETECTED_TEST="go"
+  else DETECTED_TEST="???"
+  fi
+
+  # 패키지 매니저: lockfile
+  if   [[ -f "bun.lockb"       ]]; then DETECTED_PM="bun"
+  elif [[ -f "pnpm-lock.yaml"  ]]; then DETECTED_PM="pnpm"
+  elif [[ -f "yarn.lock"       ]]; then DETECTED_PM="yarn"
+  elif [[ -f "package-lock.json" ]]; then DETECTED_PM="npm"
+  else DETECTED_PM="???"
+  fi
+
+  # UI 프레임워크: package.json dependencies
+  if [[ -f "package.json" ]]; then
+    if   grep -q '"react"'  package.json; then DETECTED_UI="react"
+    elif grep -q '"vue"'    package.json; then DETECTED_UI="vue"
+    elif grep -q '"svelte"' package.json; then DETECTED_UI="svelte"
+    else DETECTED_UI="none"
+    fi
+  else
+    DETECTED_UI="none"
+  fi
+
+  # 알림: OS
+  case "$(uname -s)" in
+    Darwin) DETECTED_NOTIFY="afplay" ;;
+    Linux)  command -v paplay &>/dev/null && DETECTED_NOTIFY="paplay" || DETECTED_NOTIFY="none" ;;
+    *)      DETECTED_NOTIFY="none" ;;
+  esac
+
+  # 브라우저: 기본값
+  DETECTED_BROWSER="playwright"
+}
+```
+
+`???`로 감지된 항목은 유저에게 선택지를 제시:
+```
+  이슈 트래커:    ???  ← 자동 감지 불가
+    선택: [1] github  [2] gitlab  [3] jira  [4] none
+    > 
+```
+
+#### 감지 후 commands 자동 생성
+
+provider가 확정되면 `commands`도 자동으로 채워진다:
+
+```bash
+generate_commands() {
+  local pm="$1" test="$2"
+  case "$pm" in
+    npm)  CMD_INSTALL="npm install"; CMD_RUN="npm run" ;;
+    pnpm) CMD_INSTALL="pnpm install"; CMD_RUN="pnpm run" ;;
+    yarn) CMD_INSTALL="yarn install"; CMD_RUN="yarn run" ;;
+    bun)  CMD_INSTALL="bun install"; CMD_RUN="bun run" ;;
+  esac
+  case "$test" in
+    vitest) CMD_TEST="npx vitest run" ;;
+    jest)   CMD_TEST="npx jest" ;;
+    pytest) CMD_TEST="pytest" ;;
+    go)     CMD_TEST="go test ./..." ;;
+  esac
+}
+```
+
+유저가 `commands`를 직접 수정하면 자동 생성보다 **우선** 적용.
+
+### 4B.4 Provider별 상세 설계
+
+#### A. 이슈 트래커 (`providers.issues`)
+
+가장 복잡한 영역. git-town의 **코어 + capability** 패턴 적용:
+
+```
+코어 인터페이스 (필수):
+  - create_issue(title, body, labels)    → 이슈 생성
+  - get_issue(number)                    → 이슈 조회
+  - list_issues(filters)                 → 이슈 목록
+  - close_issue(number)                  → 이슈 닫기
+
+선택 capability:
+  - milestones: create_milestone(), assign_to_milestone()
+  - labels: create_label(), assign_label()
+  - pull_requests: create_pr(), merge_pr()
+```
+
+**구현 방식**: `harness/providers/issues/` 디렉토리에 provider별 셸 스크립트:
+
+```
+framework/harness/providers/
+├── issues/
+│   ├── github.sh      # gh CLI 기반
+│   ├── gitlab.sh      # glab CLI 기반
+│   ├── jira.sh        # jira CLI 기반
+│   └── none.sh        # 이슈 트래커 없음 (로컬 markdown 관리)
+├── test_runner/
+│   ├── vitest.sh
+│   ├── jest.sh
+│   ├── pytest.sh
+│   └── go.sh
+└── notification/
+    ├── afplay.sh      # macOS
+    ├── paplay.sh      # Linux (PulseAudio)
+    ├── powershell.sh  # Windows (WSL)
+    └── none.sh        # 무음
+```
+
+**예시 — `issues/github.sh`**:
+```bash
+issue_create() { gh issue create --title "$1" --body "$2" --label "$3"; }
+issue_get()    { gh issue view "$1" --json body -q .body; }
+issue_list()   { gh issue list --limit "$1" --label "$2" --state "$3" --json number,title; }
+issue_close()  { gh issue close "$1"; }
+```
+
+**예시 — `issues/gitlab.sh`**:
+```bash
+issue_create() { glab issue create --title "$1" --description "$2" --label "$3"; }
+issue_get()    { glab issue view "$1" --output json | jq -r .description; }
+issue_list()   { glab issue list --per-page "$1" --label "$2" --state "$3"; }
+issue_close()  { glab issue close "$1"; }
+```
+
+**에이전트 도구 매핑**: `setup-agents.sh`가 provider에 따라 MCP 도구 목록을 동적 생성:
+
+| provider | 에이전트 tools |
+|---|---|
+| `github` | `mcp__github__create_issue`, `mcp__github__list_issues`, ... |
+| `gitlab` | `mcp__gitlab__create_issue`, `mcp__gitlab__list_issues`, ... |
+| `none` | *(이슈 도구 제외)* |
+
+#### B. 테스트 러너 (`providers.test_runner`)
+
+**Turborepo 패턴** — 명령어 문자열로 추상화. 하네스는 exit code만 본다:
+
+```bash
+# harness/impl-process.sh — 현재
+npx vitest run > "/tmp/${PREFIX}_test_out.txt" 2>&1
+
+# 변경 후
+TEST_CMD=$(get_command "test")  # harness.config.json의 commands.test 읽기
+eval "$TEST_CMD" > "/tmp/${PREFIX}_test_out.txt" 2>&1
+```
+
+룩업 테이블 (자동 감지용):
+```bash
+detect_test_runner() {
+  [[ -f "vitest.config.ts" ]] && echo "npx vitest run" && return
+  [[ -f "jest.config.js" ]]   && echo "npx jest" && return
+  [[ -f "pytest.ini" ]]       && echo "pytest" && return
+  [[ -f "go.mod" ]]           && echo "go test ./..." && return
+  echo "npx vitest run"  # 폴백
+}
+```
+
+#### C. 패키지 매니저 (`providers.package_manager`)
+
+**`ni` 패턴** — lockfile 기반 자동 감지:
+
+```bash
+detect_package_manager() {
+  [[ -f "bun.lockb" ]]        && echo "bun" && return
+  [[ -f "pnpm-lock.yaml" ]]   && echo "pnpm" && return
+  [[ -f "yarn.lock" ]]        && echo "yarn" && return
+  echo "npm"  # 폴백
+}
+
+# 명령어 룩업
+PM_COMMANDS=(
+  [npm_install]="npm install"   [npm_run]="npm run"   [npm_add]="npm install"
+  [pnpm_install]="pnpm install" [pnpm_run]="pnpm run" [pnpm_add]="pnpm add"
+  [yarn_install]="yarn install" [yarn_run]="yarn run"  [yarn_add]="yarn add"
+  [bun_install]="bun install"   [bun_run]="bun run"   [bun_add]="bun add"
+)
+```
+
+#### D. UI 프레임워크 (`providers.ui_framework`)
+
+에이전트 지침에만 영향. 코드 생성 방향을 바꿈:
+
+| provider | designer 출력 | engineer 가정 |
+|---|---|---|
+| `react` | ASCII + React 컴포넌트 | TypeScript, Props 타입 |
+| `vue` | ASCII + Vue SFC | TypeScript, Props 정의 |
+| `svelte` | ASCII + Svelte 컴포넌트 | TypeScript |
+| `html` | ASCII + vanilla HTML/CSS/JS | JavaScript |
+| `none` | ASCII만 (코드 생성 안 함) | 백엔드 전용 프로젝트 |
+
+구현: `setup-agents.sh`가 provider에 따라 에이전트 `## 프로젝트 특화 지침`에 프레임워크별 가이드를 삽입.
+
+#### E. 브라우저 자동화 (`providers.browser`)
+
+| provider | 도구 | design-critic에서 사용 |
+|---|---|---|
+| `playwright` | `mcp__playwright__*` | 스크린샷 + DOM 검증 |
+| `none` | *(도구 제외)* | ASCII 리뷰만 수행 |
+
+#### F. OS 알림 (`providers.notification`)
+
+```bash
+notify() {
+  case "$(get_provider notification)" in
+    afplay)     afplay /System/Library/Sounds/Glass.aiff ;;
+    paplay)     paplay /usr/share/sounds/freedesktop/stereo/complete.oga ;;
+    powershell) powershell.exe -c '[console]::beep(800,200)' ;;
+    none)       : ;;  # 무음
+    auto)
+      command -v afplay &>/dev/null && afplay /System/Library/Sounds/Glass.aiff && return
+      command -v paplay &>/dev/null && paplay /usr/share/sounds/freedesktop/stereo/complete.oga && return
+      ;;
+  esac
+}
+```
+
+### 4B.5 에이전트 도구 동적 생성
+
+`setup-agents.sh`가 `harness.config.json`의 providers를 읽어 에이전트 파일의 `tools:` 행을 동적 구성:
+
+```bash
+# setup-agents.sh 내부
+ISSUES_PROVIDER=$(read_provider "issues")
+case "$ISSUES_PROVIDER" in
+  github) ISSUE_TOOLS="mcp__github__create_issue, mcp__github__list_issues, mcp__github__get_issue, mcp__github__update_issue" ;;
+  gitlab) ISSUE_TOOLS="mcp__gitlab__create_issue, mcp__gitlab__list_issues, mcp__gitlab__get_issue, mcp__gitlab__update_issue" ;;
+  none)   ISSUE_TOOLS="" ;;
+esac
+
+# architect.md tools 행 생성
+ARCHITECT_TOOLS="Read, Glob, Grep, Write, Edit, Bash${ISSUE_TOOLS:+, $ISSUE_TOOLS}"
+```
+
+### 4B.6 마이그레이션 영향
+
+기존 프로젝트는 `harness.config.json`에 `providers` 키가 없으면 **전부 기본값** 적용:
+
+```json
+// 기본값 (providers 키 없을 때)
+{
+  "issues": "github",
+  "test_runner": "vitest",
+  "package_manager": "auto",
+  "ui_framework": "react",
+  "browser": "playwright",
+  "notification": "auto"
+}
+```
+
+→ 기존 프로젝트는 동작 변경 없음 (하위 호환).
 
 ---
 
@@ -482,6 +853,20 @@ git init
 | 2.4 | `harness-router.py` executor 경로 수정 | `get_harness_root()` 기반 |
 | 2.5 | 나머지 hooks/*.py 경로 참조 점검 | 하드코딩된 `~/.claude/` 제거 |
 
+### Epic 2B: Provider 추상화
+
+| # | 태스크 | 상세 |
+|---|---|---|
+| 2B.1 | `harness.config.json` 스키마 확장 + `setup-harness.sh` 감지 흐름 | `providers` + `commands` 키 추가, `detect_providers()` 자동 감지 → 유저 확인 → 저장 |
+| 2B.2 | `harness/providers/` 디렉토리 구조 생성 | `issues/{github,gitlab,none}.sh`, `test_runner/`, `notification/` |
+| 2B.3 | `harness/utils.sh`에 `get_provider()`, `get_command()` 함수 추가 | harness.config.json 읽기 → 폴백 → 기본값 |
+| 2B.4 | `harness/impl-process.sh` 테스트 러너 추상화 | `npx vitest run` → `get_command "test"` |
+| 2B.5 | `harness/bugfix.sh` 이슈 조회 추상화 | `gh issue view` → `source providers/issues/${PROVIDER}.sh` |
+| 2B.6 | `harness/utils.sh` 브랜치 생성 시 이슈 제목 조회 추상화 | `gh issue view` → provider 함수 |
+| 2B.7 | `setup-agents.sh` 에이전트 도구 동적 생성 | provider에 따라 `tools:` 행 변경 |
+| 2B.8 | `settings.json` 알림음 추상화 | `afplay` → `notify()` 함수 (OS 자동 감지) |
+| 2B.9 | 에이전트 지침에서 프레임워크 가정 제거 | React/TypeScript → provider 기반 조건부 지침 |
+
 ### Epic 3: 설치/업데이트 스크립트
 
 | # | 태스크 | 상세 |
@@ -535,6 +920,9 @@ git init
 | 3 | **공개 여부** | public / private | 유저 결정 |
 | 4 | **자동 업데이트** | 기본 켜짐 / 꺼짐 | 기본 꺼짐 (알림만) |
 | 5 | **프로젝트 폴더 위치** | `~/projects/claude-orchestration` / 기타 | 유저 결정 |
+| 6 | **기본 이슈 트래커** | `github` / `gitlab` / `none` | `github` (현재 구현 기준) |
+| 7 | **기본 UI 프레임워크** | `react` / `vue` / `svelte` / `html` / `none` | `react` (현재 구현 기준) |
+| 8 | **provider 추상화 범위 (v1.0)** | 전체 / 이슈+테스트+패키지만 / 이슈만 | 이슈+테스트+패키지 (HIGH 이상만 v1.0) |
 
 ---
 
@@ -547,6 +935,9 @@ git init
 | 에이전트 공통/특화 분리 오류 | 에이전트 지침 누락 | E2E 테스트 + `/agent-downSync` 전후 비교 |
 | 경로 추상화 누락 | 특정 환경에서 파일 못 찾음 | `HARNESS_ROOT` 폴백 3단계 + BATS 테스트 |
 | `~/.claude/` 전환 시 기존 환경 깨짐 | 작업 중단 | `--migrate` 모드가 백업 필수 생성 + 롤백 안내 |
+| provider 셸 스크립트 인터페이스 불일치 | GitLab/Jira에서 명령어 실패 | 각 provider에 BATS 테스트 추가 + `none.sh` 폴백 |
+| provider 자동 감지 오류 | 잘못된 패키지매니저/테스트러너 사용 | `commands`에 명시적 오버라이드 → 자동 감지보다 우선 |
+| 에이전트 지침에 프레임워크 가정 잔류 | React 아닌 프로젝트에서 혼란 | Epic 2B.9에서 전수 점검 + `ui_framework: none` E2E 테스트 |
 
 ---
 

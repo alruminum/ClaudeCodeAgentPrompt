@@ -568,17 +568,28 @@ $spec_gap_context" \
     echo "[HARNESS] automated_checks PASS"
 
     # ── 워커 2: test-engineer ─────────────────────────────────────
-    changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' || echo "")
+    changed_files=$(git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' | tr '\n' ' ' || echo "")
     log_phase "test-engineer"
     echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
     hlog "test-engineer 시작 (depth=$DEPTH, timeout=600s)"
     kill_check
     AGENT_EXIT=0
-    _agent_call "test-engineer" 600 \
-      "구현된 파일:
-$changed_files
+    # attempt > 0 (재시도): 테스트 파일 이미 존재 → 새 작성 불필요, vitest만 실행
+    if [[ $attempt -gt 0 ]]; then
+      te_prompt="[RETRY 모드] 이전 attempt에서 테스트 파일이 이미 작성됨. 새 테스트 파일 작성 불필요.
+impl: $IMPL_FILE
+수정된 파일: $changed_files
+issue: #$ISSUE_NUM
 
-테스트 작성 후 npx vitest run. issue: #$ISSUE_NUM" "/tmp/${PREFIX}_te_out.txt" || AGENT_EXIT=$?
+[지시] npx vitest run만 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
+    else
+      te_prompt="@MODE:TEST_ENGINEER:TEST
+@PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$changed_files\" }
+
+[지시] 위 src_files 목록이 이번 구현에서 변경된 파일 전체다. 추가 탐색 없이 이 파일들만 테스트하라.
+issue: #$ISSUE_NUM"
+    fi
+    _agent_call "test-engineer" 600 "$te_prompt" "/tmp/${PREFIX}_te_out.txt" || AGENT_EXIT=$?
     hlog "test-engineer 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "test-engineer timeout"; fi
     budget_check "test-engineer" "/tmp/${PREFIX}_te_out.txt"

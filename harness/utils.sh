@@ -203,6 +203,8 @@ build_smart_context() {
 $(head -c 3000 "$f")"
     done < <(extract_src_refs "$impl")
   else
+    # retry 시에도 impl 포함 — engineer(N)이 impl 파일 재읽기하는 낭비 방지
+    ctx=$(head -c 6000 "$impl")
     local failed_files
     failed_files=$(extract_files_from_error "$err_trace")
     if [[ -n "$failed_files" ]]; then
@@ -212,8 +214,6 @@ $(head -c 3000 "$f")"
 === ${f} ===
 $(cat "$f")"
       done <<< "$failed_files"
-    else
-      ctx=$(cat "$impl")
     fi
   fi
 
@@ -237,7 +237,7 @@ build_validator_context() {
 === git diff (changed files) ===
 ${diff_out}"
   fi
-  echo "$ctx" | head -c 25000
+  echo "$ctx" | head -c 20000
 }
 
 # ── Feature branch 생성 ──────────────────────────────────────────────

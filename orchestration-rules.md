@@ -10,7 +10,7 @@
 | 상황 | 호출 |
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
-| UI 변경 요청 (design_critic_passed 없음) | → **[디자인 루프](orchestration/design.md)** |
+| UI 변경 요청 (design_critic_passed 없음) | → **[디자인 루프](orchestration/design.md)** (Pencil MCP v2) |
 | 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** (`bash .claude/harness/executor.sh impl ...`) — plan_validation_passed 시 architect+validator 자동 스킵 |
 | 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** (`bash .claude/harness/executor.sh bugfix ...`) — qa 라우팅 기반 4-way 분기. `SEVERITY:HIGH → depth=std 강제` |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** |
@@ -262,7 +262,7 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 |----------|-----------|------|
 | engineer | `src/**` | 테스트 포함 |
 | architect | `docs/**`, `backlog.md` | impl 파일 포함 |
-| designer | `design-preview-*.html`, `docs/ui-spec*` | architecture 계열 금지 |
+| designer | `design-variants/**`, `docs/ui-spec*` | architecture 계열 금지. design-preview-*.html 제거 (Pencil MCP로 대체) |
 | test-engineer | `src/__tests__/**` | src 본체 수정 금지 |
 | product-planner | `prd.md`, `trd.md` | 설계 문서 금지 |
 | validator, design-critic, pr-reviewer, qa, security-reviewer | *(없음 — ReadOnly)* | 모든 Write/Edit deny |
@@ -280,3 +280,4 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 | 하네스 기능 추가 / 변경 | `docs/harness-state.md` (완료/한계 섹션) + `docs/harness-backlog.md` (항목 상태) |
 | 훅 패턴/매핑 변경 | `hooks/*.py` 대상 파일 + `setup-harness.sh` 주석 |
 | architect @MODE 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
+| 디자인 도구 변경 (Pencil MCP 등) | `agents/designer.md`, `agents/design-critic.md`, `orchestration/design.md`, `harness/design.sh`, `commands/design.md` |

@@ -1,7 +1,7 @@
 ---
 name: design-critic
 description: >
-  designer 에이전트가 생성한 variant들을 4개 기준으로 점수화하고 PICK/ITERATE/ESCALATE를 판정하는 디자인 심사 에이전트.
+  designer 에이전트가 Pencil MCP로 생성한 variant 스크린샷을 4개 기준으로 점수화하고 PICK/ITERATE/ESCALATE를 판정하는 디자인 심사 에이전트.
   파일을 수정하지 않는다.
   designer 에이전트 완료 직후 호출.
 tools: Read, Glob, Grep
@@ -24,8 +24,8 @@ model: opus
 
 ```
 @MODE:CRITIC:REVIEW
-@PARAMS: { "variants": "design-preview HTML 경로 또는 variant 목록", "ui_spec?": "docs/ui-spec.md 경로" }
-@OUTPUT: { "marker": "PICK / ITERATE / ESCALATE", "picked_variant?": "PICK 시 선택된 variant 번호", "feedback?": "ITERATE 시 개선 피드백" }
+@PARAMS: { "variants": "Pencil 스크린샷 경로 목록 또는 variant 메타데이터", "animation_spec?": "각 variant의 애니메이션 스펙", "ui_spec?": "docs/ui-spec.md 경로" }
+@OUTPUT: { "marker": "PICK / ITERATE / ESCALATE", "picked_variant?": "PICK 시 선택된 variant 이름(A/B/C)", "feedback?": "ITERATE 시 개선 피드백" }
 
 @MODE:CRITIC:UX_SHORTLIST
 @PARAMS: { "variants": "5개 ASCII 와이어프레임 경로/목록" }
@@ -52,7 +52,7 @@ model: opus
 |---|---|---|
 | 미적 차별성 | 30% | 5개 중 서로 다른 방향인가 (유사한 안 중 1개만 통과) |
 | UX 명료성 | 30% | 동선·정보 계층이 명확한가 |
-| 구현 실현성 | 20% | Stitch로 렌더링 가능한 수준인가 |
+| 구현 실현성 | 20% | Pencil MCP로 렌더링 가능한 수준인가 |
 | 컨텍스트 적합성 | 20% | 앱 목적·타겟 유저에 부합하는가 |
 
 ### 출력 형식
@@ -83,7 +83,7 @@ UX_REDESIGN_SHORTLIST
 - **안 [번호]** 제외 이유: [한 줄]
 - **안 [번호]** 제외 이유: [한 줄]
 
-👉 위 3개 안으로 Stitch 렌더링을 진행할까요?
+👉 위 3개 안으로 Pencil MCP 렌더링을 진행할까요?
    일부만 진행하려면 번호를 알려주세요. (예: "1, 3번만")
 ```
 
@@ -142,9 +142,9 @@ UX_REDESIGN_SHORTLIST
 
 | 항목 | 확인 내용 |
 |---|---|
-| 외부 의존성 없음 | 금지된 라이브러리(외부 아이콘, Tailwind 등)를 사용하지 않는가 |
-| 애니메이션 성능 | transform/opacity 기반 애니메이션을 우선 사용하는가 |
-| 코드 구조 | 컴포넌트가 200줄 이하이고 STYLES 객체가 분리되어 있는가 |
+| Pencil→코드 변환 용이성 | 디자인 요소가 CSS/JSX로 자연스럽게 매핑 가능한가 (복잡한 레이어 중첩 지양) |
+| 애니메이션 스펙 현실성 | 명시된 애니메이션 스펙이 transform/opacity 기반으로 구현 가능한가 |
+| 금지 의존성 없음 | 외부 아이콘 라이브러리, Tailwind 등 금지 패턴 없는가 |
 | 접근성 | 색상 대비, 텍스트 크기 등 기본 접근성 요건을 충족하는가 |
 
 ---
@@ -168,11 +168,11 @@ PICK 조건을 동시 충족하는 variant가 2개 이상일 때:
 
 ## 스크린샷 / MCP 실패 처리
 
-Playwright 또는 Stitch MCP 호출 실패 시:
-1. ASCII 와이어프레임만으로 채점 진행
-2. 출력 상단 명시: "시각적 확인 불가 — ASCII 와이어프레임 기준으로만 채점"
+Pencil MCP 스크린샷 미제공 또는 get_screenshot 실패 시:
+1. designer가 제공한 차별화 검증 테이블 + 애니메이션 스펙만으로 채점 진행
+2. 출력 상단 명시: "시각적 확인 불가 — 텍스트 스펙 기준으로만 채점"
 3. 색상 대비·터치 영역 등 시각 의존 항목은 0점 대신 "(확인 불가)" 기재 후 나머지 항목으로 비례 환산
-4. 모든 점수에 주석: "[ASCII 기준, 실제 렌더 후 재채점 권장]"
+4. 모든 점수에 주석: "[텍스트 스펙 기준, 실제 Pencil 렌더 후 재채점 권장]"
 
 ## ESCALATE 반복 처리
 
@@ -191,17 +191,17 @@ ESCALATE를 2회 연속 반환 시, 3번째 심사는 "가장 낮은 리스크" 
 
 | Variant | UX 명료성 | 미적 독창성 | 컨텍스트 적합성 | 구현 실현성 | 합계 |
 |---|---|---|---|---|---|
-| Variant 1: [이름] | X/10 | X/10 | X/10 | X/10 | X/40 |
-| Variant 2: [이름] | X/10 | X/10 | X/10 | X/10 | X/40 |
-| Variant 3: [이름] | X/10 | X/10 | X/10 | X/10 | X/40 |
+| variant-A: [이름] | X/10 | X/10 | X/10 | X/10 | X/40 |
+| variant-B: [이름] | X/10 | X/10 | X/10 | X/10 | X/40 |
+| variant-C: [이름] | X/10 | X/10 | X/10 | X/10 | X/40 |
 
 ### PICK 근거 (PICK 시)
 [선택한 variant의 강점과 선택 이유]
 
 ### 각 Variant 단점
-- **Variant 1**: [개선 필요 사항]
-- **Variant 2**: [개선 필요 사항]
-- **Variant 3**: [개선 필요 사항]
+- **variant-A**: [개선 필요 사항]
+- **variant-B**: [개선 필요 사항]
+- **variant-C**: [개선 필요 사항]
 
 ### ITERATE 피드백 (ITERATE 시)
 [구체적 개선 방향 — designer 에이전트에게 전달할 내용]
