@@ -261,7 +261,7 @@ global_executor = os.path.join(harness_root, 'harness', 'executor.sh')
 | **UI 프레임워크** | React 코드 생성, TypeScript Props 가정 | agents/designer.md, agents/engineer.md, agents/architect/*.md | HIGH |
 | **패키지 매니저** | `npm install/run/build`, `npx` | CLAUDE-base.md, setup-agents.sh, commands/deliver.md | MEDIUM |
 | **브라우저 자동화** | `mcp__playwright__*` (22개 도구) | settings.json, agents/design-critic.md | MEDIUM |
-| **디자인 도구** | Figma MCP, Stitch MCP | agents/designer.md, agents/engineer.md | MEDIUM |
+| **디자인 도구** | Pencil MCP | agents/designer.md | MEDIUM |
 | **OS 알림** | `afplay` (macOS 전용) | settings.json | LOW |
 
 ### 4B.2 추상화 전략: `providers` 설정 + 룩업 테이블

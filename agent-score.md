@@ -26,7 +26,7 @@
 | 3 | product-planner | 90 | 이해관계자 충돌 처리 없음, PRODUCT_PLAN_READY 선언 시점 기준 모호 |
 | 4 | designer | 91 | ✅ 개선됨 (82→91). 잔여: UX 개편 진입 조건 모호, Mode A/B 출력 형식 분리 미완 |
 | 5 | qa | 87 | KNOWN_ISSUE 결정 주체 불명확, 재검증 루프 주체가 메인 Claude 의존 |
-| 6 | engineer | 87 | CHANGES_REQUESTED 피드백 처리 별도 없음, Figma Mode B 불완전 _(루프 한도 추가로 +1)_ |
+| 6 | engineer | 87 | CHANGES_REQUESTED 피드백 처리 별도 없음 _(루프 한도 추가로 +1)_ |
 | 7 | test-engineer | 87 | 기존 테스트 파일 처리 없음 _(자체 수정 한도 추가로 +1)_ |
 | 8 | design-critic | 89 | ✅ 개선됨 (85→89). 잔여: ITERATE 피드백 구체성 기준 없음 |
 | 9 | validator | 90 | ✅ 개선됨 (86→90). 잔여: Mode A 저장 실제 보장은 메인 Claude 의존 |
@@ -37,7 +37,7 @@
 ## 공통 미비 패턴
 
 - **루프 재시도 한도** — 대부분 에이전트에 최대 재시도 횟수 없음
-- **MCP 실패 fallback** — designer, design-critic: Stitch/Figma 실패 시 복구 절차 없음
+- **MCP 실패 fallback** — designer, design-critic: Pencil MCP 실패 시 복구 절차 없음
 - **이전 루프 참조 강제** — pr-reviewer, validator: 재검토 시 이전 MUST FIX/FAIL 목록 참조 의무 없음
 
 ---
@@ -102,7 +102,7 @@
 | 카테고리 | 점수 | 세부 내용 |
 |---|---|---|
 | 역할 명확성 | 18/20 | Phase 1~3, SPEC_GAP_FOUND, DESIGN_HANDOFF 통합. **감점**: pr-reviewer CHANGES_REQUESTED 수신 처리 별도 없음 |
-| 워크플로우 완성도 | 22/25 | SPEC_GAP 9항목, 자가 검증 6항목, DESIGN_HANDOFF 토큰 변환+충돌+영향도, 커밋 규칙. **감점**: DESIGN_HANDOFF Mode B(Figma) frame→React 변환 절차 없음 |
+| 워크플로우 완성도 | 22/25 | SPEC_GAP 9항목, 자가 검증 6항목, DESIGN_HANDOFF 토큰 변환+충돌+영향도, 커밋 규칙. **감점**: DESIGN_HANDOFF 시 Pencil→코드 변환 절차 미비 |
 | 엣지케이스 & 충돌 처리 | 16/20 | SPEC_GAP 에스컬레이션, 병렬 impl 충돌 처리. **감점**: CHANGES_REQUESTED와 FAIL 동시 수신 우선순위 없음 |
 | 출력 일관성 | 17/20 | 완료 보고 형식, SPEC_GAP_FOUND 형식. **감점**: DESIGN_HANDOFF 완료 보고에 영향받은 파일 섹션 없음 |
 | 제약 & 가드레일 | 13/15 | 계획 외 기능 금지, 래퍼 함수만, as any 금지, git add . 금지. **감점**: tsc 통과 강제 없음(권고만), 최대 재시도 횟수 없음 |
@@ -137,14 +137,14 @@
 |---|---|---|
 | 역할 명확성 | 19/20 | 3 variant vs 5→3 모드 분리, 4개 마커, 읽기 전용. **감점**: Playwright 스크린샷 사용 시점이 base에 없음 |
 | 워크플로우 완성도 | 22/25 | View 위반 선행 체크, 4축 40점, 판정 기준 명확, UX 개편 4가중치. **감점**: 5→3 선별 후 유저 미승인 시 처리 없음, ESCALATE 반복 발생 처리 없음 |
-| 엣지케이스 & 충돌 처리 | 13/20 | View 전용 위반 ITERATE 감점 명시. **감점**: 동점 타이브레이킹 없음, 3개 모두 30점 이상 시 처리 불명확, Stitch MCP 실패 fallback 없음 |
+| 엣지케이스 & 충돌 처리 | 13/20 | View 전용 위반 ITERATE 감점 명시. **감점**: 동점 타이브레이킹 없음, 3개 모두 30점 이상 시 처리 불명확, Pencil MCP 실패 fallback 없음 |
 | 출력 일관성 | 18/20 | 점수표, PICK 근거, Variant 단점, ITERATE 피드백, UX_REDESIGN_SHORTLIST 형식 완전. **감점**: ITERATE 피드백 구체성 수준 기준 없음 |
 | 제약 & 가드레일 | 14/15 | 읽기 전용, 새 variant 생성 범위 밖, 증거 기반, 유저 승인 없이 진행 절대 금지. **감점**: 반복 ITERATE 루프 한도가 base에 없음 |
 
 **개선 우선순위**
 1. 동점 타이브레이킹 규칙: "구현 실현성" 우선 → 여전히 동점 → ESCALATE
 2. 3개 모두 PICK 조건 충족 시 최고점 variant 자동 PICK 명시
-3. Stitch MCP 실패 시 "ASCII 와이어프레임으로 유저 직접 선택" fallback 추가
+3. Pencil MCP 실패 시 "ASCII 와이어프레임으로 유저 직접 선택" fallback 추가
 
 ---
 
@@ -170,7 +170,7 @@
 | 카테고리 | 점수 | 세부 내용 |
 |---|---|---|
 | 역할 명확성 | 18/20 | Mode A/B/UX개편 3가지, View-layer only, 차별화 의무. **감점**: UX 개편 모드 진입 조건이 주관적 (컴포넌트 vs 화면 전체 경계 수치 없음) |
-| 워크플로우 완성도 | 23/25 | Phase 0~2, UX 개편 5→critic→Stitch→유저, Stitch 실패 4단계 fallback, ITERATE 처리 절차. **감점**: Phase 0 skip 기준 없음 |
+| 워크플로우 완성도 | 23/25 | Phase 0~4, Pencil MCP 기반 variant 생성→critic→유저, MCP 실패 4단계 fallback, ITERATE 처리 절차. **감점**: Phase 0 skip 기준 없음 |
 | 엣지케이스 & 충돌 처리 | 18/20 | Variant 차별화 자가 검증 게이트, MCP 실패 fallback, ITERATE 3라운드 한도, DESIGN_LOOP_ESCALATE. **감점**: 3라운드 후 유저도 모든 variant 거부 시 처리 없음 |
 | 출력 일관성 | 18/20 | DESIGN_READY_FOR_REVIEW, DESIGN_HANDOFF, DESIGN_LOOP_ESCALATE 마커, 피드백 누적 추적. **감점**: UX 개편 5개 와이어프레임 출력 형식 없음, Mode A/B 출력 형식 분리 불명확 |
 | 제약 & 가드레일 | 14/15 | View-layer only, 금지 목록, 더미 데이터, variant 자가 체크 게이트, ITERATE 한도. **감점**: 200줄 자가 검증 게이트 없음(원칙만 존재) |

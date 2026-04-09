@@ -57,6 +57,12 @@ def fast_classify(prompt):
     # BUG — 수정 확인 질문 ("수정한거 맞아/고친됐나/fix됐어 아직")
     if re.search(r'(수정|고친|fix)(한거|된거|됐어|됐나|됐어요).*(맞아|맞나|확인|아직|여전)', p, re.I):
         return "BUG"
+    # BUG — "이슈" + "수정/고치/fix" 조합 (이슈 수정 요청 = 버그픽스 요청)
+    if re.search(r'(이슈|issue).*(수정|고치|고쳐|fix)', p, re.I):
+        return "BUG"
+    # BUG — 잘못된 동작 묘사 + 기대 동작 패턴 ("X하고 있는데 Y해야 할 것 같아")
+    if re.search(r'(고\s*있는데|이는데|하는데).*(야\s*할\s*것\s*같|해야\s*할|멈춰야|되어야|돼야)', p):
+        return "BUG"
     # QUESTION — 물음표로 끝나면 (BUG 패턴에 안 걸린 경우만)
     if re.search(r'\?\s*$', p):
         return "QUESTION"

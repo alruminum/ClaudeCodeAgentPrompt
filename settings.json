@@ -6,7 +6,6 @@
     "DISABLE_AUTO_COMPACT": "1"
   },
   "permissions": {
-    "defaultMode": "acceptEdits",
     "allow": [
       "WebFetch",
       "Write(~/.claude/**)",
@@ -62,8 +61,10 @@
       "Bash(chmod -R 777 *)",
       "Bash(curl * | bash*)",
       "Bash(wget * | bash*)"
-    ]
+    ],
+    "defaultMode": "acceptEdits"
   },
+  "model": "sonnet",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -211,6 +212,5 @@
     }
   },
   "effortLevel": "high",
-  "skipDangerousModePermissionPrompt": true,
-  "model": "sonnet"
+  "skipDangerousModePermissionPrompt": true
 }
