@@ -31,13 +31,13 @@
 | 마커 | 발행 주체 | 처리 |
 |------|-----------|------|
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
-| `VALIDATION_ESCALATE` | validator Code Validation (3회 초과) | 메인 Claude 보고 |
-| `REVIEW_LOOP_ESCALATE` | pr-reviewer (3라운드 초과) | 메인 Claude 보고 |
+| ~~`VALIDATION_ESCALATE`~~ | ~~validator Code Validation~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
+| ~~`REVIEW_LOOP_ESCALATE`~~ | ~~pr-reviewer~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
 | `KNOWN_ISSUE` | qa (1회 분석으로 원인 특정 불가) | 메인 Claude 보고 |
 | `SCOPE_ESCALATE` | qa (관련 모듈/파일 = 0 → 신규 기능 판정) | 메인 Claude 보고 — product-planner 라우팅 |
 | `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
-| `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 리셋 초과) | architect SPEC_GAP 권장 |
+| `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 동결 초과) | 메인 Claude 보고 — 복귀 옵션 제시 |
 | `DESIGN_LOOP_ESCALATE` | designer (3라운드 후에도 ITERATE) | 유저 직접 선택 |
 | `TECH_CONSTRAINT_CONFLICT` | architect SPEC_GAP (기술 제약 충돌) | 메인 Claude 보고 |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation (재검 후 재FAIL) | 메인 Claude 보고 |
@@ -63,7 +63,7 @@
 | `READY_FOR_IMPL` | 유저 명시 승인 전 구현 루프 자동 진입 금지 |
 | `DESIGN_HANDOFF` | 유저 선택 전 구현 루프 자동 진입 금지 |
 | `HARNESS_DONE` | 유저 보고 후 대기. 다음 모듈 자동 진입 금지 |
-| `PLAN_DONE` | 유저 결정 전 다음 단계 진입 금지 |
+| ~~`PLAN_DONE`~~ | **폐기** — `PRODUCT_PLAN_READY` + `READY_FOR_IMPL` 유저 게이트로 대체. |
 | `PLAN_VALIDATION_PASS` | 유저 확인 전 impl 자동 호출 금지 |
 
 **4. 서브에이전트 포어그라운드 순차 실행**
@@ -71,9 +71,13 @@
 백그라운드 스폰(Popen) 금지. 한 에이전트가 완료된 후 다음 에이전트 호출.
 실행 중 출력은 대화창에 그대로 노출되며, /cancel로 중단 가능.
 
-**5. 에스컬레이션 → 메인 Claude 보고 후 대기**
+**5. 에스컬레이션 → 메인 Claude 보고 후 대기 + 복귀 옵션 제시**
 에스컬레이션 마커 수신 시 자동 복구 시도 금지.
 반드시 유저에게 보고 후 지시를 기다린다.
+보고 시 아래 복귀 옵션을 제시한다:
+- **재시도**: 카운터 리셋 후 실패 단계부터 재실행
+- **롤백**: 이전 페이즈(설계/기획)로 돌아가 재작업
+- **중단**: 현재 브랜치 보존 후 루프 종료
 
 **6. 단일 소스 원칙 — orchestration-rules.md 선행 수정 강제**
 워크플로우 변경(에이전트 추가/삭제, 루프 순서 변경, 마커 추가, 플래그 추가)이 필요할 때:
@@ -102,15 +106,17 @@ impl 파일의 모든 요구사항 항목은 `## 수용 기준` 섹션에 검증
 | `(BROWSER:DOM)` | Playwright DOM 쿼리 | UI 렌더링·DOM 상태 검증이 필요한 경우 |
 | `(MANUAL)` | curl/bash 수동 절차 | 자동화가 불가능한 경우에만 (이유 명시 필수) |
 
-impl 진입 게이트 상세:
+impl 진입 게이트 상세 (validator Plan Validation 내부에서 통합 수행):
 ```
-validator [Plan Validation]
-  ↓ PASS (기존 Design/Code Validation 체크)
-validator [수용 기준 메타데이터 감사]  ← 정책 8 게이트
+validator [Plan Validation — 체크리스트 A·B·C 통합]
+  A: 구현 가능성
+  B: 스펙 완결성
+  C: 수용 기준 메타데이터 감사  ← 정책 8 게이트
   태그 없는 요구사항 발견 → PLAN_VALIDATION_FAIL (architect 재보강)
-  ↓ PASS
+  ↓ PASS (A+B+C 모두 통과)
 READY_FOR_IMPL
 ```
+> Note: 정책 8 게이트는 별도 validator 호출이 아닌 Plan Validation 체크리스트 C로 통합 수행.
 
 **9a. kill_check 공용화**
 `kill_check()` 함수는 `harness/impl-process.sh`와 `harness/executor.sh` 양쪽에서 사용한다.
@@ -171,7 +177,19 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 
 유저는 `/cancel` 또는 `/harness-kill`로 언제든 중단 가능.
 
-**15. 마커 동기화 — 에이전트 → 루프 → 스크립트**
+**15. SPEC_GAP는 attempt를 소비하지 않는다 (동결)**
+SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt 카운터를 소비하지 않고 **동결**한다.
+대신 별도 `spec_gap_count` (max 2)를 사용한다.
+- attempt(SPEC_GAP 제외)가 3회 도달 → IMPLEMENTATION_ESCALATE
+- spec_gap_count가 2회 도달 → IMPLEMENTATION_ESCALATE
+- 최대 시도: attempt 3 + spec_gap 2 = 라운드 5회
+이전의 "리셋" 방식(attempt 카운터를 0으로 되돌림)은 폐기. 오실레이션 방지.
+
+**16. 재시도 루프는 반드시 한도 체크 분기를 가진다**
+다이어그램에서 재시도 루프(예: TE_SELF, ENG_RETRY)를 표현할 때, "max N회" 텍스트만으로는 부족하다.
+반드시 `LIMIT_CHK{{"count > max?"}}` 분기 노드를 다이어그램에 포함하고, 초과 시 에스컬레이션 또는 FAIL_ROUTE에 연결한다.
+
+**17. 마커 동기화 — 에이전트 → 루프 → 스크립트**
 에이전트 파일(`agents/*.md`)에서 마커(인풋/아웃풋)를 추가·변경·삭제할 때:
 1. 에이전트 파일 수정
 2. 해당 루프 파일(`orchestration/*.md`) 마커 흐름 반영
@@ -205,9 +223,9 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 | depth | 머지 전 필수 |
 |---|---|
 | fast | 없음 (engineer 커밋만으로 머지) |
-| std | validator_b_passed |
+| std | code_validation_passed (스크립트 플래그: `validator_b_passed`) |
 | deep | pr_reviewer_lgtm + security_review_passed |
-| bugfix | validator_b_passed (bugfix-direct 경로) |
+| bugfix | code_validation_passed (스크립트 플래그: `validator_b_passed`) |
 
 머지: `git merge --no-ff`, 충돌 시 `MERGE_CONFLICT_ESCALATE` → 메인 Claude 보고
 

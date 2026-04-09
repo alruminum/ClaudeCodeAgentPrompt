@@ -54,7 +54,7 @@ flowchart TD
     SCOPE -->|NO| ARC_MP_SKIP
 
     ARC_SD -->|"plan_doc, selected_option"| SDR
-    ARC_MP_SKIP -->|"design_doc, module"| RFI
+    ARC_MP_SKIP -->|"design_doc, module"| IMPL_GATE
 
     SDR --> VAL_DV
     VAL_DV -->|"design_doc"| DRF

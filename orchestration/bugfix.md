@@ -56,21 +56,32 @@ flowchart TD
     SCOPE_CHECK -->|"NO (모듈/파일 없음)"| SE
     SCOPE_CHECK -->|"YES"| QA_ROUTE
 
-    QA_ROUTE -->|DESIGN_ISSUE| SE
+    QA_ROUTE -->|DESIGN_ISSUE| DESIGN_ENTRY["→ 디자인 루프"]
     QA_ROUTE -->|SPEC_ISSUE| ARC_MP
     QA_ROUTE -->|FUNCTIONAL_BUG| ARC_BF
+    QA_ROUTE -->|"BACKLOG\n(기능 요청/저우선)"| BACKLOG_EXIT["이슈 생성 후 대기\n(즉시 수정 불필요)"]
 
     ARC_MP -->|"design_doc, module"| VAL_PV
-    VAL_PV -->|"impl_path"| IMPL_ENTRY
+    VAL_PV --> PV_RESULT{{"PASS / FAIL"}}
+    PV_RESULT -->|PASS| IMPL_ENTRY
+    PV_RESULT -->|FAIL| ARC_RE_BF["architect 재보강\n(max 1회)"]
+    ARC_RE_BF -->|재FAIL| PV_ESC["PLAN_VALIDATION_ESCALATE"]:::escalation
+    ARC_RE_BF -->|PASS| IMPL_ENTRY
 
-    ARC_BF -->|"qa_report, issue"| ENG
+    ARC_BF -->|"qa_report, issue"| BFPR{"BUGFIX_PLAN_READY"}
+    BFPR --> ENG
     ENG -->|"impl_path"| VITEST
     VITEST --> VAL_BV
     VAL_BV -->|"impl_path, src_files, vitest_result?"| BF_RESULT
     BF_RESULT -->|BUGFIX_PASS| COMMIT
     BF_RESULT -->|BUGFIX_FAIL| ENG_RETRY
-    ENG_RETRY --> ENG
-    COMMIT --> HD
+    ENG_RETRY --> ENG_LIMIT{{"eng_retry > 2?"}}
+    ENG_LIMIT -->|NO| ENG
+    ENG_LIMIT -->|YES| BF_ESC["IMPLEMENTATION_ESCALATE"]:::escalation
+
+    COMMIT --> MERGE["merge_to_main\n(--no-ff)"]
+    MERGE -->|성공| HD
+    MERGE -->|충돌| MCE["MERGE_CONFLICT_ESCALATE"]:::escalation
 
     classDef escalation stroke:#f00,stroke-width:2px
 ```
@@ -82,6 +93,7 @@ flowchart TD
 | FUNCTIONAL_BUG | 관련 파일 ≥ 1 | engineer 직접 | architect Bugfix Plan → engineer → vitest → validator Bugfix Validation → commit |
 | SPEC_ISSUE | 관련 파일 ≥ 1 | architect 경유 | architect Module Plan → validator Plan Validation → 구현 루프 |
 | DESIGN_ISSUE | 관련 파일 ≥ 1 | → 디자인 루프 | designer → design-critic → engineer |
+| BACKLOG | routing=backlog | 이슈 생성 후 대기 | GitHub 이슈만 생성, 즉시 수정 불필요 |
 | any | 관련 모듈/파일 = 0 | **SCOPE_ESCALATE** | 메인 Claude 보고 후 대기 |
 
 ## severity → depth 연동
@@ -135,4 +147,7 @@ QA는 **Bugs 마일스톤에만** 이슈를 생성한다. Feature 마일스톤 �
 | `BUGFIX_PLAN_READY` | architect | engineer 코드 수정 |
 | `BUGFIX_PASS` | validator | commit → HARNESS_DONE |
 | `BUGFIX_FAIL` | validator | engineer 재시도 (max 2회) |
+| `IMPLEMENTATION_ESCALATE` | harness (eng_retry 3회 초과) | 메인 Claude 보고 |
+| `PLAN_VALIDATION_ESCALATE` | validator (SPEC_ISSUE 경로 재FAIL) | 메인 Claude 보고 |
+| `MERGE_CONFLICT_ESCALATE` | harness (merge 충돌) | 메인 Claude 보고 |
 | `HARNESS_DONE` | harness | 메인 Claude 보고 |
