@@ -211,7 +211,7 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 - `write_attempt_meta <meta_file> …` — jq 우선, 없으면 python3 fallback
 - `prune_history <loop_dir>` — attempt 5개 초과/단일 로그 50KB 초과/design round 3개 초과/전체 5MB 초과 시 정리
   - 호출 시점: attempt 디렉토리 생성 직후, 파일 기록 전 (race condition 방지)
-- 이 원칙은 impl/bugfix/design/plan 모든 루프에 적용
+- 이 원칙은 impl/bugfix/design/plan/tech-epic 모든 루프에 적용 (tech-epic.sh 구현 시 처음부터 HIST_DIR 구조 적용)
 
 ---
 
