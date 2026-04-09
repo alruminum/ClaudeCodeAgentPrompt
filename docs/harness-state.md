@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-09 (S71 — 디자인 워크플로우 v2: Pencil MCP 기반 재설계, HTML 프리뷰 제거, Figma 모드 제거, Phase 0~4 구조 도입)
+> 최종 업데이트: 2026-04-09 (S72 — git checkout stdout 오염 수정 + QA 타임아웃 300→600s + _agent_call 완료/타임아웃/실패 메시지 분기)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -116,7 +116,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S1 | 수용 기준 메타데이터 | `(TEST)/(BROWSER:DOM)/(MANUAL)` 태그 + validator Plan Validation 게이트 | 2026-04-05 |
 | S2 | PR body 자동 생성 | `harness/impl-process.sh` HARNESS_DONE 후 `/tmp/{p}_pr_body.txt` | 2026-04-05 |
 | S3 | doc-garden 스킬 | `/doc-garden` 커맨드 — 문서-코드 불일치 리포트 (수동 트리거, 자동 수정 없음) | 2026-04-05 |
-| S4 | Depth Selector | `--depth=fast/std/deep` — fast: engineer→commit만 / std: 전체 루프 / deep: std+S15 stub + 자동 감지 | 2026-04-05 |
+| S4 | Depth Selector | `--depth=fast/std/deep` — fast: eng→commit→pr-reviewer / std: eng→commit→test→validator→pr-reviewer / deep: std+security-reviewer. 자동 감지 포함 | 2026-04-05 |
 | S5 | Memory 반자동 기록 | FAIL 시 `/tmp/{p}_memory_candidate.md` 초안 작성, HARNESS_DONE 후 유저에게 기록 여부 제안 | 2026-04-05 |
 | S6 | AMBIGUOUS 자동 트리거 | `harness-router.py` AMBIGUOUS + no_active → product-planner 힌트 주입 (루프 진입 금지) | 2026-04-05 |
 | S7 | 세션 컨텍스트 브리지 | `harness-session-start.py` — 프로젝트명·최근커밋·진행중 항목 자동 주입. HARNESS_DONE 시 `last_issue` 저장 | 2026-04-05 |
@@ -129,7 +129,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S20 | Agent Observability | `harness/utils.sh` `_agent_call()` — stream-json tee → JSONL 아카이브 + python3 result 추출. FIFO 10-run 보존 (`rotate_harness_logs()`). 로그 위치: `~/.claude/harness-logs/{prefix}/run_*.jsonl` | 2026-04-06 |
 | S21 | 타임스탬프 로깅 (hlog) | `harness/impl-process.sh` `hlog()` 함수 — `[HH:MM:SS] [attempt=N]` 형식. 루프 시작/종료·에이전트 전후·vitest 전후 기록. `/tmp/${PREFIX}-harness-debug.log` | 2026-04-06 |
 | S22 | 에이전트 timeout + exit 124 감지 | `harness/utils.sh` `_call_exit` 전파 + `return $_call_exit`. `harness/impl-process.sh` 모든 `_agent_call`에 `\|\| AGENT_EXIT=$?` + exit 124 hlog | 2026-04-06 |
-| S23 | std 모드 게이트 축소 (5→3단계) | fast=1단계, std=3단계(engineer→test-engineer→validator), deep=5단계(+pr-reviewer+security-reviewer). std/fast에서 플래그 자동 touch | 2026-04-06 |
+| S23 | std 모드 게이트 축소 (5→3단계) → S72로 재편 | fast=2단계(eng→pr-reviewer), std=4단계(eng→test→validator→pr-reviewer), deep=5단계(+security-reviewer). 머지 조건=pr_reviewer_lgtm 전 depth 통일 | 2026-04-06 |
 | S24 | grep 파싱 라인 전체 매칭 | `grep -oE` → `grep -qE "^MARKER$"` 교체. UNKNOWN 케이스 `!= PASS` 통일. validator/pr-reviewer/security-reviewer 3곳 | 2026-04-06 |
 | S26 | git diff 타이밍 픽스 | deep 모드 pr-reviewer 호출 직전 `git add -A` 추가 → staged 변경이 diff에 포함 보장 | 2026-04-06 |
 | S30 | 에이전트별 예산 상한 | `harness/utils.sh` `_agent_call()`에 `--max-budget-usd 2.00` 추가. 개별 에이전트 폭주 방지 | 2026-04-06 |
@@ -155,13 +155,15 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S53 | 로그 분석 기반 5건 수정 | validator/pr/security 마커 파싱 완화(`grep -qi`), test-engineer timeout 300→600s, engineer Agent 금지, build_smart_context 소스파일 3KB캡+전체 30KB캡 | 2026-04-07 |
 | S62 | 스크립트↔룰 동기화 | e32ce43 이후 6개 스크립트 오케스트레이션 룰 반영. fast pr-reviewer 제거, SPEC_GAP 핸들링, bugfix KNOWN_ISSUE/backlog, plan DV+PV 추가, design ITERATE feedback 등 | 2026-04-09 |
 | S63 | utils.sh 공용 함수 추출 | `parse_marker()`, `run_plan_validation()`, `run_design_validation()` 추출. `kill_check()` `[` → `[[` 정비. impl.sh/bugfix.sh 중복 Plan Validation 코드 제거 | 2026-04-09 |
-| S64 | impl-process.sh fast 모드 정정 | fast에서 pr-reviewer 제거 (LLM 2회로 통일). validator FAIL 시 `validator_b_passed` 미설정 (이전: 무조건 touch) | 2026-04-09 |
+| S64 | impl-process.sh fast 모드 정정 | validator_b_passed 조건부 설정. S72로 fast 경로 재설계됨 | 2026-04-09 |
+| S72 | 커밋 전략 개편 | engineer 직후 즉시 커밋(feature branch). pr-reviewer를 fast/std/deep 전체 적용. 머지 조건=pr_reviewer_lgtm 전 depth 통일. security-reviewer는 deep only 유지. pr-reviewer model opus→sonnet | 2026-04-09 |
 | S65 | impl-process.sh SPEC_GAP 핸들링 | `SPEC_GAP_FOUND` → architect SPEC_GAP → 3-way 분기 (RESOLVED/PP_ESCALATION/TECH_CONSTRAINT). `spec_gap_count` 동결 카운터 (max 2, 정책 15) | 2026-04-09 |
 | S66 | bugfix.sh 라우팅 정비 | `backlog` → 이슈 생성 후 대기. `KNOWN_ISSUE` → 즉시 에스컬레이션. `DESIGN_ISSUE` → 디자인 루프 전환. qa 마일스톤 규칙 정정 (Bugs only). `grep -q '...\|...'` → `grep -qE`/`-qF` | 2026-04-09 |
 | S67 | plan.sh 흐름 완성 | 2단계(pp→architect) → 6단계(pp→architect SD→validator DV→architect MP→validator PV→PLAN_VALIDATION_PASS). `run_design_validation()` 공용 함수 활용 | 2026-04-09 |
 | S68 | design.sh 흐름 완성 | ITERATE feedback 전달. ESCALATE 분기 추가. DESIGN_LOOP_ESCALATE 마커. `parse_marker()` 활용 | 2026-04-09 |
 | S69 | 스마트 컨텍스트 공용화 + validator diff 패싱 | `build_smart_context()`, `build_validator_context()` harness/utils.sh로 이동. validator에 git diff 사전 전달 | 2026-04-09 |
 | S70 | 훅 전수 감사 | `orch-rules-first.py` HARNESS_INFRA_PATTERNS 구 파일명→실제 경로 수정 + hooks/*.py 전체 포함. `harness-drift-check.py` DRIFT_MAP 5개 에이전트 매핑 추가 (designer/design-critic/product-planner/pr-reviewer/security-reviewer). `file-ownership-gate.py` 삭제 (S55에서 agent-boundary.py에 통합 완료). BATS 테스트 16건 추가 (총 115건). harness-stop-gate.sh 참조 폐기 표기 | 2026-04-09 |
+| S72 | git checkout stdout 오염 + QA 타임아웃 수정 | `utils.sh` `create_feature_branch()`: 브랜치 존재 시 `git checkout`이 수정 파일 목록을 stdout 출력 → `>/dev/null 2>&1` 추가. `bugfix.sh` QA timeout 300→600s + QA exit code 체크 (타임아웃/실패 시 HARNESS_CRASH 조기 종료). `utils.sh` `_agent_call()` 완료 메시지 exit 코드 분기. `agents/qa.md` (global+project): Grep-first 전략 + Read 최대 3개/150줄 제한 + 총 도구 10회 제한. `hooks/harness-router.py` fast_classify: 발생해/아무것도 안나온/왜~거야 패턴 추가 (14/14 PASS) | 2026-04-09 |
 
 ---
 
@@ -189,15 +191,17 @@ graph TD
   Executor -->|impl| Architect[architect\nModule Plan]
   Architect --> Validator_C[validator\nPlan Validation]
   Validator_C -->|PASS| Loop
-  Loop -->|fast| Engineer[engineer\nsrc/** 구현]
-  Loop -->|std/deep| Engineer
-  Engineer --> Commit_fast[git commit\nfast mode]
-  Loop -->|std/deep| TestEngineer[test-engineer\n테스트 작성]
+  Loop -->|fast/std/deep| Engineer[engineer\nsrc/** 구현]
+  Engineer --> Commit_early[git commit\nfeature branch 즉시]
+  Commit_early -->|fast| PRReviewer_fast[pr-reviewer\n코드 품질]
+  Commit_early -->|std/deep| TestEngineer[test-engineer\n테스트 작성]
   TestEngineer --> Vitest[npx vitest run\nground truth]
   Vitest --> Validator_B[validator Mode B\n스펙 검증]
   Validator_B --> PRReviewer[pr-reviewer\n코드 품질]
-  PRReviewer --> Security[security-reviewer\nOWASP 감사]
-  Security --> Commit[git commit\n+ pr_body.txt + memory_candidate]
+  PRReviewer --> Security[security-reviewer\nOWASP 감사 — deep only]
+  Security --> Merge[merge_to_main\npr_reviewer_lgtm 게이트]
+  PRReviewer_fast --> Merge
+  PRReviewer --> Merge
 
   OrcRules[orchestration-rules.md] -.->|단일 소스| Executor
   OrcRules -.->|단일 소스| Loop

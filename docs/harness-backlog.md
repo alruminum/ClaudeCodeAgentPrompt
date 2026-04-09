@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-09 (S71 — 디자인 워크플로우 v2 완료)
+> 최종 업데이트: 2026-04-09 (S72 — git checkout stdout 오염 + QA 타임아웃 수정)
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -74,7 +74,8 @@
 | S12 | 루프 체크포인트 재개 (루프 C/D 상태 감지 + 재진입 스킵) | S | 🔧 진행 |
 | **S62** | **스크립트↔룰 동기화 — e32ce43 이후 스크립트 미반영 일괄 수정** | S | 🔧 진행 |
 | **S63** | **utils.sh 공용 함수 추출 — parse_marker()/run_plan_validation() + 코드 품질 정비** | S | 🔧 진행 |
-| **S64** | **impl-process.sh fast 모드 정정 — pr-reviewer 제거 + validator_b_passed 조건부 설정** | S | 🔧 진행 |
+| **S64** | **impl-process.sh fast 모드 정정 — validator_b_passed 조건부 설정** (S72로 대체됨) | S | ✅ 완료 |
+| **S72** | **커밋 전략 개편 — engineer 즉시 커밋 + pr-reviewer 전 depth 적용 + 머지 조건 통일** | S | ✅ 완료 |
 | **S65** | **impl-process.sh SPEC_GAP 핸들링 — spec_gap_count 동결/에스컬레이션 (정책 15)** | S | 🔧 진행 |
 | **S66** | **bugfix.sh 라우팅 정비 — backlog/KNOWN_ISSUE 경로 + qa 마일스톤 규칙 정정** | S | 🔧 진행 |
 | **S67** | **plan.sh 흐름 완성 — validator DV + Task Decompose/Module Plan + Plan Validation** | S | 🔧 진행 |
@@ -762,3 +763,23 @@ M1(보안 파일 한정) → 전체 PR로 확장.
 - 스태시는 `git stash list`로 확인/복구 가능
 
 **변경 파일**: `harness/impl-process.sh`
+
+---
+
+### ✅ S72 — git checkout stdout 오염 + QA 타임아웃 수정
+
+**배경**: run_20260409_163231에서 `MERGE_CONFLICT_ESCALATE` 발생. 브랜치명이 `MCLAUDE.mdfix/91-fix-freeze`로 오염.
+분석 결과 두 가지 버그 발견:
+
+**버그 1 — git checkout stdout 오염 (utils.sh)**
+- `create_feature_branch`에서 브랜치가 이미 존재할 때 `git checkout "$branch_name"` 실행
+- 수정된 추적 파일(CLAUDE.md, docs/test-plan.md)이 있으면 git이 수정 파일 목록을 stdout으로 출력
+- `FEATURE_BRANCH=$(create_feature_branch ...)` 가 오염된 문자열 캡처 → 브랜치명 깨짐
+- 수정: `git checkout` 명령에 `>/dev/null 2>&1` 추가
+
+**버그 2 — QA 300s 타임아웃 (bugfix.sh)**
+- QA 에이전트가 6개 파일 읽음 (Glob 1 + Read 6) → 토큰 처리+생성 시간 초과
+- 300s 제한이 너무 빡빡함 (architect는 600s)
+- 수정: QA timeout 300 → 600
+
+**변경 파일**: `harness/utils.sh`, `harness/bugfix.sh`
