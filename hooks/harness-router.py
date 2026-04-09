@@ -63,6 +63,15 @@ def fast_classify(prompt):
     # BUG — 잘못된 동작 묘사 + 기대 동작 패턴 ("X하고 있는데 Y해야 할 것 같아")
     if re.search(r'(고\s*있는데|이는데|하는데).*(야\s*할\s*것\s*같|해야\s*할|멈춰야|되어야|돼야)', p):
         return "BUG"
+    # BUG — "발생해/발생하고/발생함" (어떤 현상이 일어나고 있다는 버그 리포트)
+    if re.search(r'(발생해|발생하고|발생함|발생한다|발생중)', p) and not re.search(r'(추가|구현|만들)', p):
+        return "BUG"
+    # BUG — "아무것도 안나온/화면에 안나" (아무것도 표시 안됨 = 버그)
+    if re.search(r'(아무것도\s*안\s*나|화면.*아무것도|안\s*나[와온]\s*)', p):
+        return "BUG"
+    # QUESTION — "왜 계속 X야/뭐한거야" (why 질문, 물음표 없는 형태)
+    if re.match(r'^왜\s+', p) and re.search(r'(거야|뭐야|거지|건지|건가|거냐|한거야)\s*$', p):
+        return "QUESTION"
     # QUESTION — 물음표로 끝나면 (BUG 패턴에 안 걸린 경우만)
     if re.search(r'\?\s*$', p):
         return "QUESTION"

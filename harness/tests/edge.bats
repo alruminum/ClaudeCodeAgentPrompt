@@ -153,30 +153,35 @@ exit 0' > "$mock_script"
   [[ "$output" == *"MERGE_CONFLICT_ESCALATE"* ]]
 }
 
-# === regression: fast mode has NO pr-reviewer ===
+# === regression: fast mode HAS pr-reviewer (since commit-strategy refactor) ===
 
-@test "regression: fast mode does not call pr-reviewer" {
-  # Verify impl-process.sh fast section has no pr-reviewer
+@test "regression: fast mode calls pr-reviewer" {
+  # After commit-strategy refactor, pr-reviewer runs on fast/std/deep
   run bash -c '
-    # Extract fast mode section only
-    sed -n "/depth=fast/,/exit 0/p" "'"${HARNESS_DIR}/impl-process.sh"'" \
-      | grep -c "pr-reviewer"
+    grep -c "pr-reviewer" "'"${HARNESS_DIR}/impl-process.sh"'"
   '
-  # Should be 0 (no pr-reviewer in fast mode)
-  [[ "$output" == "0" ]]
+  # Must appear in the file (covers fast path)
+  [[ "$output" -ge 1 ]]
 }
 
-# === regression: validator_b_passed NOT set on fast FAIL ===
-
-@test "regression: fast validator FAIL does not touch validator_b_passed" {
+@test "regression: fast mode uses git diff HEAD~1 for pr-reviewer diff" {
+  # After early commit, diff must reference HEAD~1 (not HEAD)
   run bash -c '
-    # Check the conditional logic in fast mode
-    sed -n "/fast: validator/,/fast: merge/p" "'"${HARNESS_DIR}/impl-process.sh"'" \
-      | grep -B2 "validator_b_passed"
+    sed -n "/fast: pr-reviewer/,/fast: merge/p" "'"${HARNESS_DIR}/impl-process.sh"'" \
+      | grep "diff HEAD~1"
   '
-  # Should show conditional (if PASS then touch)
-  [[ "$output" == *"PASS"* ]]
-  [[ "$output" == *"touch"* ]]
+  [[ "$output" == *"HEAD~1"* ]]
+}
+
+# === regression: pr_reviewer_lgtm set after fast pr-reviewer ===
+
+@test "regression: fast path touches pr_reviewer_lgtm after pr-reviewer" {
+  run bash -c '
+    # The fast section should touch pr_reviewer_lgtm
+    sed -n "/HARNESS.fast. pr-reviewer/,/HARNESS.fast. merge/p" "'"${HARNESS_DIR}/impl-process.sh"'" \
+      | grep "pr_reviewer_lgtm"
+  '
+  [[ "$output" == *"pr_reviewer_lgtm"* ]]
 }
 
 # === policy 15: max rounds = attempt 3 + spec_gap 2 = 5 ===

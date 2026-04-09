@@ -119,6 +119,37 @@ for old_file in ".claude/harness-loop.sh" ".claude/harness/executor.sh" ".claude
   fi
 done
 
+# ── rule-audit pre-commit hook 설치 ────────────────────────────────────
+# harness 관련 파일 변경 시 rule-audit.bats를 자동 실행
+# 이미 pre-commit hook이 있으면 append (덮어쓰기 금지)
+PRECOMMIT_HOOK=".git/hooks/pre-commit"
+RULE_AUDIT_MARKER="# rule-audit: harness consistency check"
+GLOBAL_HARNESS_DIR="${HOME}/.claude/harness"
+
+if [ -d ".git/hooks" ]; then
+  if ! grep -qF "$RULE_AUDIT_MARKER" "$PRECOMMIT_HOOK" 2>/dev/null; then
+    cat >> "$PRECOMMIT_HOOK" <<HOOKEOF
+
+${RULE_AUDIT_MARKER}
+_harness_changed=\$(git diff --cached --name-only 2>/dev/null | grep -E "(impl-process\.sh|bugfix\.sh|utils\.sh|orchestration-rules\.md|RULE_INDEX\.md)" || true)
+if [ -n "\$_harness_changed" ]; then
+  echo "[pre-commit] harness 파일 변경 감지 — rule-audit.bats 실행 중..."
+  if command -v bats &>/dev/null && [ -f "${GLOBAL_HARNESS_DIR}/tests/rule-audit.bats" ]; then
+    bats "${GLOBAL_HARNESS_DIR}/tests/rule-audit.bats" || { echo "[pre-commit] rule-audit.bats 실패 — commit 중단"; exit 1; }
+  else
+    echo "[pre-commit] bats 미설치 또는 rule-audit.bats 없음 — 검사 스킵"
+  fi
+fi
+HOOKEOF
+    chmod +x "$PRECOMMIT_HOOK"
+    echo "✅ pre-commit hook에 rule-audit 추가 완료: $PRECOMMIT_HOOK"
+  else
+    echo "ℹ️  pre-commit hook에 rule-audit 이미 등록됨 — 스킵"
+  fi
+else
+  echo "ℹ️  .git/hooks 디렉토리 없음 — pre-commit hook 스킵 (git init 후 재실행)"
+fi
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ Harness 프로젝트 설정 완료"

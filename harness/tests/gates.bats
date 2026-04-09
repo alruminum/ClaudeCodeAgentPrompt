@@ -14,33 +14,43 @@ teardown() {
 
 # === merge_to_main depth gates ===
 
-@test "merge gate: fast has no gate requirements" {
+@test "merge gate: fast requires pr_reviewer_lgtm" {
   create_test_commit "init.txt"
-  local default_br=$(git -C "${GIT_WORK_TREE}" branch --show-current)
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-merge" 2>/dev/null
   create_test_commit "feature.txt"
-  # No flags set at all - fast should still merge
+  # No pr_reviewer_lgtm — fast should be rejected
+  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/test-merge" "999" "fast" "$PREFIX"
+  [[ $status -ne 0 ]]
+  [[ "$output" == *"pr_reviewer_lgtm"* ]]
+}
+
+@test "merge gate: fast passes with pr_reviewer_lgtm" {
+  create_test_commit "init.txt"
+  git -C "${GIT_WORK_TREE}" checkout -b "feat/test-merge2" 2>/dev/null
+  create_test_commit "feature.txt"
+  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  run merge_to_main "feat/test-merge2" "999" "fast" "$PREFIX"
   [[ $status -eq 0 ]]
 }
 
-@test "merge gate: std requires validator_b_passed" {
+@test "merge gate: std requires pr_reviewer_lgtm (not validator_b_passed)" {
   create_test_commit "init.txt"
-  local default_br=$(git -C "${GIT_WORK_TREE}" branch --show-current)
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-std" 2>/dev/null
   create_test_commit "feature.txt"
-  # No validator_b_passed flag
-  rm -f "/tmp/${PREFIX}_validator_b_passed"
+  # validator_b_passed alone is insufficient for std
+  touch "/tmp/${PREFIX}_validator_b_passed"
+  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/test-std" "999" "std" "$PREFIX"
   [[ $status -ne 0 ]]
-  [[ "$output" == *"validator_b_passed"* ]]
+  [[ "$output" == *"pr_reviewer_lgtm"* ]]
 }
 
-@test "merge gate: std passes with validator_b_passed" {
+@test "merge gate: std passes with pr_reviewer_lgtm" {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-std2" 2>/dev/null
   create_test_commit "feature.txt"
-  touch "/tmp/${PREFIX}_validator_b_passed"
+  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/test-std2" "999" "std" "$PREFIX"
   [[ $status -eq 0 ]]
 }
