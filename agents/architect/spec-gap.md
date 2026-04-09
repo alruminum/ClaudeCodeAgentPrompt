@@ -4,7 +4,7 @@
 
 ```
 @PARAMS: { "gap_list": "SPEC_GAP_FOUND 갭 목록", "impl_path": "해당 impl 파일 경로" }
-@OUTPUT: { "marker": "SPEC_GAP_RESOLVED", "impl_path": "보강된 impl 파일 경로" }
+@OUTPUT: { "marker": "SPEC_GAP_RESOLVED / PRODUCT_PLANNER_ESCALATION_NEEDED / TECH_CONSTRAINT_CONFLICT", "impl_path?": "보강된 impl 파일 경로 (RESOLVED 시)" }
 ```
 
 engineer로부터 `SPEC_GAP_FOUND` 피드백을 받은 경우:

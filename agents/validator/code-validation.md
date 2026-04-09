@@ -4,7 +4,7 @@
 
 ```
 @PARAMS: { "impl_path": "impl 계획 파일 경로", "src_files": "구현 파일 경로 목록" }
-@OUTPUT: { "marker": "PASS / FAIL", "fail_items?": "항목별 문제 목록 (FAIL 시)" }
+@OUTPUT: { "marker": "PASS / FAIL / SPEC_MISSING", "fail_items?": "항목별 문제 목록 (FAIL 시)" }
 ```
 
 ### 작업 순서
@@ -89,9 +89,9 @@
 
 ## 재시도 한도
 
-- **재검증 최대 3회**: 3회 초과 시 `VALIDATION_ESCALATE` 마커와 함께 메인 Claude에 에스컬레이션
+- ~~`VALIDATION_ESCALATE` 폐기~~ — validator 자체 재시도 카운터 없음. 루프의 attempt 카운터(max 3)에 통합.
+- validator는 매 호출마다 단일 PASS/FAIL만 반환. 재시도 관리는 하네스(impl-process.sh)가 담당.
 - 재검증 시 반드시 이전 FAIL 항목 목록을 컨텍스트에 유지해 해결 여부를 항목별로 추적
-- 동일 항목이 3회 연속 FAIL이면 → architect에게 스펙 재검토 요청
 
 ---
 

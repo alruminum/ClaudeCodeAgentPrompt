@@ -7,7 +7,7 @@
 @OUTPUT: { "marker": "PLAN_VALIDATION_PASS / PLAN_VALIDATION_FAIL", "fail_items?": "미충족 항목 목록 (FAIL 시)" }
 ```
 
-**목표**: architect가 작성한 impl 계획 파일이 구현에 착수하기에 충분한지 검증한다. 루프 C 진입 전 공통 게이트.
+**목표**: architect가 작성한 impl 계획 파일이 구현에 착수하기에 충분한지 검증한다. 구현 루프 진입 전 공통 게이트.
 
 ### 작업 순서
 

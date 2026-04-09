@@ -4,7 +4,8 @@ AI 보조 소프트웨어 개발 워크플로를 위한 에이전트 모음.
 각 에이전트는 `## 공통 지침` + `## 프로젝트 특화 지침` 2-섹션 구조로 관리된다. `/agent-downSync`로 공통 지침을 로컬에 내려받고, `/agent-upSync`로 다시 올린다.
 
 > **오케스트레이션 방식**: 메인 Claude가 `~/.claude/orchestration-rules.md`를 직접 읽고 에이전트를 순서대로 호출한다. 오케스트레이터 에이전트 없음.
-> 워크플로 강제는 `.claude/settings.json`의 PreToolUse/PostToolUse 훅으로 처리한다 (validator PASS 전 engineer 차단, architect Mode 명시 강제 등).
+> 워크플로 강제는 `.claude/settings.json`의 PreToolUse/PostToolUse 훅으로 처리한다 (validator PASS 전 engineer 차단, architect @MODE 명시 강제 등).
+> ⚠️ 이 README의 ASCII 다이어그램은 레거시(Mode A/B/C 명칭). 최신 흐름은 `orchestration/*.md` 참조.
 
 ---
 
