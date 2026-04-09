@@ -13,8 +13,9 @@
 #   PreToolUse(Bash)       — harness-drift-check.py + commit-gate.py
 #   PreToolUse(Agent)      — agent-gate.py
 #   PostToolUse(Edit)      — harness-settings-watcher.py
-#   PostToolUse(Bash)      — post-commit-cleanup.py
+#   PostToolUse(Bash)      — post-commit-cleanup.py + harness-review-trigger.py
 #   PostToolUse(Agent)     — post-agent-flags.py
+#   Stop                   — afplay Glass.aiff + harness-review-stop.py
 #
 # prefix 결정: 각 훅이 harness_common.get_prefix()로 harness.config.json → dirname → "proj" 폴백
 #
