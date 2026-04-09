@@ -816,7 +816,7 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       hlog "security-reviewer 스킵 (depth=$DEPTH)"
     fi
 
-    # ── merge to main ─────────────────────────────────────────────
+    # ── merge to main ────────────────────────────────────────────
     # test-engineer가 추가한 테스트 파일 등 미커밋 변경 처리
     if collect_changed_files > /dev/null 2>&1; then
       collect_changed_files | while IFS= read -r _cf; do
@@ -826,8 +826,6 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       hlog "test 파일 추가 커밋 완료"
     fi
     impl_commit=$(git rev-parse --short HEAD)
-
-    # ── merge to main ────────────────────────────────────────────
     if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "$DEPTH" "$PREFIX"; then
       export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
       echo "MERGE_CONFLICT_ESCALATE"
