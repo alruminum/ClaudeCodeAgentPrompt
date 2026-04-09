@@ -357,12 +357,12 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     log_phase "pr-reviewer"
     echo "[HARNESS/fast] pr-reviewer 호출 중"
     hlog "pr-reviewer 시작 (depth=fast, timeout=180s)"
-    local fast_diff
-    fast_diff=$(git diff HEAD 2>&1 | head -300)
+    fast_diff=$(git diff HEAD~1 2>&1 | head -300)
+    fast_src=$(git diff --name-only HEAD~1 2>/dev/null | tr '\n' ' ')
     AGENT_EXIT=0
     _agent_call "pr-reviewer" 180 \
       "@MODE:PR_REVIEWER:REVIEW
-@PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$(git diff --name-only HEAD 2>/dev/null | tr '\n' ' ')\" }
+@PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$fast_src\" }
 변경 diff:
 $fast_diff" \
       "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
@@ -388,7 +388,6 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
       budget_check "engineer" "/tmp/${PREFIX}_eng_fix_out.txt"
 
       # 추가 변경 커밋
-      local fix_list
       fix_list=$(collect_changed_files || true)
       if [[ -n "$fix_list" ]]; then
         echo "$fix_list" | while IFS= read -r _cf; do
@@ -600,10 +599,10 @@ $spec_gap_context" \
       collect_changed_files | while IFS= read -r _cf; do
         [[ -n "$_cf" ]] && git add -- "$_cf"
       done
-      local commit_suffix=""
+      commit_suffix=""
       [[ $attempt -gt 0 ]] && commit_suffix=" [attempt-${attempt}-fix]"
       git commit -m "$(generate_commit_msg)${commit_suffix}"
-      local early_commit; early_commit=$(git rev-parse --short HEAD)
+      early_commit=$(git rev-parse --short HEAD)
       [[ -n "$RUN_LOG" ]] && printf '{"event":"commit","hash":"%s","attempt":%d,"t":%d}\n' \
         "$early_commit" "$((attempt+1))" "$(date +%s)" >> "$RUN_LOG"
       hlog "early commit: $early_commit (attempt=$((attempt+1)))"
