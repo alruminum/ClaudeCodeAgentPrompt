@@ -244,7 +244,7 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
     echo "[HARNESS] depth=fast → architect Mode F 스킵, QA 출력을 engineer에 직접 전달"
   else
     echo "[HARNESS] Phase B2 — architect Bugfix Plan(Mode F) 호출 중"
-    _agent_call "architect" 300 \
+    _agent_call "architect" 600 \
       "Bugfix Plan(Mode F) — ${qa_out} issue: #$ISSUE_NUM" \
       "/tmp/${PREFIX}_arch_out.txt"
     IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
