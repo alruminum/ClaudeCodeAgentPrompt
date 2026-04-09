@@ -1,7 +1,17 @@
 #!/bin/bash
 # ~/.claude/setup-agents.sh
+# ⚠️ DEPRECATED: setup-harness.sh로 통합됨.
+# 에이전트는 전역(~/.claude/agents/)에서 직접 로드.
+# 프로젝트별 지침은 .claude/agent-config/{name}.md에 작성.
+# 이 스크립트는 하위 호환용으로만 유지.
+#
 # 신규 프로젝트 루트에서 실행: bash ~/.claude/setup-agents.sh
 # .claude/agents/ 아래 9개 에이전트 파일을 생성한다.
+
+echo "⚠️  DEPRECATED: setup-agents.sh는 setup-harness.sh로 통합되었습니다."
+echo "    에이전트는 전역(~/.claude/agents/)에서 직접 로드됩니다."
+echo "    프로젝트별 지침: .claude/agent-config/{name}.md"
+echo ""
 
 set -e
 

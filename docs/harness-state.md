@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-09 (S75 — 하네스 출력 현행화: Phase/Mode 레이블 제거, _agent_call 입력 미리보기·토큰·비용 출력, @MODE: 프롬프트 통일)
+> 최종 업데이트: 2026-04-09 (S77 — harness-review INFRA 오탐 수정: agent-config/ 경로를 INFRA_EXCLUSIONS로 제외)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -165,6 +165,8 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S68 | design.sh 흐름 완성 | ITERATE feedback 전달. ESCALATE 분기 추가. DESIGN_LOOP_ESCALATE 마커. `parse_marker()` 활용 | 2026-04-09 |
 | S69 | 스마트 컨텍스트 공용화 + validator diff 패싱 | `build_smart_context()`, `build_validator_context()` harness/utils.sh로 이동. validator에 git diff 사전 전달 | 2026-04-09 |
 | S70 | 훅 전수 감사 | `orch-rules-first.py` HARNESS_INFRA_PATTERNS 구 파일명→실제 경로 수정 + hooks/*.py 전체 포함. `harness-drift-check.py` DRIFT_MAP 5개 에이전트 매핑 추가 (designer/design-critic/product-planner/pr-reviewer/security-reviewer). `file-ownership-gate.py` 삭제 (S55에서 agent-boundary.py에 통합 완료). BATS 테스트 16건 추가 (총 115건). harness-stop-gate.sh 참조 폐기 표기 | 2026-04-09 |
+| S76 | 에이전트 인프라 탐색 금지 강화 | `agents/architect.md`, `agents/engineer.md`, `agents/validator.md` Universal Preamble에 orchestration-rules.md·harness/·hooks/ 인프라 파일 Read 금지 명시. validator에 Bash 사용 절대 금지 추가. harness-review WASTE_INFRA_READ HIGH 3건 해소 | 2026-04-09 |
+| S77 | harness-review INFRA 오탐 수정 | `scripts/harness-review.py` INFRA_EXCLUSIONS 상수 추가(`agent-config/`). INFRA 체크 3곳에 exclusion 적용 — 의도된 프로젝트 컨텍스트 읽기를 WASTE_INFRA_READ로 오분류하던 문제 해소 | 2026-04-09 |
 | S72 | git checkout stdout 오염 + QA 타임아웃 수정 | `utils.sh` `create_feature_branch()`: 브랜치 존재 시 `git checkout`이 수정 파일 목록을 stdout 출력 → `>/dev/null 2>&1` 추가. `bugfix.sh` QA timeout 300→600s + QA exit code 체크 (타임아웃/실패 시 HARNESS_CRASH 조기 종료). `utils.sh` `_agent_call()` 완료 메시지 exit 코드 분기. `agents/qa.md` (global+project): Grep-first 전략 + Read 최대 3개/150줄 제한 + 총 도구 10회 제한. `hooks/harness-router.py` fast_classify: 발생해/아무것도 안나온/왜~거야 패턴 추가 (14/14 PASS) | 2026-04-09 |
 
 ---

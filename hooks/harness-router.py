@@ -513,9 +513,10 @@ def _main_inner():
         if is_bug:
             ctx = (
                 "🐛 [HARNESS ROUTER] 버그/이슈 감지 — IMPLEMENTATION 분류지만 BUG 키워드 포함\n"
-                "→ bugfix 루프(QA 우선)로 실행하세요.\n"
-                f"예: bash {executor_path} bugfix --bug \"{{버그 설명}}\" --issue {current_issue or 'N'} --prefix {prefix}\n"
-                "⚠️ impl 직접 실행 금지 — 이슈는 무조건 QA부터."
+                "→ QA 에이전트를 반드시 먼저 호출하세요. 자체 분석 금지.\n"
+                "→ 이슈 생성도 QA 담당. 메인 Claude의 gh issue create / gh api .../issues 직접 호출 금지.\n"
+                f"→ 올바른 흐름: bash {executor_path} bugfix --prefix {prefix} → QA가 분析·이슈 생성·라우팅\n"
+                f"⚠️ executor.sh impl 직접 호출 차단됨 — 반드시 bugfix 서브커맨드 사용\n"
             )
             log(prefix, f"INJECT(impl→bugfix_override) prompt={prompt[:60]!r}")
         elif flags["harness_active"]:
@@ -560,25 +561,31 @@ def _main_inner():
 
         if memory_patterns:
             ctx += "\n\n[HARNESS MEMORY] Known Failure Patterns:\n" + "\n---\n".join(memory_patterns)
+    elif is_bug:
+        # BUG 분류 직접 진입 (IMPLEMENTATION 미분류 버그 보고)
+        ctx = (
+            "🐛 [HARNESS ROUTER] 버그/이슈 감지\n"
+            "→ QA 에이전트를 반드시 먼저 호출하세요. 자체 분석 금지.\n"
+            "→ 이슈 생성도 QA 담당. 메인 Claude의 gh issue create / gh api .../issues 직접 호출 금지.\n"
+            f"→ 올바른 흐름: bash {executor_path} bugfix --prefix {prefix} → QA가 분析·이슈 생성·라우팅\n"
+            f"⚠️ executor.sh impl 직접 호출 차단됨 — 반드시 bugfix 서브커맨드 사용\n"
+        )
+        log(prefix, f"INJECT(bug) prompt={prompt[:60]!r}")
     else:
-        if not any_active and not is_bug:
+        if not any_active:
             log(prefix, f"PASS(generic/no-active) prompt={prompt[:60]!r}")
             sys.exit(0)
-        if is_bug and not any_active:
-            ctx = "[HARNESS ROUTER] 진행 중인 워크플로우 없음"
-        else:
-            ctx = "[HARNESS ROUTER] 진행 중인 워크플로우 있음\n" + flag_lines
+        ctx = "[HARNESS ROUTER] 진행 중인 워크플로우 있음\n" + flag_lines
         log(prefix, f"INJECT(generic/active) prompt={prompt[:60]!r}")
 
-    # 버그/이슈 감지 시 QA 에이전트 힌트 prepend
+    # is_bug 물리 강제용 플래그 기록 — commit-gate.py가 executor.sh impl 차단에 사용
+    # (BUG 라우팅 메시지는 위 각 분기에서 ctx에 통합)
     if is_bug:
-        qa_hint = (
-            "🐛 [HARNESS ROUTER] 버그/이슈 감지\n"
-            "→ QA 에이전트를 먼저 호출하세요: 원인 분석 + 워크플로우 라우팅 추천\n"
-            "→ 원인이 이미 명확하면 QA 생략하고 architect (버그픽스 — Mode B) 직행 가능\n"
-        )
-        ctx = qa_hint + "\n" + ctx
-        log(prefix, f"QA_HINT injected prompt={prompt[:60]!r}")
+        try:
+            open(f"/tmp/{prefix}_is_bug", "w").close()
+        except Exception:
+            pass
+        log(prefix, f"is_bug flag set prompt={prompt[:60]!r}")
 
     _output = json.dumps({"hookSpecificOutput": {"additionalContext": ctx}})
     log(prefix, f"STDOUT len={len(_output)}")

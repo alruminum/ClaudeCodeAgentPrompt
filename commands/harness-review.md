@@ -9,23 +9,32 @@ argument-hint: "[prefix] [--last N]"
 
 ## 인자
 
-- `$ARGUMENTS`가 비어있으면: 모든 prefix에서 최신 1개 로그 자동 탐색
+- `$ARGUMENTS`가 비어있으면: 최신 5개 목록 출력 → Claude가 유저에게 번호 선택 요청 → 선택된 항목 분석
 - `$ARGUMENTS`가 prefix만: 해당 prefix 최신 로그 분석 (예: `mb`)
 - `$ARGUMENTS`에 `--last N`: 최근 N개 로그 분석 (예: `mb --last 3`)
 
 ## 실행
 
 ```bash
-# 인자 파싱
 ARGS="$ARGUMENTS"
 if [ -z "$ARGS" ]; then
-  python3 ~/.claude/scripts/harness-review.py
+  python3 ~/.claude/scripts/harness-review.py --list
 elif echo "$ARGS" | grep -q "\-\-last"; then
   python3 ~/.claude/scripts/harness-review.py --prefix $ARGS
 else
   python3 ~/.claude/scripts/harness-review.py --prefix $ARGS
 fi
 ```
+
+## 인자 없을 때 흐름 (Claude 행동 규칙)
+
+1. 위 bash 블록을 실행해 목록을 출력한다.
+2. 출력된 목록을 유저에게 보여주고 **"몇 번을 분석할까요?"** 라고 묻는다.
+3. 유저가 번호로 응답하면 해당 줄의 파일 경로를 추출해 아래 명령을 실행한다:
+   ```bash
+   python3 ~/.claude/scripts/harness-review.py <파일경로>
+   ```
+4. 분석 리포트를 출력 규칙에 따라 그대로 출력한다.
 
 ## 출력 규칙 (절대 준수)
 

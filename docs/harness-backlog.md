@@ -86,6 +86,8 @@
 | **S73** | **Phase C — build_loop_context(loop_type) + design/plan/bugfix 루프 진입 컨텍스트 prepend (8KB 캡)** | S | ✅ 완료 |
 | **S74** | **Phase D Step A — review-agent.sh (Haiku 로그 분석) + harness-review-inject.py 훅 + setup-harness.sh 글로벌 훅 등록 로직** | S | ✅ 완료 |
 | **S75** | **하네스 출력 현행화 — Phase A/B/C·Mode A/B/C/D/F 레이블 제거, _agent_call 입력 미리보기·토큰·비용 출력, 에이전트 프롬프트 @MODE: 형식 통일** | S | ✅ 완료 |
+| **S76** | **에이전트 인프라 탐색 금지 강화 — architect/engineer/validator Universal Preamble에 orchestration-rules.md 등 인프라 파일 Read 금지 명시** | S | ✅ 완료 |
+| **S77** | **harness-review INFRA 분류 오탐 수정 — agent-config/ 경로를 INFRA_EXCLUSIONS로 제외 (의도된 프로젝트 컨텍스트 읽기)** | S | ✅ 완료 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
 | S14 | 커버리지 게이트 신규파일 60% | S | ⬜ 보류 |
 | S15 | BROWSER:DOM 자동 검증 (opt-in Playwright) | S | ⬜ 보류 |

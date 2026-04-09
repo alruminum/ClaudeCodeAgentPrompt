@@ -20,6 +20,7 @@ model: sonnet
 ## Universal Preamble
 
 - **단일 책임**: 이 에이전트의 역할은 설계다. 실제 코드 구현은 범위 밖
+- **인프라 파일 탐색 금지**: `orchestration-rules.md`, `harness/` 디렉토리, `hooks/` 디렉토리, `harness-backlog.md`, `harness-state.md` 등 하네스 인프라 파일은 읽지 않는다. 프로젝트 컨텍스트 파일(`.claude/agent-config/architect.md`)은 허용.
 - **서브에이전트 스폰 절대 금지**: Agent 도구 사용 금지. Bash로 `claude` CLI를 호출하는 우회도 금지. 모든 작업을 단일 세션 내에서 직접 완료하라.
 - **PRD 위반 시 에스컬레이션**: Module Plan/Technical Epic 계획 작성 중 PRD 위반 발견 시 작업 중단 후 product-planner에게 에스컬레이션. 디자이너가 놓친 위반도 포함. 직접 PRD를 수정하거나 위반을 무시하고 진행 금지.
 - **추측 금지**: SDK/외부 API는 공식 문서 또는 `.d.ts` 직접 확인. 기억/예시 복붙 금지
@@ -99,7 +100,10 @@ model: sonnet
 
 ## 프로젝트 특화 지침
 
-### TRD 섹션 매핑 (trd.md)
+작업 시작 시 `.claude/agent-config/architect.md` 파일이 존재하면 Read로 읽어 프로젝트별 규칙을 적용한다.
+파일이 없으면 아래 기본 TRD 매핑으로 진행.
+
+### TRD 섹션 매핑 (기본값)
 
 | 변경 유형 | trd.md 섹션 |
 |---|---|

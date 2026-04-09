@@ -26,6 +26,53 @@ def main():
 
     cmd = d.get("tool_input", {}).get("command", "")
 
+    # ── Gate 1: gh issue create 직접 호출 차단 ────────────────────────
+    # QA 에이전트만 이슈를 생성할 수 있다. 메인 Claude 직접 생성 금지.
+    _IS_GH_ISSUE_CREATE = (
+        re.search(r"gh\s+issue\s+create", cmd)
+        or re.search(r"gh\s+api\s+.*issues.*--method\s+POST", cmd)
+        or re.search(r"gh\s+api\s+.*issues.*-X\s+POST", cmd)
+    )
+    if _IS_GH_ISSUE_CREATE and os.environ.get("HARNESS_INTERNAL") != "1":
+        deny(
+            "❌ gh issue create 직접 호출 금지.\n"
+            "버그 이슈는 QA 에이전트가 생성한다.\n"
+            f"올바른 흐름: bash [executor.sh] bugfix --prefix {PREFIX} → QA가 분석·이슈 생성·라우팅"
+        )
+
+    # ── Gate 2: BUG 컨텍스트에서 executor.sh impl 직접 호출 차단 ───────
+    # is_bug 플래그는 harness-router.py가 버그 감지 시 설정.
+    # executor.sh bugfix 호출 시 클리어됨.
+    _is_bug_flag = f"/tmp/{PREFIX}_is_bug"
+    _IS_EXECUTOR_IMPL = re.search(r"executor\.sh\s+impl\b", cmd)
+    _IS_EXECUTOR_BUGFIX = re.search(r"executor\.sh\s+bugfix\b", cmd)
+
+    if _IS_EXECUTOR_BUGFIX and os.path.exists(_is_bug_flag):
+        # 올바른 경로 — bugfix 호출, 플래그 클리어
+        try:
+            os.remove(_is_bug_flag)
+        except OSError:
+            pass
+
+    if _IS_EXECUTOR_IMPL and os.path.exists(_is_bug_flag) and os.environ.get("HARNESS_INTERNAL") != "1":
+        deny(
+            "❌ BUG 컨텍스트에서 executor.sh impl 직접 호출 금지.\n"
+            "버그는 반드시 bugfix 루프를 거쳐야 한다 (QA → 4-way 분기).\n"
+            f"올바른 명령: bash [executor.sh] bugfix --prefix {PREFIX}"
+        )
+
+    # ── Gate 3: 인터뷰 진행 중 executor.sh 호출 차단 ───────────────────
+    # harness-router.py가 AMBIGUOUS 분류 시 interview_state.json을 생성.
+    # 인터뷰 완료(DONE) 전까지 구현 루프 진입 금지.
+    _interview_path = f"/tmp/{PREFIX}_interview_state.json"
+    _IS_EXECUTOR_ANY = re.search(r"executor\.sh\s+(impl|bugfix|design|plan)\b", cmd)
+    if _IS_EXECUTOR_ANY and os.path.exists(_interview_path) and os.environ.get("HARNESS_INTERNAL") != "1":
+        deny(
+            "❌ 인터뷰 진행 중 — executor.sh 호출 불가.\n"
+            "요구사항 명확화 인터뷰를 먼저 완료하세요.\n"
+            "현재 질문에 답변하면 다음 단계로 진행됩니다."
+        )
+
     # git commit 명령이 아니면 통과
     if not re.search(r"git\s+commit", cmd):
         sys.exit(0)

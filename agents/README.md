@@ -1,7 +1,8 @@
 # Claude Code 에이전트 시스템
 
 AI 보조 소프트웨어 개발 워크플로를 위한 에이전트 모음.
-각 에이전트는 `## 공통 지침` + `## 프로젝트 특화 지침` 2-섹션 구조로 관리된다. `/agent-downSync`로 공통 지침을 로컬에 내려받고, `/agent-upSync`로 다시 올린다.
+에이전트는 전역(`~/.claude/agents/`)에서만 관리한다. 프로젝트에 복사하지 않는다.
+프로젝트별 컨텍스트는 `.claude/agent-config/{에이전트명}.md`에 작성하면 에이전트가 작업 시작 시 자동으로 읽는다.
 
 > **오케스트레이션 방식**: 메인 Claude가 `~/.claude/orchestration-rules.md`를 직접 읽고 에이전트를 순서대로 호출한다. 오케스트레이터 에이전트 없음.
 > 워크플로 강제는 `.claude/settings.json`의 PreToolUse/PostToolUse 훅으로 처리한다 (validator PASS 전 engineer 차단, architect @MODE 명시 강제 등).

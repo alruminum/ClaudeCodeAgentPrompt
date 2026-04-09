@@ -9,19 +9,28 @@ import sys
 
 
 def get_prefix():
-    """프로젝트별 prefix를 env → harness.config.json → 디렉토리명 → "proj" 폴백으로 유도."""
-    # _agent_call이 스폰한 서브에이전트에서는 CWD가 프로젝트 디렉토리가 아닐 수 있음.
+    """프로젝트별 prefix를 env → harness.config.json (상위 순환) → 디렉토리명 → "proj" 폴백으로 유도."""
+    # 훅 서브프로세스에서는 HARNESS_PREFIX env var가 전파되지 않을 수 있음.
     # HARNESS_PREFIX 환경변수가 있으면 최우선 사용.
     env_prefix = os.environ.get('HARNESS_PREFIX')
     if env_prefix:
         return env_prefix
-    config_path = os.path.join(os.getcwd(), ".claude", "harness.config.json")
-    if os.path.exists(config_path):
-        try:
-            config = json.load(open(config_path))
-            return config.get("prefix", "proj")
-        except Exception:
-            pass
+    # CWD가 프로젝트 하위 디렉토리이거나 ~./claude 등 엉뚱한 위치일 수 있으므로
+    # 현재 디렉토리부터 루트까지 순환하며 .claude/harness.config.json 탐색.
+    cwd = os.path.abspath(os.getcwd())
+    while True:
+        config_path = os.path.join(cwd, ".claude", "harness.config.json")
+        if os.path.exists(config_path):
+            try:
+                prefix = json.load(open(config_path)).get("prefix")
+                if prefix:
+                    return prefix
+            except Exception:
+                pass
+        parent = os.path.dirname(cwd)
+        if parent == cwd:   # 파일시스템 루트 도달
+            break
+        cwd = parent
     raw = os.path.basename(os.getcwd()).lower()
     return re.sub(r'[^a-z0-9]', '', raw)[:8] or "proj"
 

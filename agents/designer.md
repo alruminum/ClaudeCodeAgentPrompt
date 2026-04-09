@@ -306,4 +306,5 @@ design-critic에서 ITERATE 판정을 받으면:
 
 ## 프로젝트 특화 지침
 
-<!-- 프로젝트별 추가 지침 -->
+작업 시작 시 `.claude/agent-config/designer.md` 파일이 존재하면 Read로 읽어 프로젝트별 규칙을 적용한다.
+파일이 없으면 기본 동작으로 진행.
