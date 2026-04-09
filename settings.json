@@ -6,51 +6,11 @@
     "DISABLE_AUTO_COMPACT": "1"
   },
   "permissions": {
-    "deny": [
-      "Bash(rm -rf *)",
-      "Bash(rm -r *)",
-      "Bash(rmdir *)",
-      "Bash(mkfs *)",
-      "Bash(dd *)",
-      "Bash(chmod -R 777 *)",
-      "Bash(curl * | bash*)",
-      "Bash(wget * | bash*)"
-    ],
     "allow": [
       "WebFetch",
       "Write(~/.claude/**)",
       "Edit(~/.claude/**)",
-      "Bash(grep *)",
-      "Bash(cat *)",
-      "Bash(head *)",
-      "Bash(tail *)",
-      "Bash(wc *)",
-      "Bash(ls *)",
-      "Bash(find *)",
-      "Bash(which *)",
-      "Bash(file *)",
-      "Bash(stat *)",
-      "Bash(diff *)",
-      "Bash(sort *)",
-      "Bash(uniq *)",
-      "Bash(awk *)",
-      "Bash(sed -n *)",
-      "Bash(jq *)",
-      "Bash(python3 -c *)",
-      "Bash(python3 *)",
-      "Bash(node -e *)",
-      "Bash(npx *)",
-      "Bash(npm *)",
-      "Bash(git *)",
-      "Bash(gh *)",
-      "Bash(cd *)",
-      "Bash(bash -n *)",
-      "Bash(bash -c *)",
-      "Bash(bash *)",
-      "Bash(source *)",
-      "Bash(claude *)",
-      "Bash(echo *)",
-      "Bash(printf *)",
+      "Bash(*)",
       "mcp__playwright__browser_navigate",
       "mcp__playwright__browser_navigate_back",
       "mcp__playwright__browser_screenshot",
@@ -91,6 +51,16 @@
       "mcp__github__search_users",
       "mcp__github__create_branch",
       "mcp__github__create_pull_request"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(rmdir *)",
+      "Bash(mkfs *)",
+      "Bash(dd *)",
+      "Bash(chmod -R 777 *)",
+      "Bash(curl * | bash*)",
+      "Bash(wget * | bash*)"
     ]
   },
   "hooks": {
@@ -228,7 +198,8 @@
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true,
-    "knowledge-skills@apps-in-toss-skills": true
+    "knowledge-skills@apps-in-toss-skills": true,
+    "ralph-loop@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "apps-in-toss-skills": {
