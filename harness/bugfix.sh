@@ -336,8 +336,9 @@ $CONSTRAINTS"
 
     if [[ $vitest_exit -eq 0 ]]; then
       if [[ "$depth" == "fast" ]]; then
-        # fast: validator 스킵 → 바로 commit
+        # fast: validator 스킵 → validator_b_passed 자동 touch (bugfix merge 게이트용)
         echo "[HARNESS] depth=fast → validator 스킵"
+        touch "/tmp/${PREFIX}_validator_b_passed"
       else
         # std: validator Bugfix Validation (Mode D)
         echo "[HARNESS] validator Bugfix Validation(Mode D) 호출 중"
@@ -359,8 +360,8 @@ $val_ctx" \
         touch "/tmp/${PREFIX}_validator_b_passed"
       fi
 
-      # commit + merge
-      if ! harness_commit_and_merge "$FEATURE_BRANCH" "$ISSUE_NUM" "$depth" "$PREFIX" "[bugfix-${depth}]"; then
+      # commit + merge (depth="bugfix" 고정: merge 게이트는 validator_b_passed 사용)
+      if ! harness_commit_and_merge "$FEATURE_BRANCH" "$ISSUE_NUM" "bugfix" "$PREFIX" "[bugfix-${depth}]"; then
         exit 1  # MERGE_CONFLICT_ESCALATE (harness_commit_and_merge가 설정)
       fi
       local merge_commit
