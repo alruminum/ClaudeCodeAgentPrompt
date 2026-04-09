@@ -12,6 +12,13 @@
 
 run_plan() {
   rotate_harness_logs "$PREFIX" "plan"
+  # Phase C: 루프 타입별 컨텍스트를 CONTEXT에 prepend
+  local _lc
+  _lc=$(build_loop_context "plan" 2>/dev/null || true)
+  if [[ -n "$_lc" ]]; then
+    CONTEXT="${_lc}
+${CONTEXT}"
+  fi
 
   # ── Phase P1: product-planner ──
   echo "[HARNESS] Phase P1 — product-planner 호출 중"

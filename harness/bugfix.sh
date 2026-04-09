@@ -9,6 +9,13 @@
 # ══════════════════════════════════════════════════════════════════════
 run_bugfix() {
   rotate_harness_logs "$PREFIX" "bugfix"
+  # Phase C: 루프 타입별 컨텍스트를 CONTEXT에 prepend
+  local _lc
+  _lc=$(build_loop_context "bugfix" 2>/dev/null || true)
+  if [[ -n "$_lc" ]]; then
+    CONTEXT="${_lc}
+${CONTEXT}"
+  fi
 
   # ── 필수 파라미터 검증: bugfix는 --bug 또는 --issue 필요 ──
   if [[ -z "$BUG_DESC" && ( -z "$ISSUE_NUM" || "$ISSUE_NUM" == "N" ) ]]; then

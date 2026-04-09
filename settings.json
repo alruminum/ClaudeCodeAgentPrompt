@@ -75,6 +75,15 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/harness-review-inject.py 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [

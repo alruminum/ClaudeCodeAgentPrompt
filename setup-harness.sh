@@ -25,7 +25,7 @@ set -e
 
 # 선택적 인수
 # --doc-name <name>  : 핵심 설계 문서 이름 (docs/<name>.md), Mode C 신선도 체크에 사용 (기본값: domain-logic)
-# --repo <owner/repo>: GitHub repo — milestone 생성 시 setup-agents.sh에 전달용 (이 스크립트에서 직접 사용하지 않음)
+# --repo <owner/repo>: GitHub repo — 마일스톤/레이블 자동 생성에 사용
 DOC_NAME="domain-logic"
 REPO=""
 while [[ $# -gt 0 ]]; do
@@ -119,6 +119,121 @@ for old_file in ".claude/harness-loop.sh" ".claude/harness/executor.sh" ".claude
   fi
 done
 
+# ── 낡은 .claude/agents/ 복사본 정리 (마이그레이션) ─────────────────────
+# 에이전트는 전역(~/.claude/agents/)에서 직접 로드. 프로젝트 복사본 불필요.
+# 프로젝트별 컨텍스트는 .claude/agent-config/ 에 저장.
+if [ -d ".claude/agents" ]; then
+  AGENT_COUNT=$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$AGENT_COUNT" -gt 0 ]; then
+    echo "⚠️  낡은 .claude/agents/ 감지 (${AGENT_COUNT}개 파일)"
+    echo "    에이전트는 전역(~/.claude/agents/)에서 직접 로드됩니다."
+    echo "    프로젝트별 지침은 .claude/agent-config/에 옮겨주세요."
+    echo "    (자동 삭제하지 않음 — 수동 확인 후 삭제)"
+  fi
+fi
+
+# ── .claude/agent-config/ 디렉토리 생성 ──────────────────────────────
+mkdir -p .claude/agent-config
+echo "📁 .claude/agent-config/ 준비 완료 (프로젝트별 에이전트 지침)"
+
+# ── CLAUDE.md 베이스 복사 (없을 때만) ─────────────────────────────────
+if [ ! -f "CLAUDE.md" ]; then
+  if [ -f "${HOME}/.claude/templates/CLAUDE-base.md" ]; then
+    cp "${HOME}/.claude/templates/CLAUDE-base.md" CLAUDE.md
+    if [ -n "$REPO" ]; then
+      sed -i '' "s|\[채우기: owner/repo\]|${REPO}|g" CLAUDE.md 2>/dev/null || true
+    fi
+    echo "📄 CLAUDE.md 생성 (베이스 템플릿에서 복사)"
+  fi
+else
+  echo "ℹ️  CLAUDE.md 이미 존재 — 건너뜀"
+fi
+
+# ── GitHub 마일스톤/레이블 자동 생성 ──────────────────────────────────
+if [ -n "$REPO" ]; then
+  echo ""
+  echo "🏷️  GitHub 마일스톤 생성 중 (${REPO})..."
+  for M in "Story" "Bugs" "Epics" "Feature"; do
+    RESULT=$(gh api "repos/${REPO}/milestones" -f title="$M" -f state="open" 2>&1)
+    if echo "$RESULT" | grep -q '"number"'; then
+      echo "  ✅ $M"
+    elif echo "$RESULT" | grep -qF 'already_exists'; then
+      echo "  ⚠️  $M (이미 존재)"
+    else
+      echo "  ❌ $M 실패 — gh auth login 확인 필요"
+    fi
+  done
+
+  echo ""
+  echo "🏷️  GitHub 레이블 생성 중..."
+  for LABEL_INFO in "v01:0075ca" "bug:d73a4a" "feat:a2eeef"; do
+    LABEL_NAME="${LABEL_INFO%%:*}"
+    LABEL_COLOR="${LABEL_INFO##*:}"
+    RESULT=$(gh api "repos/${REPO}/labels" -f name="$LABEL_NAME" -f color="$LABEL_COLOR" 2>&1)
+    if echo "$RESULT" | grep -q '"name"'; then
+      echo "  ✅ $LABEL_NAME"
+    elif echo "$RESULT" | grep -qF 'already_exists'; then
+      echo "  ⚠️  $LABEL_NAME (이미 존재)"
+    else
+      echo "  ❌ $LABEL_NAME 실패"
+    fi
+  done
+fi
+
+# ── 전역 settings.json에 harness-review-inject.py UserPromptSubmit 훅 등록 ──
+# Phase D Step A: 하네스 완료 후 Haiku 리뷰 결과를 다음 메시지에 주입하는 훅
+GLOBAL_SETTINGS="${HOME}/.claude/settings.json"
+INJECT_HOOK_MARKER="harness-review-inject.py"
+
+if [ -f "$GLOBAL_SETTINGS" ]; then
+  if grep -qF "$INJECT_HOOK_MARKER" "$GLOBAL_SETTINGS" 2>/dev/null; then
+    echo "ℹ️  harness-review-inject.py 훅 이미 등록됨 — 스킵"
+  else
+    python3 << 'INJECT_PYEOF'
+import json, sys, os
+
+settings_path = os.path.expanduser("~/.claude/settings.json")
+hook_cmd = "python3 ~/.claude/hooks/harness-review-inject.py 2>/dev/null || true"
+
+try:
+    with open(settings_path) as f:
+        cfg = json.load(f)
+except Exception as e:
+    print(f"❌ 전역 settings.json 읽기 실패: {e}", flush=True)
+    sys.exit(0)
+
+ups = cfg.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
+
+# 이미 등록됐는지 확인
+already = any(
+    any(h.get("command", "") == hook_cmd for h in block.get("hooks", []))
+    for block in ups
+)
+if already:
+    print("ℹ️  harness-review-inject.py 이미 등록됨", flush=True)
+    sys.exit(0)
+
+# 새 블록 추가
+ups.append({
+    "hooks": [
+        {
+            "type": "command",
+            "command": hook_cmd,
+            "timeout": 10
+        }
+    ]
+})
+
+with open(settings_path, "w") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+print("✅ 전역 settings.json에 harness-review-inject.py UserPromptSubmit 훅 등록 완료", flush=True)
+INJECT_PYEOF
+  fi
+else
+  echo "⚠️  전역 settings.json 없음 — harness-review-inject.py 훅 수동 등록 필요"
+fi
+
 # ── rule-audit pre-commit hook 설치 ────────────────────────────────────
 # harness 관련 파일 변경 시 rule-audit.bats를 자동 실행
 # 이미 pre-commit hook이 있으면 append (덮어쓰기 금지)
@@ -162,6 +277,8 @@ echo "⚠️  훅은 전역 ~/.claude/settings.json에서만 관리."
 echo "    프로젝트 settings.json에 hooks 섹션 추가 금지."
 echo ""
 echo "다음 단계:"
-echo "  1. /init-agents  — 에이전트 파일(.claude/agents/) 초기화"
-echo "  2. 각 에이전트 '프로젝트 특화 지침' 섹션 채우기"
+echo "  1. CLAUDE.md의 [채우기] 항목을 프로젝트에 맞게 작성"
+echo "  2. .claude/agent-config/ 에 프로젝트별 에이전트 지침 추가 (선택)"
+echo "     예: .claude/agent-config/engineer.md — SDK 래퍼 패턴, 의존성 규칙 등"
+echo "  3. product-planner와 PRD/TRD 작성 시작"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

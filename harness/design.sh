@@ -15,6 +15,13 @@
 
 run_design() {
   rotate_harness_logs "$PREFIX" "design"
+  # Phase C: 루프 타입별 컨텍스트를 CONTEXT에 prepend
+  local _lc
+  _lc=$(build_loop_context "design" 2>/dev/null || true)
+  if [[ -n "$_lc" ]]; then
+    CONTEXT="${_lc}
+${CONTEXT}"
+  fi
   local attempt=0
   local MAX=3
   # Phase B: HIST_DIR/design — round별 구조화 히스토리

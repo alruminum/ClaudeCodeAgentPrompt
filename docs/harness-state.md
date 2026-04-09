@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-09 (S72 — git checkout stdout 오염 수정 + QA 타임아웃 300→600s + _agent_call 완료/타임아웃/실패 메시지 분기)
+> 최종 업데이트: 2026-04-09 (S73/S74 — Phase C build_loop_context + Phase D review-agent.sh + harness-review-inject.py)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -27,7 +27,8 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 
 | 파일 | 역할 | 의존 |
 |---|---|---|
-| `harness/utils.sh` | 공용 유틸: `_agent_call()`, `kill_check()`, `parse_marker()`, `run_plan_validation()`, `run_design_validation()`, `create_feature_branch()`, `merge_to_main()`, `generate_commit_msg()`, `rotate_harness_logs()`, `write_run_end()` | 모든 harness 스크립트에서 source |
+| `harness/utils.sh` | 공용 유틸: `_agent_call()`, `kill_check()`, `parse_marker()`, `run_plan_validation()`, `run_design_validation()`, `create_feature_branch()`, `merge_to_main()`, `generate_commit_msg()`, `rotate_harness_logs()`, `write_run_end()`, `build_loop_context()` (Phase C), `explore_instruction()`, `prune_history()` | 모든 harness 스크립트에서 source |
+| `harness/review-agent.sh` | Phase D Step A: 하네스 완료 후 Haiku 로그 분석 → `/tmp/{prefix}_review-result.json` 생성 (JSON 검증 포함) | `write_run_end()` 백그라운드 트리거 |
 | `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,bugfix,plan}.sh |
 | `harness/impl.sh` | impl 모드: 재진입 감지 → architect → `run_plan_validation()` → engineer 루프 | harness/impl-process.sh |
 | `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep depth 분기, 3회 재시도, SPEC_GAP 동결) + memory candidate | /tmp/{p}_* 플래그들 |
@@ -55,6 +56,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `post-agent-flags.py` | PostToolUse(Agent) (global) | 에이전트 완료 후 플래그 생성/삭제 + 문서 신선도 경고 (S55) |
 | `post-commit-cleanup.py` | PostToolUse(Bash) (global) | git commit 성공 후 1회성 플래그 삭제 (S55) |
 | `harness-settings-watcher.py` | PostToolUse(Edit) (global) | `settings.json` hooks 변경 감지 → 동기화 리마인드 |
+| `harness-review-inject.py` | UserPromptSubmit (global) | Phase D Step A: `/tmp/*_review-result.json` 감지 → 리뷰 결과 프롬프트 주입 (HARNESS_INTERNAL=1 시 스킵) |
 
 ### 프로젝트별 (`.claude/`, `setup-harness.sh`가 생성)
 

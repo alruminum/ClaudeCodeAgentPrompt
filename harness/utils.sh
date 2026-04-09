@@ -45,12 +45,11 @@ write_run_end() {
   branch_name=$(printf '%s' "$branch_name" | tr -d '\t\n\r' | head -c 100)
   printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s","branch":"%s"}\n' \
     "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" "$branch_name" >> "$RUN_LOG"
-  # 크래시/실패 시 자동 리뷰 트리거 (백그라운드 — 하네스 종료를 블로킹하지 않음)
-  if [[ "$result" == "HARNESS_CRASH" || "$result" == "IMPLEMENTATION_ESCALATE" ]]; then
-    local review_script="${HOME}/.claude/scripts/harness-review.py"
-    if [[ -f "$review_script" ]]; then
-      python3 "$review_script" "$RUN_LOG" > "${RUN_LOG%.jsonl}_review.txt" 2>&1 &
-    fi
+  # 완료 후 자동 리뷰 트리거 (백그라운드 — 하네스 종료를 블로킹하지 않음)
+  # review-agent.sh 내부에서 harness-review.py도 실행 → _review.txt + review-result.json 모두 생성
+  local review_agent="${HOME}/.claude/harness/review-agent.sh"
+  if [[ -f "$review_agent" ]]; then
+    bash "$review_agent" "$RUN_LOG" "$PREFIX" 2>/dev/null &
   fi
 }
 
@@ -218,6 +217,97 @@ $(cat "$f")"
   fi
 
   echo "$ctx" | head -c 30000
+}
+
+# ── 루프 타입별 진입 컨텍스트 구성 (Phase C) ─────────────────────────
+# 기존 build_smart_context()와 독립. 루프 진입 시 CONTEXT에 prepend.
+# 사용법: build_loop_context <loop_type>
+#   loop_type: impl | design | bugfix | plan
+# 반환: 루프 타입 특화 컨텍스트 문자열 (8KB 캡)
+# 파일/디렉토리 없는 환경에서 조용히 스킵 (오류 출력 없음)
+build_loop_context() {
+  local loop_type="${1:-}"
+  local ctx=""
+
+  # 공통: 기술 스택 + .env 존재 여부
+  if [[ -f "package.json" ]]; then
+    local _deps
+    _deps=$(python3 -c '
+import json,sys
+try:
+    d=json.load(open("package.json"))
+    deps=list(d.get("dependencies",{}).keys())[:10]+list(d.get("devDependencies",{}).keys())[:5]
+    print("\n".join(deps))
+except: pass
+' 2>/dev/null | head -15 || true)
+    if [[ -n "$_deps" ]]; then
+      ctx="${ctx}
+=== 기술 스택 ===
+${_deps}"
+    fi
+  fi
+  if [[ -f ".env.example" ]]; then
+    local _env_keys
+    _env_keys=$(grep -oE '^[A-Z_]+' .env.example 2>/dev/null | head -10 || true)
+    [[ -n "$_env_keys" ]] && ctx="${ctx}
+=== 환경변수 키 목록 ===
+${_env_keys}"
+  elif [[ -f ".env" ]]; then
+    ctx="${ctx}
+=== .env 존재 ===
+(.env 파일 있음 — 내용 생략)"
+  fi
+
+  case "$loop_type" in
+    design)
+      if [[ -d "src/components" ]]; then
+        local _components
+        _components=$(find src/components -name "*.tsx" -o -name "*.ts" 2>/dev/null \
+          | head -20 | sort || true)
+        [[ -n "$_components" ]] && ctx="${ctx}
+=== src/components/ 트리 ===
+${_components}"
+      fi
+      if [[ -f "tailwind.config.ts" || -f "tailwind.config.js" ]]; then
+        ctx="${ctx}
+=== tailwind config 존재 ===
+(tailwind.config.ts/js 있음)"
+      fi
+      ;;
+    bugfix)
+      local _git_log
+      _git_log=$(git log --oneline -5 2>/dev/null || true)
+      [[ -n "$_git_log" ]] && ctx="${ctx}
+=== 최근 커밋 5개 ===
+${_git_log}"
+      local _diff_stat
+      _diff_stat=$(git diff HEAD --stat 2>/dev/null | tail -5 || true)
+      [[ -n "$_diff_stat" ]] && ctx="${ctx}
+=== 현재 변경 통계 ===
+${_diff_stat}"
+      ;;
+    plan)
+      if [[ -d "docs" ]]; then
+        local _docs
+        _docs=$(find docs -name "*.md" 2>/dev/null | head -15 | sort || true)
+        [[ -n "$_docs" ]] && ctx="${ctx}
+=== docs/ 문서 목록 ===
+${_docs}"
+      fi
+      if [[ -f "backlog.md" ]]; then
+        local _backlog
+        _backlog=$(head -30 backlog.md 2>/dev/null || true)
+        [[ -n "$_backlog" ]] && ctx="${ctx}
+=== backlog.md (첫 30줄) ===
+${_backlog}"
+      fi
+      ;;
+    impl)
+      # impl은 build_smart_context()가 담당 — 추가 컨텍스트 없음
+      ;;
+  esac
+
+  echo "$ctx" | head -c 8192
 }
 
 # ── validator용 변경 diff 컨텍스트 ────────────────────────────────────
