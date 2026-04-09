@@ -9,7 +9,7 @@
 # ══════════════════════════════════════════════════════════════════════
 run_bugfix() {
   rotate_harness_logs "$PREFIX" "bugfix"
-  # Phase C: 루프 타입별 컨텍스트를 CONTEXT에 prepend
+  # 루프 타입별 컨텍스트 prepend
   local _lc
   _lc=$(build_loop_context "bugfix" 2>/dev/null || true)
   if [[ -n "$_lc" ]]; then
@@ -54,8 +54,8 @@ ${CONTEXT}"
   recent_bugs=$(gh issue list --limit 5 --label bug --state open \
     --json number,title -q '.[] | "#\(.number) \(.title)"' 2>/dev/null || echo "")
 
-  # ── Phase B1: qa 분석 ──
-  echo "[HARNESS] Phase B1 — qa 호출 중"
+  # ── qa 버그 분석 ──
+  echo "[HARNESS] qa 버그 분석"
   local existing_issues_block=""
   if [[ -n "$recent_bugs" ]]; then
     existing_issues_block="
@@ -260,16 +260,17 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     echo "[HARNESS] impl 존재 ($IMPL_FILE) → architect 스킵"
   elif [[ "$depth" == "fast" ]]; then
-    echo "[HARNESS] depth=fast → architect Mode F 스킵, QA 출력을 engineer에 직접 전달"
+    echo "[HARNESS] depth=fast → architect Bugfix Plan 스킵, QA 출력을 engineer에 직접 전달"
   else
-    echo "[HARNESS] Phase B2 — architect Bugfix Plan(Mode F) 호출 중"
+    echo "[HARNESS] architect 버그픽스 계획 작성"
     _agent_call "architect" 600 \
-      "Bugfix Plan(Mode F) — ${qa_out} issue: #$ISSUE_NUM" \
+      "@MODE:ARCHITECT:BUGFIX_PLAN
+qa 분석: ${qa_out} issue: #$ISSUE_NUM" \
       "/tmp/${PREFIX}_arch_out.txt"
     IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
 
     if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
-      echo "[HARNESS] Mode F impl 생성 실패 → full 경로로 폴백"
+      echo "[HARNESS] Bugfix Plan impl 생성 실패 → full 경로로 폴백"
       _bugfix_full "$qa_file"
       return
     fi
@@ -284,7 +285,7 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
   local attempt=0
   local MAX_HOTFIX=3
   local error_trace=""
-  # Phase B: HIST_DIR/bugfix — attempt별 구조화 히스토리 (Phase A 플랫 파일 통합)
+  # HIST_DIR/bugfix — attempt별 구조화 히스토리
   local HIST_DIR="/tmp/${PREFIX}_history"
   local LOOP_OUT_DIR="${HIST_DIR}/bugfix"
   mkdir -p "$LOOP_OUT_DIR"
@@ -293,7 +294,7 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
     kill_check
     echo "[HARNESS] engineer 직접 (attempt $attempt/$MAX_HOTFIX, depth=$depth)"
 
-    # Phase B: attempt 디렉토리 생성 → prune → 파일 기록
+    # attempt 디렉토리 생성 → prune → 파일 기록
     local attempt_dir="${LOOP_OUT_DIR}/attempt-${attempt}"
     mkdir -p "$attempt_dir"
     prune_history "$LOOP_OUT_DIR"
@@ -331,7 +332,7 @@ $CONSTRAINTS"
 
     local AGENT_EXIT=0
     _agent_call "engineer" 900 "$eng_prompt" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
-    # Phase B: attempt_dir에 저장
+    # attempt_dir에 저장
     cp "/tmp/${PREFIX}_eng_out.txt" "${attempt_dir}/engineer.log" 2>/dev/null || true
 
     if [[ $AGENT_EXIT -eq 124 ]]; then
@@ -367,12 +368,13 @@ $CONSTRAINTS"
         echo "[HARNESS] depth=fast → validator 스킵"
         touch "/tmp/${PREFIX}_validator_b_passed"
       else
-        # std: validator Bugfix Validation (Mode D)
-        echo "[HARNESS] validator Bugfix Validation(Mode D) 호출 중"
+        # std: validator Bugfix Validation
+        echo "[HARNESS] validator Bugfix Validation"
         local val_ctx
         val_ctx=$(build_validator_context "$IMPL_FILE")
         _agent_call "validator" 300 \
-          "Mode D — Bugfix Validation — impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS
+          "@MODE:VALIDATOR:BUGFIX_VALIDATION
+impl: $IMPL_FILE issue: #$ISSUE_NUM vitest: PASS
 context:
 $val_ctx" \
           "/tmp/${PREFIX}_val_bf_out.txt"
@@ -401,7 +403,7 @@ $val_ctx" \
       exit 0
     else
       error_trace=$(cat "/tmp/${PREFIX}_vitest_out.txt" 2>/dev/null | head -c 5000 || echo "vitest exit=$vitest_exit")
-      # Phase B: vitest 실패 결과 보존 + meta.json
+      # vitest 실패 결과 보존 + meta.json
       cp "/tmp/${PREFIX}_vitest_out.txt" "${attempt_dir}/vitest.log" 2>/dev/null || true
       local chg_bf; chg_bf=$(git diff HEAD~1 --name-only 2>/dev/null | head -5 | tr '\n' ',' | sed 's/,$//' || echo "")
       write_attempt_meta "${attempt_dir}/meta.json" "$attempt" "bugfix" "$depth" "FAIL" \
@@ -418,16 +420,17 @@ $val_ctx" \
   exit 1
 }
 
-# ── full 경로: architect Mode B → validator Plan Validation → engineer 직접 ──
+# ── full 경로: architect Module Plan → validator Plan Validation → engineer 직접 ──
 _bugfix_full() {
   local qa_file="$1"
   local qa_out
   qa_out=$(head -c 30000 "$qa_file" 2>/dev/null)
 
   BRANCH_TYPE="fix"  # bugfix full → fix/ 브랜치
-  echo "[HARNESS] Phase B2 — architect bugfix Mode B (full) 호출 중"
+  echo "[HARNESS] architect 버그픽스 전체 계획 작성"
   _agent_call "architect" 900 \
-    "버그픽스 — Module Plan(Mode B) — ${qa_out} issue: #$ISSUE_NUM" \
+    "@MODE:ARCHITECT:MODULE_PLAN
+버그픽스 — qa 분석: ${qa_out} issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_arch_out.txt"
   IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
 
@@ -438,7 +441,7 @@ _bugfix_full() {
   fi
 
   # ── Plan Validation (공용 함수 활용) ──
-  echo "[HARNESS] Phase B2.5 — Plan Validation"
+  echo "[HARNESS] Plan Validation"
   if ! run_plan_validation "$IMPL_FILE" "$ISSUE_NUM" "$PREFIX" 1; then
     export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
     echo "PLAN_VALIDATION_ESCALATE (bugfix_full)"

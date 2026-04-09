@@ -85,6 +85,7 @@
 | **S71** | **디자인 워크플로우 v2 — Pencil MCP 기반 재설계 (designer/design-critic/design.sh/orchestration/design.md 일괄 업데이트, HTML 프리뷰 제거, Figma 모드 제거)** | S | ✅ 완료 |
 | **S73** | **Phase C — build_loop_context(loop_type) + design/plan/bugfix 루프 진입 컨텍스트 prepend (8KB 캡)** | S | ✅ 완료 |
 | **S74** | **Phase D Step A — review-agent.sh (Haiku 로그 분석) + harness-review-inject.py 훅 + setup-harness.sh 글로벌 훅 등록 로직** | S | ✅ 완료 |
+| **S75** | **하네스 출력 현행화 — Phase A/B/C·Mode A/B/C/D/F 레이블 제거, _agent_call 입력 미리보기·토큰·비용 출력, 에이전트 프롬프트 @MODE: 형식 통일** | S | ✅ 완료 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
 | S14 | 커버리지 게이트 신규파일 60% | S | ⬜ 보류 |
 | S15 | BROWSER:DOM 자동 검증 (opt-in Playwright) | S | ⬜ 보류 |

@@ -85,7 +85,7 @@ fi
 
 # ── 헬퍼 함수 ──────────────────────────────────────────────────────────
 
-# Phase B: attempt 결과를 meta.json으로 기록
+# attempt 결과를 meta.json으로 기록
 # 사용법: _save_impl_meta <attempt_dir> <attempt_num> <result> <fail_type> <next_hints>
 _save_impl_meta() {
   local adir="$1" anum="$2" res="$3" ftype="${4:-}" hints="${5:-}"
@@ -337,7 +337,7 @@ if [[ "$MODE" == "impl" ]]; then
     # ── fast: engineer ────────────────────────────────────────
     kill_check
     log_phase "engineer"
-    echo "[HARNESS/fast] engineer 호출 중"
+    echo "[HARNESS/fast] engineer"
     context=$(head -c 30000 "$IMPL_FILE")
     hlog "engineer 시작 (depth=fast, timeout=900s)"
     head_before=$(git rev-parse HEAD)
@@ -379,7 +379,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     # ── fast: pr-reviewer ────────────────────────────────────
     kill_check
     log_phase "pr-reviewer"
-    echo "[HARNESS/fast] pr-reviewer 호출 중"
+    echo "[HARNESS/fast] pr-reviewer"
     hlog "pr-reviewer 시작 (depth=fast, timeout=180s)"
     fast_diff=$(git diff HEAD~1 2>&1 | head -300)
     fast_src=$(git diff --name-only HEAD~1 2>/dev/null | tr '\n' ' ')
@@ -465,7 +465,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
   fail_type=""
   hlog "=== 하네스 루프 시작 (depth=$DEPTH, max_retries=$MAX) ==="
 
-  # ── Phase B: HIST_DIR — attempt별 구조화 히스토리 (Phase A 플랫 파일 통합) ─
+  # HIST_DIR — attempt별 구조화 히스토리
   HIST_DIR="/tmp/${PREFIX}_history"
   LOOP_OUT_DIR="${HIST_DIR}/impl"  # explore_instruction이 참조하는 경로
   mkdir -p "$LOOP_OUT_DIR"
@@ -478,7 +478,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
     ATTEMPT=$attempt
     kill_check
 
-    # ── Phase B: attempt 디렉토리 생성 → prune → 파일 기록 순서 ──────
+    # attempt 디렉토리 생성 → prune → 파일 기록
     local attempt_dir="${LOOP_OUT_DIR}/attempt-${attempt}"
     mkdir -p "$attempt_dir"
     prune_history "$LOOP_OUT_DIR"  # 생성 직후, 파일 기록 전 (race condition 방지)
@@ -532,7 +532,7 @@ $(explore_instruction "$LOOP_OUT_DIR")"
 
     # ── 워커 1: engineer ──────────────────────────────────────────
     log_phase "engineer"
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — engineer 호출 중"
+    echo "[HARNESS] engineer (attempt $((attempt+1))/$MAX)"
     hlog "engineer 시작 (depth=$DEPTH, timeout=900s)"
     kill_check
     AGENT_EXIT=0
@@ -548,7 +548,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     hlog "engineer 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "engineer timeout"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
-    # Phase A: attempt별 engineer 출력 보존 (에이전트 자율 탐색용)
+    # attempt별 engineer 출력 보존 (에이전트 자율 탐색용)
     cp "/tmp/${PREFIX}_eng_out.txt" "${attempt_dir}/engineer.log" 2>/dev/null || true
 
     # ── S39: engineer 출력 가드 ──────────────────────────────────────
@@ -578,10 +578,11 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
 
       # architect SPEC_GAP 호출
       log_phase "architect-spec-gap"
-      echo "[HARNESS] SPEC_GAP → architect SPEC_GAP 호출 중"
+      echo "[HARNESS] SPEC_GAP → architect"
       spec_gap_context=$(tail -50 "/tmp/${PREFIX}_eng_out.txt")
       _agent_call "architect" 900 \
-        "SPEC_GAP(Mode C) — engineer가 SPEC_GAP_FOUND 보고. impl: $IMPL_FILE issue: #$ISSUE_NUM
+        "@MODE:ARCHITECT:SPEC_GAP
+engineer가 SPEC_GAP_FOUND 보고. impl: $IMPL_FILE issue: #$ISSUE_NUM
 engineer 보고:
 $spec_gap_context" \
         "/tmp/${PREFIX}_arch_sg_out.txt"
@@ -651,7 +652,7 @@ $spec_gap_context" \
     changed_files=$(git diff HEAD~1 --name-only 2>/dev/null | tr '\n' ' ' || \
       git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' | tr '\n' ' ' || echo "")
     log_phase "test-engineer"
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — test-engineer 호출 중"
+    echo "[HARNESS] test-engineer (attempt $((attempt+1))/$MAX)"
     hlog "test-engineer 시작 (depth=$DEPTH, timeout=600s)"
     kill_check
     AGENT_EXIT=0
@@ -686,7 +687,7 @@ issue: #$ISSUE_NUM"
     fi
 
     # ── Ground truth: 실제 테스트 실행 (LLM 주장과 독립) ──────────
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — npx vitest run"
+    echo "[HARNESS] vitest 실행 (attempt $((attempt+1))/$MAX)"
     hlog "vitest 시작"
     kill_check
     set +e
@@ -710,22 +711,23 @@ issue: #$ISSUE_NUM"
     touch "/tmp/${PREFIX}_test_engineer_passed"
     echo "[HARNESS] TESTS_PASS"
 
-    # ── 워커 3: validator Mode B ──────────────────────────────────
+    # ── 워커 3: validator ─────────────────────────────────────────
     log_phase "validator"
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 호출 중"
+    echo "[HARNESS] validator (attempt $((attempt+1))/$MAX)"
     hlog "validator 시작 (depth=$DEPTH, timeout=300s)"
     kill_check
     val_context=$(build_validator_context "$IMPL_FILE")
     AGENT_EXIT=0
     _agent_call "validator" 300 \
-      "Mode B — impl: $IMPL_FILE
+      "@MODE:VALIDATOR:CODE_VALIDATION
+impl: $IMPL_FILE
 context:
 $val_context" \
       "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
     hlog "validator 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi
     budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
-    # Phase A: validator 출력 보존
+    # validator 출력 보존
     cp "/tmp/${PREFIX}_val_out.txt" "${attempt_dir}/validator.log" 2>/dev/null || true
 
     # ── S39: validator 출력 가드 ─────────────────────────────────────
@@ -739,13 +741,14 @@ $val_context" \
     fi
 
     val_result=$(parse_marker "/tmp/${PREFIX}_val_out.txt" "PASS|FAIL|SPEC_MISSING")
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — validator Mode B 결과: $val_result"
+    echo "[HARNESS] validator 결과: $val_result"
 
     # SPEC_MISSING → architect MODULE_PLAN (impl 복구)
     if [[ "$val_result" == "SPEC_MISSING" ]]; then
       hlog "SPEC_MISSING → architect MODULE_PLAN 복구"
       _agent_call "architect" 900 \
-        "Module Plan(Mode B) — SPEC_MISSING 복구. impl: $IMPL_FILE issue: #$ISSUE_NUM" \
+        "@MODE:ARCHITECT:MODULE_PLAN
+SPEC_MISSING 복구. impl: $IMPL_FILE issue: #$ISSUE_NUM" \
         "/tmp/${PREFIX}_arch_sm_out.txt"
       budget_check "architect" "/tmp/${PREFIX}_arch_sm_out.txt"
       # impl 파일 복구 후 재시도
@@ -769,7 +772,7 @@ $val_context" \
 
     # ── 워커 4: pr-reviewer (fast/std/deep 모두) ─────────────────────
     log_phase "pr-reviewer"
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 호출 중"
+    echo "[HARNESS] pr-reviewer (attempt $((attempt+1))/$MAX)"
     hlog "pr-reviewer 시작 (depth=$DEPTH, timeout=180s)"
     kill_check
     diff_out=$(git diff HEAD~1 2>&1 | head -300 || git diff HEAD 2>&1 | head -300)
@@ -782,7 +785,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     hlog "pr-reviewer 종료 (exit=${AGENT_EXIT})"
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "pr-reviewer timeout"; fi
     budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
-    # Phase A: pr-reviewer 출력 보존
+    # pr-reviewer 출력 보존
     cp "/tmp/${PREFIX}_pr_out.txt" "${attempt_dir}/pr.log" 2>/dev/null || true
 
     # ── S39: pr-reviewer 출력 가드 ───────────────────────────────────
@@ -796,7 +799,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     fi
 
     pr_result=$(parse_marker "/tmp/${PREFIX}_pr_out.txt" "LGTM|CHANGES_REQUESTED")
-    echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — pr-reviewer 결과: $pr_result"
+    echo "[HARNESS] pr-reviewer 결과: $pr_result"
     if [[ "$pr_result" != "LGTM" ]]; then
       fail_type="pr_fail"
       log_decision "fail_type" "$fail_type" "pr-reviewer result=$pr_result"
@@ -812,7 +815,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     # ── 워커 5: security-reviewer (deep only) ────────────────────────
     if [[ "$DEPTH" == "deep" ]]; then
       log_phase "security-reviewer"
-      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 호출 중"
+      echo "[HARNESS] security-reviewer (attempt $((attempt+1))/$MAX)"
       hlog "security-reviewer 시작 (deep only, timeout=180s)"
       kill_check
       changed_src=$(git diff HEAD~1 --name-only 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ' || true)
@@ -826,7 +829,7 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       hlog "security-reviewer 종료 (exit=${AGENT_EXIT})"
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "security-reviewer timeout"; fi
       budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
-      # Phase A: security-reviewer 출력 보존
+      # security-reviewer 출력 보존
       cp "/tmp/${PREFIX}_sec_out.txt" "${attempt_dir}/security.log" 2>/dev/null || true
 
       # ── S39: security-reviewer 출력 가드 ─────────────────────────────
@@ -840,7 +843,7 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       fi
 
       sec_result=$(parse_marker "/tmp/${PREFIX}_sec_out.txt" "SECURE|VULNERABILITIES_FOUND")
-      echo "[HARNESS] Phase 1 attempt $((attempt+1))/$MAX — security-reviewer 결과: $sec_result"
+      echo "[HARNESS] security-reviewer 결과: $sec_result"
       if [[ "$sec_result" != "SECURE" ]]; then
         fail_type="security_fail"
         log_decision "fail_type" "$fail_type" "security result=$sec_result"
@@ -884,7 +887,7 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
     generate_pr_body $((attempt+1)) > "/tmp/${PREFIX}_pr_body.txt" 2>/dev/null || true
 
     append_success $((attempt+1))
-    # Phase B: 성공 meta.json 기록
+    # 성공 meta.json 기록
     _save_impl_meta "$attempt_dir" "$attempt" "PASS" "" "구현 완료"
 
     # ── S7: last_issue 저장 (다음 세션 컨텍스트 브리지용) ───────────────

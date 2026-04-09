@@ -15,7 +15,7 @@
 
 run_design() {
   rotate_harness_logs "$PREFIX" "design"
-  # Phase C: 루프 타입별 컨텍스트를 CONTEXT에 prepend
+  # 루프 타입별 컨텍스트 prepend
   local _lc
   _lc=$(build_loop_context "design" 2>/dev/null || true)
   if [[ -n "$_lc" ]]; then
@@ -24,19 +24,19 @@ ${CONTEXT}"
   fi
   local attempt=0
   local MAX=3
-  # Phase B: HIST_DIR/design — round별 구조화 히스토리
+  # HIST_DIR/design — round별 구조화 히스토리
   local HIST_DIR="/tmp/${PREFIX}_history"
   local LOOP_OUT_DIR="${HIST_DIR}/design"
   mkdir -p "$LOOP_OUT_DIR"
 
   while [[ $attempt -lt $MAX ]]; do
     kill_check
-    # Phase B: round 디렉토리 생성 → prune → 파일 기록
+    # round 디렉토리 생성 → prune → 파일 기록
     local round_dir="${LOOP_OUT_DIR}/round-${attempt}"
     mkdir -p "$round_dir"
     prune_history "$LOOP_OUT_DIR"
 
-    hlog "Phase D1 attempt $((attempt+1))/$MAX — designer 호출 중 (Pencil MCP)"
+    hlog "designer (round $((attempt+1))/$MAX, Pencil MCP)"
     local designer_prompt="@MODE:DESIGNER:DEFAULT
 issue: #${ISSUE_NUM}
 context: ${CONTEXT}"
@@ -48,7 +48,7 @@ design-critic 피드백을 직접 확인하고 개선된 variant를 생성하라
     _agent_call "designer" 360 "$designer_prompt" "/tmp/${PREFIX}_des_out.txt"
     cp "/tmp/${PREFIX}_des_out.txt" "${round_dir}/designer.log" 2>/dev/null || true
 
-    hlog "Phase D2 attempt $((attempt+1))/$MAX — design-critic 호출 중"
+    hlog "design-critic 심사 (round $((attempt+1))/$MAX)"
     _agent_call "design-critic" 300 \
       "@MODE:CRITIC:REVIEW
 designer 출력 파일: ${round_dir}/designer.log
@@ -78,7 +78,7 @@ designer 출력 파일: ${round_dir}/designer.log
 
         # DESIGN_HANDOFF → Phase 4는 유저 선택 후 메인 Claude가 수행
         export HARNESS_RESULT="DESIGN_DONE"
-        # Phase B: PICK meta.json 기록
+        # PICK meta.json 기록
         local chg_d; chg_d=$(git diff HEAD~1 --name-only 2>/dev/null | head -3 | tr '\n' ',' | sed 's/,$//' || echo "")
         write_attempt_meta "${round_dir}/meta.json" "$attempt" "design" "" "PASS" \
           "" "" "$chg_d" "designer,design-critic" "" "PICK 완료 — 유저 variant 선택 대기"
@@ -90,7 +90,7 @@ designer 출력 파일: ${round_dir}/designer.log
         exit 0
         ;;
       ITERATE)
-        # Phase B: ITERATE meta.json 기록
+        # ITERATE meta.json 기록
         write_attempt_meta "${round_dir}/meta.json" "$attempt" "design" "" "FAIL" \
           "iterate" "" "" "designer,design-critic" "ITERATE" "${round_dir}/critic.log 에서 피드백 확인 후 개선"
         attempt=$((attempt+1))

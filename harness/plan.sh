@@ -12,7 +12,7 @@
 
 run_plan() {
   rotate_harness_logs "$PREFIX" "plan"
-  # Phase C: 루프 타입별 컨텍스트를 CONTEXT에 prepend
+  # 루프 타입별 컨텍스트 prepend
   local _lc
   _lc=$(build_loop_context "plan" 2>/dev/null || true)
   if [[ -n "$_lc" ]]; then
@@ -20,8 +20,8 @@ run_plan() {
 ${CONTEXT}"
   fi
 
-  # ── Phase P1: product-planner ──
-  echo "[HARNESS] Phase P1 — product-planner 호출 중"
+  # ── product-planner ──
+  echo "[HARNESS] product-planner 기획"
   _agent_call "product-planner" 300 \
     "context: $CONTEXT issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_pp_out.txt"
@@ -33,10 +33,11 @@ ${CONTEXT}"
   local pp_marker
   pp_marker=$(parse_marker "/tmp/${PREFIX}_pp_out.txt" "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED")
 
-  # ── Phase P2: architect System Design ──
-  echo "[HARNESS] Phase P2 — architect System Design 호출 중"
+  # ── architect System Design ──
+  echo "[HARNESS] architect System Design 작성"
   _agent_call "architect" 900 \
-    "System Design(Mode A) — ${pp_out} issue: #$ISSUE_NUM" \
+    "@MODE:ARCHITECT:SYSTEM_DESIGN
+${pp_out} issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_arch_sd_out.txt"
   kill_check
 
@@ -44,9 +45,9 @@ ${CONTEXT}"
   local design_doc
   design_doc=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_sd_out.txt") || design_doc=""
 
-  # ── Phase P3: validator Design Validation ──
+  # ── Design Validation ──
   if [[ -n "$design_doc" && -f "$design_doc" ]]; then
-    echo "[HARNESS] Phase P3 — validator Design Validation"
+    echo "[HARNESS] Design Validation"
     if ! run_design_validation "$design_doc" "$ISSUE_NUM" "$PREFIX" 1; then
       export HARNESS_RESULT="DESIGN_REVIEW_ESCALATE"
       echo "DESIGN_REVIEW_ESCALATE"
@@ -60,10 +61,11 @@ ${CONTEXT}"
   fi
   kill_check
 
-  # ── Phase P4: architect Module Plan ──
-  echo "[HARNESS] Phase P4 — architect Module Plan 호출 중"
+  # ── architect Module Plan ──
+  echo "[HARNESS] architect Module Plan 작성"
   _agent_call "architect" 900 \
-    "Module Plan(Mode B) — design_doc: ${design_doc:-N/A} issue: #$ISSUE_NUM" \
+    "@MODE:ARCHITECT:MODULE_PLAN
+design_doc: ${design_doc:-N/A} issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_arch_mp_out.txt"
   kill_check
 
@@ -77,8 +79,8 @@ ${CONTEXT}"
     exit 1
   fi
 
-  # ── Phase P5: validator Plan Validation ──
-  echo "[HARNESS] Phase P5 — validator Plan Validation"
+  # ── Plan Validation ──
+  echo "[HARNESS] Plan Validation"
   if ! run_plan_validation "$impl_file" "$ISSUE_NUM" "$PREFIX" 1; then
     export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"
     echo "PLAN_VALIDATION_ESCALATE"

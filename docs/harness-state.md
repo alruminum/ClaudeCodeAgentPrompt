@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-09 (S73/S74 — Phase C build_loop_context + Phase D review-agent.sh + harness-review-inject.py)
+> 최종 업데이트: 2026-04-09 (S75 — 하네스 출력 현행화: Phase/Mode 레이블 제거, _agent_call 입력 미리보기·토큰·비용 출력, @MODE: 프롬프트 통일)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---

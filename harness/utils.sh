@@ -86,9 +86,10 @@ run_plan_validation() {
   local impl_file="$1" issue_num="$2" prefix="$3" max_rework="${4:-1}"
   local val_out_file="/tmp/${prefix}_val_pv_out.txt"
 
-  echo "[HARNESS] validator Plan Validation 호출 중"
+  echo "[HARNESS] Plan Validation"
   _agent_call "validator" 300 \
-    "Mode C — Plan Validation — impl: $impl_file issue: #$issue_num" \
+    "@MODE:VALIDATOR:PLAN_VALIDATION
+impl: $impl_file issue: #$issue_num" \
     "$val_out_file"
   local val_result
   val_result=$(parse_marker "$val_out_file" "PASS|FAIL")
@@ -107,12 +108,14 @@ run_plan_validation() {
     local fail_feedback
     fail_feedback=$(tail -20 "$val_out_file")
     _agent_call "architect" 900 \
-      "SPEC_GAP(Mode C) — Plan Validation FAIL 피드백 반영. impl: $impl_file feedback: ${fail_feedback}" \
+      "@MODE:ARCHITECT:SPEC_GAP
+Plan Validation FAIL 피드백 반영. impl: $impl_file feedback: ${fail_feedback}" \
       "/tmp/${prefix}_arch_fix_out.txt"
 
     local val_out_file2="/tmp/${prefix}_val_pv_out${rework}.txt"
     _agent_call "validator" 300 \
-      "Mode C — Plan Validation — impl: $impl_file issue: #$issue_num" \
+      "@MODE:VALIDATOR:PLAN_VALIDATION
+impl: $impl_file issue: #$issue_num" \
       "$val_out_file2"
     val_result=$(parse_marker "$val_out_file2" "PASS|FAIL")
     echo "[HARNESS] Plan Validation 재검증 결과: $val_result"
@@ -134,9 +137,10 @@ run_design_validation() {
   local design_doc="$1" issue_num="$2" prefix="$3" max_rework="${4:-1}"
   local val_out_file="/tmp/${prefix}_val_dv_out.txt"
 
-  echo "[HARNESS] validator Design Validation 호출 중"
+  echo "[HARNESS] Design Validation"
   _agent_call "validator" 300 \
-    "Mode A — Design Validation — design_doc: $design_doc issue: #$issue_num" \
+    "@MODE:VALIDATOR:DESIGN_VALIDATION
+design_doc: $design_doc issue: #$issue_num" \
     "$val_out_file"
   local val_result
   val_result=$(parse_marker "$val_out_file" "PASS|FAIL")
@@ -154,12 +158,14 @@ run_design_validation() {
     local fail_feedback
     fail_feedback=$(tail -20 "$val_out_file")
     _agent_call "architect" 900 \
-      "System Design 재설계 — Design Validation FAIL 피드백 반영. design_doc: $design_doc feedback: ${fail_feedback}" \
+      "@MODE:ARCHITECT:SYSTEM_DESIGN
+재설계 — Design Validation FAIL 피드백 반영. design_doc: $design_doc feedback: ${fail_feedback}" \
       "/tmp/${prefix}_arch_dv_fix_out.txt"
 
     local val_out_file2="/tmp/${prefix}_val_dv_out${rework}.txt"
     _agent_call "validator" 300 \
-      "Mode A — Design Validation — design_doc: $design_doc issue: #$issue_num" \
+      "@MODE:VALIDATOR:DESIGN_VALIDATION
+design_doc: $design_doc issue: #$issue_num" \
       "$val_out_file2"
     val_result=$(parse_marker "$val_out_file2" "PASS|FAIL")
     echo "[HARNESS] Design Validation 재검증 결과: $val_result"
@@ -219,7 +225,7 @@ $(cat "$f")"
   echo "$ctx" | head -c 30000
 }
 
-# ── 루프 타입별 진입 컨텍스트 구성 (Phase C) ─────────────────────────
+# ── 루프 타입별 진입 컨텍스트 구성 ───────────────────────────────────
 # 기존 build_smart_context()와 독립. 루프 진입 시 CONTEXT에 prepend.
 # 사용법: build_loop_context <loop_type>
 #   loop_type: impl | design | bugfix | plan
@@ -401,7 +407,7 @@ PYEOF
   fi
 }
 
-# ── 히스토리 Pruning (Phase B 정책) ──────────────────────────────────
+# ── 히스토리 Pruning ──────────────────────────────────────────────────
 # 사용법: prune_history <loop_dir>
 #   loop_dir: e.g. /tmp/${PREFIX}_history/impl
 # 호출 시점: attempt 디렉토리 생성 직후, 파일 기록 전 (race condition 방지)
@@ -659,12 +665,15 @@ else:
 ' 2>/dev/null || echo "proj")
   touch "/tmp/${_prefix_for_flag}_${agent}_active"
 
-  echo "[HARNESS] ${agent} 호출 중..."
-
   # 공통 스코프 제한 — 하네스 인프라 탐색 방지
   local _scope_prefix="[SCOPE] 프로젝트 소스(src/, docs/, 루트 설정)만 분석 대상. .claude/, hooks/, harness-*.sh, orchestration-rules.md 등 하네스 인프라 파일은 읽지도 수정하지도 마라."
   prompt="${_scope_prefix}
 ${prompt}"
+
+  # 입력 미리보기 (SCOPE 접두어 제외, 3줄, 160자 캡)
+  local _prompt_preview
+  _prompt_preview=$(printf '%s' "$prompt" | grep -v '^\[SCOPE\]' | sed '/^[[:space:]]*$/d' | head -3 | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-160)
+  echo "  → ${agent}: ${_prompt_preview}"
 
   # stream-json → tee to RUN_LOG(아카이브+실시간) → python3으로 result + cost + stats 추출
   # HARNESS_INTERNAL=1: 이 claude 호출이 UserPromptSubmit 훅을 재트리거하지 않도록 방지
@@ -785,21 +794,31 @@ except Exception:
   # 에이전트 active 플래그 해제
   rm -f "/tmp/${_prefix_for_flag}_${agent}_active" 2>/dev/null
 
+  # 토큰 통계 추출 (grep 방식 — python3 추가 호출 없음)
+  local _in_tok _out_tok
+  _in_tok=$(grep -o '"in_tok":[0-9]*' "$stats_file" 2>/dev/null | grep -o '[0-9]*$' || echo "?")
+  _out_tok=$(grep -o '"out_tok":[0-9]*' "$stats_file" 2>/dev/null | grep -o '[0-9]*$' || echo "?")
+
   if [[ $_call_exit -eq 0 ]]; then
-    echo "[HARNESS] ${agent} 완료 ($((t_end - t_start))s)"
+    echo "[HARNESS] ← ${agent} 완료 ($((t_end - t_start))s | \$${agent_cost} | in:${_in_tok} out:${_out_tok}tok)"
   elif [[ $_call_exit -eq 124 || $_call_exit -eq 142 ]]; then
-    echo "[HARNESS] ${agent} 타임아웃 ($((t_end - t_start))s, exit=${_call_exit})"
+    echo "[HARNESS] ← ${agent} 타임아웃 ($((t_end - t_start))s)"
   else
-    echo "[HARNESS] ${agent} 실패 ($((t_end - t_start))s, exit=${_call_exit})"
+    echo "[HARNESS] ← ${agent} 실패 ($((t_end - t_start))s, exit=${_call_exit})"
   fi
 
-  # 에이전트 결과 요약을 harness output log에 출력 (tail -f로 실시간 확인용)
+  # 에이전트 전체 출력 (80줄 이하: 전체 표시 / 초과: 앞 50 + 뒤 20)
   if [[ -s "$out_file" ]]; then
     local total_lines; total_lines=$(wc -l < "$out_file" | tr -d ' ')
-    echo "┌── ${agent} 출력 (${total_lines}줄) ──"
-    head -30 "$out_file"
-    [[ "$total_lines" -gt 30 ]] && echo "  ... (나머지 $((total_lines - 30))줄 생략)"
-    echo "└──────────────────────────────────"
+    echo "┌── ${agent} 출력 (${total_lines}줄) ────────────────────────────"
+    if [[ "$total_lines" -le 80 ]]; then
+      cat "$out_file"
+    else
+      head -50 "$out_file"
+      echo "│ ··· ($((total_lines - 70))줄 중략) ···"
+      tail -20 "$out_file"
+    fi
+    echo "└────────────────────────────────────────────────────────────"
   fi
   return $_call_exit
 }

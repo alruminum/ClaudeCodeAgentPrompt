@@ -16,7 +16,7 @@ run_impl() {
     return
   fi
 
-  # Phase 0.5 — UI 키워드 감지
+  # UI 키워드 감지 (design 루프 전환 판단)
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     local ui_kw
     ui_kw=$(grep -iE "화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이" "$IMPL_FILE" || true)
@@ -33,14 +33,15 @@ run_impl() {
   # run_bugfix → run_impl 이중 로테이션 방지: RUN_LOG 이미 설정돼있으면 스킵
   [[ -z "$RUN_LOG" ]] && rotate_harness_logs "$PREFIX" "impl"
 
-  # Phase 0.7 — impl 파일 없으면 architect 호출
+  # impl 파일 없으면 architect Module Plan 호출
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
-    echo "[HARNESS] Phase 0.7 — architect Module Plan 호출 중"
+    echo "[HARNESS] architect Module Plan 작성"
     _agent_call "architect" 900 \
-      "Module Plan(Mode B) — issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
+      "@MODE:ARCHITECT:MODULE_PLAN
+issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
       "/tmp/${PREFIX}_arch_out.txt"
     IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
-    echo "[HARNESS] Phase 0.7 — architect 완료 / impl: $IMPL_FILE"
+    echo "[HARNESS] impl: $IMPL_FILE"
   fi
 
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
@@ -49,8 +50,8 @@ run_impl() {
     exit 1
   fi
 
-  # Phase 0.8 — validator Plan Validation (공용 함수 활용)
-  echo "[HARNESS] Phase 0.8 — validator Plan Validation"
+  # Plan Validation (구현 전 게이트)
+  echo "[HARNESS] Plan Validation"
   if run_plan_validation "$IMPL_FILE" "$ISSUE_NUM" "$PREFIX" 1; then
     echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
     export HARNESS_RESULT="PLAN_VALIDATION_PASS"
