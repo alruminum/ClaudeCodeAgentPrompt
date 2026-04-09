@@ -53,8 +53,15 @@ fi
 MEM_GLOBAL="${HOME}/.claude/harness-memory.md"
 MEM_LOCAL=".claude/harness-memory.md"
 
-# harness-memory.md가 없으면 생성
-[[ ! -f "$MEM_LOCAL" ]] && mkdir -p .claude && printf "# Harness Memory\n\n## Known Failure Patterns\n\n## Success Patterns\n" > "$MEM_LOCAL"
+# harness-memory.md가 없으면 B-5 형식으로 생성, 있으면 필수 섹션 헤더 추가
+if [[ ! -f "$MEM_LOCAL" ]]; then
+  mkdir -p .claude
+  printf "# Harness Memory\n\n## impl 패턴\n\n## design 패턴\n\n## bugfix 패턴\n\n## Auto-Promoted Rules\n\n## Known Failure Patterns\n\n## Success Patterns\n" > "$MEM_LOCAL"
+else
+  for sec in "impl 패턴" "design 패턴" "bugfix 패턴"; do
+    grep -qF "## ${sec}" "$MEM_LOCAL" 2>/dev/null || printf "\n## %s\n" "$sec" >> "$MEM_LOCAL"
+  done
+fi
 
 CONSTRAINTS=""
 # Auto-Promoted Rules 우선 로드 (자동 프로모션된 규칙이 최우선)
@@ -77,6 +84,23 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
 fi
 
 # ── 헬퍼 함수 ──────────────────────────────────────────────────────────
+
+# Phase B: attempt 결과를 meta.json으로 기록
+# 사용법: _save_impl_meta <attempt_dir> <attempt_num> <result> <fail_type> <next_hints>
+_save_impl_meta() {
+  local adir="$1" anum="$2" res="$3" ftype="${4:-}" hints="${5:-}"
+  local chg; chg=$(git diff HEAD~1 --name-only 2>/dev/null | head -5 | tr '\n' ',' | sed 's/,$//' || echo "")
+  local ftests=""
+  if [[ -f "${adir}/test-results.log" ]]; then
+    ftests=$(grep -E "✗| FAIL |× " "${adir}/test-results.log" 2>/dev/null | head -3 | tr '\n' ',' | cut -c1-200 || echo "")
+  fi
+  local err1=""
+  if [[ -f "${adir}/engineer.log" ]]; then
+    err1=$(head -1 "${adir}/engineer.log" | cut -c1-150 || echo "")
+  fi
+  write_attempt_meta "${adir}/meta.json" "$anum" "impl" "$DEPTH" "$res" \
+    "$ftype" "$ftests" "$chg" "engineer,test-engineer,validator,pr-reviewer" "$err1" "$hints"
+}
 
 append_failure() {
   local type="$1" err="$2"
@@ -441,8 +465,9 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
   fail_type=""
   hlog "=== 하네스 루프 시작 (depth=$DEPTH, max_retries=$MAX) ==="
 
-  # ── Phase A: LOOP_OUT_DIR — attempt별 에이전트 출력 보존 경로 ─────
-  LOOP_OUT_DIR="/tmp/${PREFIX}_loop_out"
+  # ── Phase B: HIST_DIR — attempt별 구조화 히스토리 (Phase A 플랫 파일 통합) ─
+  HIST_DIR="/tmp/${PREFIX}_history"
+  LOOP_OUT_DIR="${HIST_DIR}/impl"  # explore_instruction이 참조하는 경로
   mkdir -p "$LOOP_OUT_DIR"
 
   # config 이벤트: 루프 설정 스냅샷
@@ -453,40 +478,44 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
     ATTEMPT=$attempt
     kill_check
 
+    # ── Phase B: attempt 디렉토리 생성 → prune → 파일 기록 순서 ──────
+    local attempt_dir="${LOOP_OUT_DIR}/attempt-${attempt}"
+    mkdir -p "$attempt_dir"
+    prune_history "$LOOP_OUT_DIR"  # 생성 직후, 파일 기록 전 (race condition 방지)
+
     # ── Context GC: 스마트 컨텍스트 (관련 청크만 로드) ──────────────
-    # Phase A: 재시도 시 error_trace 전달 제거 → 에이전트가 LOOP_OUT_DIR에서 자율 탐색
     context=$(build_smart_context "$IMPL_FILE" 0)
     if [[ $attempt -eq 0 ]]; then
       task="impl 파일의 구현 명세 전체 이행"
     else
-      # ── C1: 실패 유형별 수정 전략 (Phase A: 인라인 요약 → 탐색 지시) ─
-      # working tree 컨텍스트 prefix (feature branch에서 이전 변경 유지)
+      # ── C1: 실패 유형별 수정 전략 (탐색 지시 + next_action_hints 경로 활용) ─
+      local prev_dir="${LOOP_OUT_DIR}/attempt-$((attempt-1))"
       wt_prefix="[주의] 이전 attempt의 변경이 working tree에 남아있음. 추가 수정으로 해결하라 (stash/reset 금지).
 "
       case "$fail_type" in
         autocheck_fail)
           task="[사전 검사 실패] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-autocheck.log")
+$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/autocheck.log")
 위 문제를 해결한 뒤 다시 구현하라. 테스트·벨리데이터 호출은 검사 통과 후 진행된다."
           ;;
         test_fail)
           task="[테스트 실패] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-test.log")
+$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/test-results.log")
 구현 코드를 수정하라. 테스트 코드 자체는 수정 금지."
           ;;
         validator_fail)
           task="[스펙 불일치] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-validator.log")
+$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/validator.log")
 impl 파일의 해당 항목을 다시 확인하고 누락된 부분을 구현하라."
           ;;
         pr_fail)
           task="[코드 품질] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-pr.log")
+$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/pr.log")
 MUST FIX 항목만 수정하라. 기능 변경 금지."
           ;;
         security_fail)
           task="[보안 취약점] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-security.log")
+$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/security.log")
 취약점의 수정 방안대로 적용하라."
           ;;
         *)
@@ -520,13 +549,14 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "engineer timeout"; fi
     budget_check "engineer" "/tmp/${PREFIX}_eng_out.txt"
     # Phase A: attempt별 engineer 출력 보존 (에이전트 자율 탐색용)
-    cp "/tmp/${PREFIX}_eng_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-engineer.log" 2>/dev/null || true
+    cp "/tmp/${PREFIX}_eng_out.txt" "${attempt_dir}/engineer.log" 2>/dev/null || true
 
     # ── S39: engineer 출력 가드 ──────────────────────────────────────
     if ! check_agent_output "engineer" "/tmp/${PREFIX}_eng_out.txt"; then
       fail_type="autocheck_fail"
       error_trace="engineer agent produced no output (exit=${AGENT_EXIT})"
       append_failure "$fail_type" "$error_trace"
+      _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "$fail_type" "engineer 출력 없음 — 프롬프트 길이/타임아웃 확인"
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -595,8 +625,8 @@ $spec_gap_context" \
       fail_type="autocheck_fail"
       log_decision "fail_type" "$fail_type" "automated_checks failed"
       append_failure "autocheck_fail" "$error_trace"
-      # Phase A: autocheck 결과 보존
-      cp "/tmp/${PREFIX}_autocheck_fail.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-autocheck.log" 2>/dev/null || true
+      cp "/tmp/${PREFIX}_autocheck_fail.txt" "${attempt_dir}/autocheck.log" 2>/dev/null || true
+      _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "autocheck_fail" "${attempt_dir}/autocheck.log 에서 사전 검사 실패 원인 확인"
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -670,9 +700,9 @@ issue: #$ISSUE_NUM"
       fail_type="test_fail"
       log_decision "fail_type" "$fail_type" "vitest exit=$test_exit"
       append_failure "test_fail" "$error_trace"
-      # Phase A: 테스트 실패 결과 보존 (다음 attempt 에이전트 자율 탐색용)
-      cp "/tmp/${PREFIX}_test_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-test.log" 2>/dev/null || true
-      cp "/tmp/${PREFIX}_te_out.txt"   "${LOOP_OUT_DIR}/attempt-${attempt}-test-engineer.log" 2>/dev/null || true
+      cp "/tmp/${PREFIX}_test_out.txt" "${attempt_dir}/test-results.log" 2>/dev/null || true
+      cp "/tmp/${PREFIX}_te_out.txt" "${attempt_dir}/test-engineer.log" 2>/dev/null || true
+      _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "test_fail" "${attempt_dir}/test-results.log 의 실패 케이스 확인. 테스트 코드 자체 수정 금지."
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -696,7 +726,7 @@ $val_context" \
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi
     budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
     # Phase A: validator 출력 보존
-    cp "/tmp/${PREFIX}_val_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-validator.log" 2>/dev/null || true
+    cp "/tmp/${PREFIX}_val_out.txt" "${attempt_dir}/validator.log" 2>/dev/null || true
 
     # ── S39: validator 출력 가드 ─────────────────────────────────────
     if ! check_agent_output "validator" "/tmp/${PREFIX}_val_out.txt"; then
@@ -729,7 +759,8 @@ $val_context" \
     if [[ "$val_result" != "PASS" ]]; then
       fail_type="validator_fail"
       log_decision "fail_type" "$fail_type" "validator result=$val_result"
-      append_failure "validator_fail" "validator FAIL (see ${LOOP_OUT_DIR}/attempt-${attempt}-validator.log)"
+      append_failure "validator_fail" "validator FAIL (see ${attempt_dir}/validator.log)"
+      _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "validator_fail" "${attempt_dir}/validator.log 의 FAIL 항목을 impl 파일과 대조하라"
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -752,7 +783,7 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     if [[ $AGENT_EXIT -eq 124 ]]; then hlog "pr-reviewer timeout"; fi
     budget_check "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"
     # Phase A: pr-reviewer 출력 보존
-    cp "/tmp/${PREFIX}_pr_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-pr.log" 2>/dev/null || true
+    cp "/tmp/${PREFIX}_pr_out.txt" "${attempt_dir}/pr.log" 2>/dev/null || true
 
     # ── S39: pr-reviewer 출력 가드 ───────────────────────────────────
     if ! check_agent_output "pr-reviewer" "/tmp/${PREFIX}_pr_out.txt"; then
@@ -769,7 +800,8 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
     if [[ "$pr_result" != "LGTM" ]]; then
       fail_type="pr_fail"
       log_decision "fail_type" "$fail_type" "pr-reviewer result=$pr_result"
-      append_failure "pr_fail" "pr-reviewer CHANGES_REQUESTED (see ${LOOP_OUT_DIR}/attempt-${attempt}-pr.log)"
+      append_failure "pr_fail" "pr-reviewer CHANGES_REQUESTED (see ${attempt_dir}/pr.log)"
+      _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "pr_fail" "${attempt_dir}/pr.log 의 MUST FIX 항목만 수정. 기능 변경 금지."
       rollback_attempt $attempt
       attempt=$((attempt+1))
       continue
@@ -795,7 +827,7 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       if [[ $AGENT_EXIT -eq 124 ]]; then hlog "security-reviewer timeout"; fi
       budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
       # Phase A: security-reviewer 출력 보존
-      cp "/tmp/${PREFIX}_sec_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-security.log" 2>/dev/null || true
+      cp "/tmp/${PREFIX}_sec_out.txt" "${attempt_dir}/security.log" 2>/dev/null || true
 
       # ── S39: security-reviewer 출력 가드 ─────────────────────────────
       if ! check_agent_output "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"; then
@@ -812,7 +844,8 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
       if [[ "$sec_result" != "SECURE" ]]; then
         fail_type="security_fail"
         log_decision "fail_type" "$fail_type" "security result=$sec_result"
-        append_failure "security_fail" "security VULNERABILITIES_FOUND (see ${LOOP_OUT_DIR}/attempt-${attempt}-security.log)"
+        append_failure "security_fail" "security VULNERABILITIES_FOUND (see ${attempt_dir}/security.log)"
+        _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "security_fail" "${attempt_dir}/security.log 의 HIGH/MEDIUM 취약점 수정"
         rollback_attempt $attempt
         attempt=$((attempt+1))
         continue
@@ -851,6 +884,8 @@ $(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${P
     generate_pr_body $((attempt+1)) > "/tmp/${PREFIX}_pr_body.txt" 2>/dev/null || true
 
     append_success $((attempt+1))
+    # Phase B: 성공 meta.json 기록
+    _save_impl_meta "$attempt_dir" "$attempt" "PASS" "" "구현 완료"
 
     # ── S7: last_issue 저장 (다음 세션 컨텍스트 브리지용) ───────────────
     echo "$ISSUE_NUM" > "/tmp/${PREFIX}_last_issue"

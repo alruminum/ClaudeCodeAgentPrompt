@@ -249,14 +249,122 @@ explore_instruction() {
   local out_dir="$1" hint_file="${2:-}"
   local instr="이전 시도의 출력 파일이 아래 경로에 있다:
   ${out_dir}/
-이 디렉토리를 ls로 확인하고, 필요한 파일을 직접 골라 읽어라.
-특히 이전 에이전트의 출력, 에러 로그, diff를 확인하라.
-어떤 파일을 읽을지는 네가 판단하라."
+ls로 attempt-N/ 디렉토리를 확인하고, 각 attempt의 meta.json을 먼저 읽어 개요를 파악하라.
+이후 필요한 파일만 선택적으로 읽어라.
+[탐색 예산] 최대 5개 파일, 합계 100KB 이내. 초과 금지."
   if [[ -n "$hint_file" ]]; then
     instr="${instr}
 힌트: ${hint_file} 에 직접적인 실패 정보가 있다."
   fi
   echo "$instr"
+}
+
+# ── attempt 결과 meta.json 기록 (jq 우선, python3 fallback) ──────────
+# 사용법: write_attempt_meta <meta_file> <attempt> <loop> <depth> <result>
+#                            <fail_type> <failed_tests> <changed_files>
+#                            <agent_sequence> <error_summary> <next_hints>
+write_attempt_meta() {
+  local meta_file="$1"
+  local attempt="$2"
+  local loop="$3"
+  local depth="$4"
+  local result="$5"
+  local fail_type="${6:-}"
+  local failed_tests="${7:-}"
+  local changed_files="${8:-}"
+  local agent_sequence="${9:-}"
+  local error_summary="${10:-}"
+  local next_hints="${11:-}"
+  local ts; ts=$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
+
+  if command -v jq &>/dev/null; then
+    jq -n \
+      --argjson attempt "$attempt" \
+      --arg timestamp "$ts" \
+      --arg loop "$loop" \
+      --arg depth "$depth" \
+      --arg result "$result" \
+      --arg fail_type "$fail_type" \
+      --arg failed_tests "$failed_tests" \
+      --arg changed_files "$changed_files" \
+      --arg agent_sequence "$agent_sequence" \
+      --arg error_summary "$error_summary" \
+      --arg next_hints "$next_hints" \
+      '{attempt:$attempt,timestamp:$timestamp,loop:$loop,depth:$depth,result:$result,fail_type:$fail_type,failed_tests:$failed_tests,changed_files:$changed_files,agent_sequence:$agent_sequence,error_summary_oneline:$error_summary,next_action_hints:$next_hints}' \
+      > "$meta_file" 2>/dev/null || true
+  else
+    python3 - "$attempt" "$ts" "$loop" "$depth" "$result" \
+      "$fail_type" "$failed_tests" "$changed_files" \
+      "$agent_sequence" "$error_summary" "$next_hints" \
+      "$meta_file" <<'PYEOF'
+import json, sys
+keys = ["attempt","timestamp","loop","depth","result","fail_type",
+        "failed_tests","changed_files","agent_sequence",
+        "error_summary_oneline","next_action_hints"]
+vals = sys.argv[1:12]
+d = dict(zip(keys, vals))
+try: d["attempt"] = int(d["attempt"])
+except: pass
+with open(sys.argv[12], "w") as f:
+    json.dump(d, f, ensure_ascii=False, indent=2)
+PYEOF
+  fi
+}
+
+# ── 히스토리 Pruning (Phase B 정책) ──────────────────────────────────
+# 사용법: prune_history <loop_dir>
+#   loop_dir: e.g. /tmp/${PREFIX}_history/impl
+# 호출 시점: attempt 디렉토리 생성 직후, 파일 기록 전 (race condition 방지)
+prune_history() {
+  local loop_dir="$1"
+  local max_full="${2:-5}"
+  [[ ! -d "$loop_dir" ]] && return 0
+
+  # 조건 1: attempt N개 초과 → 오래된 것부터 meta.json만 남기고 삭제
+  local attempts=()
+  while IFS= read -r d; do
+    [[ -n "$d" ]] && attempts+=("$d")
+  done < <(ls -d "${loop_dir}"/attempt-* 2>/dev/null | sort -V)
+  if [[ ${#attempts[@]} -gt $max_full ]]; then
+    local old_cnt=$(( ${#attempts[@]} - max_full ))
+    local i=0
+    while [[ $i -lt $old_cnt ]]; do
+      find "${attempts[$i]}" -type f ! -name "meta.json" -delete 2>/dev/null || true
+      i=$((i+1))
+    done
+  fi
+
+  # 조건 3: design round 3개 초과 → 오래된 round의 screenshots/ + 로그 삭제 (meta.json + critic.log 보존)
+  local rounds=()
+  while IFS= read -r d; do
+    [[ -n "$d" ]] && rounds+=("$d")
+  done < <(ls -d "${loop_dir}"/round-* 2>/dev/null | sort -V)
+  if [[ ${#rounds[@]} -gt 3 ]]; then
+    local old_r_cnt=$(( ${#rounds[@]} - 3 ))
+    local j=0
+    while [[ $j -lt $old_r_cnt ]]; do
+      rm -rf "${rounds[$j]}/screenshots" 2>/dev/null || true
+      find "${rounds[$j]}" -type f ! -name "meta.json" ! -name "critic.log" -delete 2>/dev/null || true
+      j=$((j+1))
+    done
+  fi
+
+  # 조건 2: 단일 로그 > 50KB → 마지막 500줄만 유지
+  while IFS= read -r logf; do
+    [[ -z "$logf" ]] && continue
+    local tmp; tmp=$(mktemp)
+    tail -500 "$logf" > "$tmp" && mv "$tmp" "$logf" || rm -f "$tmp"
+  done < <(find "$loop_dir" -type f -name "*.log" -size +50k 2>/dev/null)
+
+  # 조건 4: 전체 history/ > 5MB → 가장 오래된 시도부터 로그 파일 삭제
+  local hist_root; hist_root=$(dirname "$loop_dir")
+  local total_kb=0
+  total_kb=$(du -sk "$hist_root" 2>/dev/null | awk '{print $1}') || total_kb=0
+  if [[ $total_kb -gt 5120 ]]; then
+    find "$hist_root" -mindepth 2 -name "*.log" 2>/dev/null \
+      | sort | head -5 \
+      | while IFS= read -r f; do rm -f "$f" 2>/dev/null || true; done
+  fi
 }
 
 # ── Feature branch 생성 ──────────────────────────────────────────────

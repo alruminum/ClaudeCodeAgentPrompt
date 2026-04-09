@@ -196,14 +196,21 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 3. 하네스 스크립트 파싱 로직 반영
 단독 수정 금지. 1→2→3 순서 강제.
 
-**18. 에이전트 자율 탐색 원칙 (Phase A — Feedback Compression 금지)**
+**18. 에이전트 자율 탐색 원칙 (Phase A+B)**
 에이전트 간 결과 전달 시 요약/발췌를 인라인 주입하지 않는다.
 대신 `explore_instruction()` 함수(`harness/utils.sh`)로 이전 출력 파일 경로를 전달하고, 에이전트가 스스로 필요한 파일을 선택해 읽게 한다.
 
 - **금지**: `task="[테스트 실패] ${error_1line} …"` 처럼 에러 발췌를 인라인으로 붙이는 것
 - **허용**: 특정 파일의 **경로 힌트**(hint)만 제공하는 것 (읽을지 말지는 에이전트 판단)
-- `explore_instruction <loop_out_dir> [hint_file]` → 표준 탐색 지시 문자열 반환
-- 루프 출력 파일은 `LOOP_OUT_DIR=/tmp/${PREFIX}_loop_out/` 에 attempt별로 보존
+- `explore_instruction <loop_out_dir> [hint_file]` → 표준 탐색 지시 문자열 반환 (탐색 예산: 최대 5개 파일, 합계 100KB 이내)
+- 히스토리 구조: `HIST_DIR=/tmp/${PREFIX}_history/` 하위에 루프별 attempt-N/ 디렉토리로 보존
+  - impl: `HIST_DIR/impl/attempt-N/` (engineer.log, test-results.log, validator.log, pr.log, meta.json)
+  - design: `HIST_DIR/design/round-N/` (designer.log, critic.log, meta.json)
+  - bugfix: `HIST_DIR/bugfix/attempt-N/` (engineer.log, vitest.log, validator.log, meta.json)
+- `LOOP_OUT_DIR = HIST_DIR/{loop}` — 이중 저장 금지. 플랫 파일(`attempt-N-agent.log`)은 사용하지 않음
+- `write_attempt_meta <meta_file> …` — jq 우선, 없으면 python3 fallback
+- `prune_history <loop_dir>` — attempt 5개 초과/단일 로그 50KB 초과/design round 3개 초과/전체 5MB 초과 시 정리
+  - 호출 시점: attempt 디렉토리 생성 직후, 파일 기록 전 (race condition 방지)
 - 이 원칙은 impl/bugfix/design/plan 모든 루프에 적용
 
 ---

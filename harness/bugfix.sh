@@ -277,15 +277,20 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
   local attempt=0
   local MAX_HOTFIX=3
   local error_trace=""
-  # Phase A: LOOP_OUT_DIR — attempt별 bugfix 출력 보존
-  local LOOP_OUT_DIR="/tmp/${PREFIX}_bf_loop_out"
+  # Phase B: HIST_DIR/bugfix — attempt별 구조화 히스토리 (Phase A 플랫 파일 통합)
+  local HIST_DIR="/tmp/${PREFIX}_history"
+  local LOOP_OUT_DIR="${HIST_DIR}/bugfix"
   mkdir -p "$LOOP_OUT_DIR"
   while [[ $attempt -lt $MAX_HOTFIX ]]; do
     attempt=$((attempt + 1))
     kill_check
     echo "[HARNESS] engineer 직접 (attempt $attempt/$MAX_HOTFIX, depth=$depth)"
 
-    # Phase A: 스마트 컨텍스트 — 재시도 시 error_trace 전달 제거, 에이전트 자율 탐색
+    # Phase B: attempt 디렉토리 생성 → prune → 파일 기록
+    local attempt_dir="${LOOP_OUT_DIR}/attempt-${attempt}"
+    mkdir -p "$attempt_dir"
+    prune_history "$LOOP_OUT_DIR"
+
     local eng_prompt=""
     if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
       local context
@@ -293,7 +298,7 @@ $(sed -n '/^## 개발 명령어/,/^---/p; /^## 작업 순서/,/^---/p; /^## Git/
       local explore_instr=""
       if [[ $attempt -gt 1 ]]; then
         explore_instr="
-$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-vitest.log")"
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))/vitest.log")"
       fi
       eng_prompt="impl: $IMPL_FILE
 issue: #$ISSUE_NUM
@@ -307,7 +312,7 @@ $CONSTRAINTS"
       local explore_instr=""
       if [[ $attempt -gt 1 ]]; then
         explore_instr="
-$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))-vitest.log")"
+$(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/attempt-$((attempt-1))/vitest.log")"
       fi
       eng_prompt="issue: #$ISSUE_NUM
 task: 버그 수정 (QA 분석 기반)${explore_instr}
@@ -319,8 +324,8 @@ $CONSTRAINTS"
 
     local AGENT_EXIT=0
     _agent_call "engineer" 900 "$eng_prompt" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
-    # Phase A: engineer 출력 보존
-    cp "/tmp/${PREFIX}_eng_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-engineer.log" 2>/dev/null || true
+    # Phase B: attempt_dir에 저장
+    cp "/tmp/${PREFIX}_eng_out.txt" "${attempt_dir}/engineer.log" 2>/dev/null || true
 
     if [[ $AGENT_EXIT -eq 124 ]]; then
       echo "[HARNESS] engineer timeout — 재시도"
@@ -389,8 +394,12 @@ $val_ctx" \
       exit 0
     else
       error_trace=$(cat "/tmp/${PREFIX}_vitest_out.txt" 2>/dev/null | head -c 5000 || echo "vitest exit=$vitest_exit")
-      # Phase A: vitest 실패 결과 보존
-      cp "/tmp/${PREFIX}_vitest_out.txt" "${LOOP_OUT_DIR}/attempt-${attempt}-vitest.log" 2>/dev/null || true
+      # Phase B: vitest 실패 결과 보존 + meta.json
+      cp "/tmp/${PREFIX}_vitest_out.txt" "${attempt_dir}/vitest.log" 2>/dev/null || true
+      local chg_bf; chg_bf=$(git diff HEAD~1 --name-only 2>/dev/null | head -5 | tr '\n' ',' | sed 's/,$//' || echo "")
+      write_attempt_meta "${attempt_dir}/meta.json" "$attempt" "bugfix" "$depth" "FAIL" \
+        "test_fail" "" "$chg_bf" "engineer" \
+        "vitest exit=$vitest_exit" "${attempt_dir}/vitest.log 의 실패 케이스 확인"
       echo "[HARNESS] vitest 실패 (exit=$vitest_exit) — engineer 재시도"
     fi
   done
