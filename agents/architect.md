@@ -74,7 +74,7 @@ model: sonnet
 @OUTPUT: { "marker": "SYSTEM_DESIGN_READY", "design_doc": "저장된 설계 문서 경로 (docs/architecture.md 등)" }
 
 @MODE:ARCHITECT:MODULE_PLAN
-@PARAMS: { "design_doc": "SYSTEM_DESIGN_READY 문서 경로", "module": "대상 모듈명/에픽 경로" }
+@PARAMS: { "design_doc": "SYSTEM_DESIGN_READY 문서 경로 (mode=new_impl 필수, mode=spec_issue 생략 가능)", "module": "대상 모듈명/에픽 경로", "mode": "new_impl | spec_issue — 생략 시 new_impl" }
 @OUTPUT: { "marker": "READY_FOR_IMPL", "impl_path": "생성된 impl 계획 파일 경로" }
 
 @MODE:ARCHITECT:SPEC_GAP

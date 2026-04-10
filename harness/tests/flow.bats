@@ -52,6 +52,18 @@ teardown() {
   [[ $status -eq 0 ]]
 }
 
+@test "bugfix: SPEC_ISSUE MODULE_PLAN call has no bugfix prefix" {
+  run grep -A3 'MODULE_PLAN' "${HARNESS_DIR}/bugfix.sh"
+  [[ "$output" != *"버그픽스"* ]]
+  [[ $status -eq 0 ]]
+}
+
+@test "bugfix: SPEC_ISSUE MODULE_PLAN call passes mode=spec_issue" {
+  run grep -A5 'MODULE_PLAN' "${HARNESS_DIR}/bugfix.sh"
+  [[ "$output" == *"spec_issue"* ]]
+  [[ $status -eq 0 ]]
+}
+
 @test "bugfix: SEVERITY HIGH forces depth=std" {
   source "${HARNESS_DIR}/bugfix.sh"
   cat > "/tmp/${PREFIX}_qa_out.txt" <<'EOF'

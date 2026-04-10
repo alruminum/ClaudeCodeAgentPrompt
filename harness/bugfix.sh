@@ -222,7 +222,7 @@ _bugfix_route() {
       exit 0
       ;;
     architect_full|architect|*)
-      _bugfix_full "$qa_file"
+      _architect_route "$qa_file"
       ;;
   esac
 }
@@ -285,7 +285,7 @@ qa 분석: ${qa_out} issue: #$ISSUE_NUM" \
 
     if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
       echo "[HARNESS] Bugfix Plan impl 생성 실패 → full 경로로 폴백"
-      _bugfix_full "$qa_file"
+      _architect_route "$qa_file"
       return
     fi
   fi
@@ -435,16 +435,17 @@ $val_ctx" \
 }
 
 # ── full 경로: architect Module Plan → validator Plan Validation → engineer 직접 ──
-_bugfix_full() {
+_architect_route() {
   local qa_file="$1"
   local qa_out
   qa_out=$(head -c 30000 "$qa_file" 2>/dev/null)
 
   BRANCH_TYPE="fix"  # bugfix full → fix/ 브랜치
-  echo "[HARNESS] architect 버그픽스 전체 계획 작성"
+  echo "[HARNESS] architect 전체 계획 작성 (SPEC_ISSUE)"
   _agent_call "architect" 900 \
     "@MODE:ARCHITECT:MODULE_PLAN
-버그픽스 — qa 분석: ${qa_out} issue: #$ISSUE_NUM" \
+@PARAMS: { \"mode\": \"spec_issue\" }
+qa 분석: ${qa_out} issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_arch_out.txt"
   IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
 

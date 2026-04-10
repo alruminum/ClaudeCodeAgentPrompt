@@ -89,6 +89,8 @@
 | **S76** | **에이전트 인프라 탐색 금지 강화 — architect/engineer/validator Universal Preamble에 orchestration-rules.md 등 인프라 파일 Read 금지 명시** | S | ✅ 완료 |
 | **S77** | **harness-review INFRA 분류 오탐 수정 — agent-config/ 경로를 INFRA_EXCLUSIONS로 제외 (의도된 프로젝트 컨텍스트 읽기)** | S | ✅ 완료 |
 | **S78** | **디자인 루프 2모드 분리 — DEFAULT(1variant, 크리틱 없음, 유저 직접 확인) / CHOICE(3variant, 크리틱 PASS/REJECT, 유저 PICK). designer/design-critic/design.sh/executor.sh/orchestration/design.md/commands/design.md 일괄 업데이트** | S | 🔧 진행 |
+| **S79** | **bugfix.sh SPEC_ISSUE 오염 수정 — _bugfix_full() MODULE_PLAN 호출 시 "버그픽스 —" 프리픽스 제거 (SPEC_ISSUE는 표준 MODULE_PLAN 경로)** | S | ✅ 완료 |
+| **S80** | **MODULE_PLAN mode 파라미터 도입 — @PARAMS mode=spec_issue/new_impl 명시, SPEC_ISSUE 분기 복원(module-plan.md), _bugfix_full→_architect_route 리네임** | S | ✅ 완료 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |
 | S14 | 커버리지 게이트 신규파일 60% | S | ⬜ 보류 |
 | S15 | BROWSER:DOM 자동 검증 (opt-in Playwright) | S | ⬜ 보류 |

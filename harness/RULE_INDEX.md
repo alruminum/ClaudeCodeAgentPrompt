@@ -15,3 +15,4 @@
 | R05 | bugfix merge gate — depth=bugfix 경로는 validator_b_passed 플래그 필수 | depth.*==.*bugfix | utils.sh | commit-strategy: bugfix merge uses validator_b_passed gate (not pr_reviewer_lgtm) |
 | R06 | security-reviewer — deep 깊이에서만 실행 (std/fast 스킵) | DEPTH.*==.*deep | impl-process.sh | commit-strategy: security-reviewer is inside deep-only block |
 | R07 | fast CHANGES_REQUESTED — pr-reviewer가 CHANGES_REQUESTED 시 engineer 추가커밋 1회 | fast-pr-fix | impl-process.sh | dryrun: fast CHANGES_REQUESTED — engineer fix adds [fast-pr-fix] commit |
+| R08 | SPEC_ISSUE MODULE_PLAN — "버그픽스" 프리픽스 없이 표준 MODULE_PLAN 호출 (bugfix 분기 오염 방지) | MODULE_PLAN | bugfix.sh | bugfix: SPEC_ISSUE MODULE_PLAN call has no bugfix prefix |

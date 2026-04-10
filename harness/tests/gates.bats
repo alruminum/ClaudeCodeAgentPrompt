@@ -248,7 +248,7 @@ teardown() {
     npx() { return 0; }
     rotate_harness_logs() { true; }
     echo "FUNCTIONAL_BUG analysis" > "/tmp/'"$PREFIX"'_qa_out.txt"
-    _bugfix_full "/tmp/'"$PREFIX"'_qa_out.txt"
+    _architect_route "/tmp/'"$PREFIX"'_qa_out.txt"
   '
   [[ "$output" == *"Plan Validation PASS"* ]]
   [[ "$output" == *"engineer"* ]]
