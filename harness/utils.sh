@@ -53,6 +53,12 @@ write_run_end() {
   fi
 }
 
+# ── hlog: 공용 로그 함수 (impl-process 외 design/bugfix/plan 루프에서도 사용) ──
+hlog() {
+  local _log="${HLOG:-/tmp/${PREFIX:-mb}-harness-debug.log}"
+  echo "[$(date +%H:%M:%S)] $*" | tee -a "$_log"
+}
+
 # ── 킬 스위치 체크 (executor + loop 양쪽에서 사용) ────────────────────
 kill_check() {
   if [[ -f "/tmp/${PREFIX}_harness_kill" ]]; then

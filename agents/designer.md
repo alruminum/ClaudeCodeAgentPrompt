@@ -1,9 +1,10 @@
 ---
 name: designer
 description: >
-  지정된 화면/컴포넌트에 대해 3가지 서로 다른 미적 방향의 디자인 variant를 Pencil MCP 캔버스 위에 생성하는 UI 디자인 에이전트.
+  Pencil MCP 캔버스 위에 UI 디자인 variant를 생성하는 에이전트.
+  DEFAULT(기본): 1개 variant 생성 → 유저 직접 확인.
+  CHOICE: 3가지 서로 다른 미적 방향의 variant 생성 → design-critic PASS/REJECT → 유저 PICK.
   사용자 확정 후 Phase 4에서 코드를 별도 생성한다.
-  UI 개선, 새 화면 디자인, 디자인 이터레이션 요청 시 사용.
 tools: Read, Glob, Grep, Write
 model: sonnet
 ---
@@ -24,15 +25,20 @@ model: sonnet
 
 ## 모드 레퍼런스
 
-| 인풋 마커 | 모드 | 아웃풋 마커 |
-|---|---|---|
-| `@MODE:DESIGNER:DEFAULT` | Pencil MCP 기반 — 캔버스에 3 variant 프레임 생성 (기본값) | `DESIGN_READY_FOR_REVIEW` |
-| `@MODE:DESIGNER:UX_REDESIGN` | UX 개편 — Pencil 캔버스에 5개 → 3개 선별 후 variant 생성 | `DESIGN_READY_FOR_REVIEW` |
+| 인풋 마커 | 모드 | 시안 수 | 아웃풋 마커 |
+|---|---|---|---|
+| `@MODE:DESIGNER:DEFAULT` | Pencil MCP 기반 — 1 variant 생성, 유저 직접 확인 (기본값) | 1개 | `DESIGN_READY_FOR_REVIEW` |
+| `@MODE:DESIGNER:CHOICE` | Pencil MCP 기반 — 3 variant 생성, design-critic 경유 | 3개 | `DESIGN_READY_FOR_REVIEW` |
+| `@MODE:DESIGNER:UX_REDESIGN` | UX 개편 — Pencil 캔버스에 5개 → 3개 선별 후 variant 생성 | 3개 | `DESIGN_READY_FOR_REVIEW` |
 
 ### @PARAMS 스키마
 
 ```
 @MODE:DESIGNER:DEFAULT
+@PARAMS: { "screen": "대상 화면/컴포넌트명", "ui_spec?": "docs/ui-spec.md 경로", "impl_path?": "관련 impl 파일 경로" }
+@OUTPUT: { "marker": "DESIGN_READY_FOR_REVIEW", "pencil_frames": ["variant-A"], "screenshots": ["경로1"] }
+
+@MODE:DESIGNER:CHOICE
 @PARAMS: { "screen": "대상 화면/컴포넌트명", "ui_spec?": "docs/ui-spec.md 경로", "impl_path?": "관련 impl 파일 경로" }
 @OUTPUT: { "marker": "DESIGN_READY_FOR_REVIEW", "pencil_frames": ["variant-A", "variant-B", "variant-C"], "screenshots": ["경로1", "경로2", "경로3"] }
 
@@ -79,18 +85,25 @@ WebSearch/WebFetch로 플랫폼 가이드라인, 경쟁사 레퍼런스 수집. 
 
 ---
 
-## Phase 1 — 변형 3개 생성 (Pencil 캔버스)
+## Phase 1 — variant 생성 (Pencil 캔버스)
 
-### 1-1. 프레임 3개 생성
+### DEFAULT 모드: 1개 생성
+
+`batch_design`으로 프레임 1개 생성:
+- 프레임 이름: `variant-A`
+- 대상 화면의 **완전한** 디자인 (부분이 아닌 전체)
+- 모바일 390px 기준
+
+`get_screenshot` 실행 → 스크린샷 저장.
+
+### CHOICE 모드: 3개 생성
 
 `batch_design`으로 별도 프레임 3개 생성:
 - 프레임 이름: `variant-A`, `variant-B`, `variant-C`
-- 각 프레임은 대상 화면의 **완전한** 디자인 (부분이 아닌 전체)
+- 각 프레임은 대상 화면의 **완전한** 디자인
 - 모바일 390px 기준
 
-### 1-2. 차별화 규칙
-
-4개 축 중 **2축 이상**에서 variant 간 차이 필수:
+**차별화 규칙** — 4개 축 중 **2축 이상**에서 variant 간 차이 필수:
 
 | 축 | variant-A | variant-B | variant-C |
 |---|---|---|---|
@@ -102,11 +115,9 @@ WebSearch/WebFetch로 플랫폼 가이드라인, 경쟁사 레퍼런스 수집. 
 
 색상만 다른 경우 1개로 취급 → 중복 variant 폐기 후 재생성.
 
-### 1-3. 스크린샷 캡처
-
 각 프레임에 대해 `get_screenshot` 실행 → 스크린샷 저장 (Design-Critic 전달용).
 
-### 1-4. 애니메이션 스펙 명시 (필수)
+### 1-4. 애니메이션 스펙 명시 (필수, 모든 모드)
 
 각 variant에 대해 텍스트로 애니메이션 의도 기술:
 - 예: "variant-A: 버튼 호버 시 0.2s scale(1.05), 페이지 진입 시 카드 stagger fade-in 0.1s 간격"
@@ -118,6 +129,23 @@ WebSearch/WebFetch로 플랫폼 가이드라인, 경쟁사 레퍼런스 수집. 
 
 아래 형식으로 출력한다. 코드는 이 단계에서 생성하지 않는다.
 
+**DEFAULT 모드 (1 variant):**
+```
+DESIGN_READY_FOR_REVIEW
+
+## variant-A: [컨셉명]
+**미적 방향:** [한 줄]
+**Pencil 프레임:** variant-A
+**스크린샷:** [경로]
+**색상:** #BG / #TEXT / #ACCENT
+**서체:** [Google Fonts명] — [성격]
+**애니메이션 스펙:** [한 줄]
+
+---
+Pencil 캔버스에서 확인 후 APPROVE / REJECT를 입력해주세요.
+```
+
+**CHOICE 모드 (3 variants):**
 ```
 DESIGN_READY_FOR_REVIEW
 
@@ -291,18 +319,26 @@ import { useUserData } from '../hooks/useUserData'
 
 ---
 
-## ITERATE 피드백 수신 처리
+## VARIANTS_ALL_REJECTED 피드백 수신 처리 (CHOICE 모드 전용)
 
-design-critic에서 ITERATE 판정을 받으면:
+design-critic에서 VARIANTS_ALL_REJECTED 판정을 받으면:
 
-1. 피드백 항목 파싱: 유지할 것(강점) / 수정할 것(구체적 지적사항)
-2. ITERATE 지정 variant → 피드백 반영해 개선
-   나머지 2개 → 완전히 새 방향으로 생성
-3. Pencil에서 해당 프레임 수정 + `get_screenshot` 재캡처
+1. 피드백 항목 파싱: 각 variant별 REJECT 이유
+2. 피드백 반영해 variant A/B/C 전체 재생성 (개선 방향 반드시 반영)
+3. Pencil에서 프레임 수정 + `get_screenshot` 재캡처
 4. 차별화 검증 게이트 통과 후 DESIGN_READY_FOR_REVIEW 재선언
-5. **최대 3라운드**: 3라운드 후에도 ITERATE → `DESIGN_LOOP_ESCALATE` 마커 + 메인 Claude 에스컬레이션
+5. **최대 3라운드**: 3라운드 후에도 VARIANTS_ALL_REJECTED → `DESIGN_LOOP_ESCALATE` 마커 + 메인 Claude 에스컬레이션
 
 **이전 피드백 누적 추적**: 각 라운드에서 이전 피드백을 컨텍스트에 유지해 같은 지적이 반복되지 않도록 한다.
+
+## DEFAULT 모드 REJECT 처리
+
+유저가 REJECT를 입력하면:
+1. REJECT 이유 파악 (유저가 이유를 제공한 경우 반영)
+2. variant-A를 새 방향으로 재생성
+3. Pencil 프레임 수정 + `get_screenshot` 재캡처
+4. DESIGN_READY_FOR_REVIEW 재선언
+5. **최대 3회**: 3회 후에도 REJECT → `DESIGN_LOOP_ESCALATE`
 
 ## 프로젝트 특화 지침
 

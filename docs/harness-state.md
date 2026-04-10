@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-09 (S77 — harness-review INFRA 오탐 수정: agent-config/ 경로를 INFRA_EXCLUSIONS로 제외)
+> 최종 업데이트: 2026-04-10 (S78 — 디자인 루프 2모드 분리: DEFAULT=1variant 유저직접확인 / CHOICE=3variant design-critic PASS/REJECT)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -32,7 +32,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,bugfix,plan}.sh |
 | `harness/impl.sh` | impl 모드: 재진입 감지 → architect → `run_plan_validation()` → engineer 루프 | harness/impl-process.sh |
 | `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep depth 분기, 3회 재시도, SPEC_GAP 동결) + memory candidate | /tmp/{p}_* 플래그들 |
-| `harness/design.sh` | design 모드 v2: designer (Pencil MCP Phase 0~1) → design-critic (스크린샷) → Phase 3 유저 선택 안내 → DESIGN_DONE. HTML 프리뷰 제거. | 에이전트들 |
+| `harness/design.sh` | design 모드 v3: DEFAULT(1variant, 크리틱 없음, 유저 직접 확인) / CHOICE(--choice, 3variant, design-critic PASS/REJECT → 유저 PICK). DESIGN_DONE 또는 DESIGN_LOOP_ESCALATE 반환. | 에이전트들 |
 | `harness/bugfix.sh` | bugfix 모드: qa → 5-way 분기 (engineer_direct/architect_full/design/backlog/KNOWN_ISSUE) + `run_plan_validation()` 활용 | 에이전트들 |
 | `harness/plan.sh` | plan 모드: product-planner → architect SD → `run_design_validation()` → architect MP → `run_plan_validation()` → PLAN_VALIDATION_PASS | 에이전트들 |
 | `setup-harness.sh` | 프로젝트별 훅 설치 → `.claude/settings.json` + `harness.config.json` | - |

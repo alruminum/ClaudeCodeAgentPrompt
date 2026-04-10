@@ -30,6 +30,8 @@
 
 | 마커 | 발행 주체 | 처리 |
 |------|-----------|------|
+| `VARIANTS_APPROVED` | design-critic CHOICE 모드 (1개 이상 PASS) | 유저 PICK 안내 |
+| `VARIANTS_ALL_REJECTED` | design-critic CHOICE 모드 (전체 REJECT) | designer 재시도 (max 3회) |
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | ~~`VALIDATION_ESCALATE`~~ | ~~validator Code Validation~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
 | ~~`REVIEW_LOOP_ESCALATE`~~ | ~~pr-reviewer~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
@@ -38,7 +40,7 @@
 | `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
 | `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 동결 초과) | 메인 Claude 보고 — 복귀 옵션 제시 |
-| `DESIGN_LOOP_ESCALATE` | designer (3라운드 후에도 ITERATE) | 유저 직접 선택 |
+| `DESIGN_LOOP_ESCALATE` | designer (DEFAULT: 3회 재시도 후에도 REJECT / CHOICE: 3라운드 후에도 VARIANTS_ALL_REJECTED) | 유저 직접 선택 |
 | `TECH_CONSTRAINT_CONFLICT` | architect SPEC_GAP (기술 제약 충돌) | 메인 Claude 보고 |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | `MERGE_CONFLICT_ESCALATE` | harness/impl-process.sh / harness/executor.sh (merge 실패) | 메인 Claude 보고 |
@@ -368,7 +370,7 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 | architect | 설계 문서 · impl 파일 작성 | src/** 수정 |
 | engineer | 소스 코드 구현 | 설계 문서 수정, Agent 도구 사용 |
 | validator | PASS/FAIL 판정 리포트 | 파일 수정 |
-| designer | variant 3개 생성 | src/** 수정 |
+| designer | DEFAULT=variant 1개 생성(유저 직접 확인), CHOICE=variant 3개 생성(크리틱 경유) | src/** 수정 |
 | design-critic | PICK/ITERATE/ESCALATE 판정 | 파일 수정 |
 | qa | 원인 분석 + 라우팅 추천 | 코드·문서 수정 |
 | product-planner | PRD/TRD 작성 | 코드·설계 문서 수정 |

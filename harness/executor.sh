@@ -5,10 +5,13 @@
 # 호출 형식:
 #   bash .claude/harness/executor.sh <mode> \
 #     --impl <path> --issue <N> [--prefix <p>] [--bug <desc>] [--context <ctx>]
+#     [--choice]  ← design 모드 전용: 3 variant + design-critic PASS/REJECT
 #
 # 4가지 mode:
 #   impl   — harness/impl.sh (계획) + harness/impl-process.sh (실행)
-#   design — harness/design.sh (designer → design-critic)
+#   design — harness/design.sh
+#             DEFAULT(기본): 1 variant, 크리틱 없음, 유저 직접 확인
+#             CHOICE(--choice): 3 variants, design-critic PASS/REJECT → 유저 PICK
 #   bugfix — harness/bugfix.sh (qa → 5-way 분기: engineer_direct/architect/design/backlog/KNOWN_ISSUE)
 #   plan   — harness/plan.sh (product-planner → architect → validator)
 
@@ -31,6 +34,7 @@ export HARNESS_RESULT="unknown"
 MODE=${1:-""}; shift || true
 IMPL_FILE=""; ISSUE_NUM=""; PREFIX="mb"; BUG_DESC=""; CONTEXT=""; DEPTH="auto"; CONSTRAINTS=""
 BRANCH_TYPE="feat"  # bugfix 경로에서 "fix"로 변경
+export DESIGN_MODE="default"  # design 모드 기본값: default (1 variant, 크리틱 없음)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -40,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --bug)     BUG_DESC="$2";   shift 2 ;;
     --context) CONTEXT="$2";    shift 2 ;;
     --depth)   DEPTH="$2";      shift 2 ;;
+    --choice)  DESIGN_MODE="choice"; shift ;;
     *) shift ;;
   esac
 done
