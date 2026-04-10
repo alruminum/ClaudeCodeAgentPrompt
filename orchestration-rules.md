@@ -237,7 +237,7 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 네이밍: `{type}/{milestone}-{issue}-{slug}` (# 없이 숫자만)
 
 - `type`: `feat` (구현 루프) / `fix` (버그픽스 루프 bugfix)
-- `milestone`: harness.config.json의 milestone 값 (없으면 생략)
+- `milestone`: GitHub 이슈의 milestone 제목 (gh issue view로 조회, 소문자 변환. 없으면 생략)
 - `issue`: GitHub issue 번호 (숫자만)
 - `slug`: issue title에서 영문/숫자만 추출, 30자 캡. 한국어만이면 생략
 

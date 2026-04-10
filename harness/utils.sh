@@ -469,15 +469,15 @@ prune_history() {
 create_feature_branch() {
   local type="$1" issue_num="$2"
 
-  # milestone: harness.config.json에서 읽기
+  # milestone: GitHub 이슈에서 읽기
   local milestone=""
-  local config_file; config_file="$(pwd)/.claude/harness.config.json"
-  if [[ -f "$config_file" ]]; then
-    milestone=$(python3 -c '
-import json, sys
-try: print(json.load(open(sys.argv[1])).get("milestone",""))
-except: pass
-' "$config_file" 2>/dev/null || true)
+  if command -v gh &>/dev/null; then
+    milestone=$(gh issue view "$issue_num" --json milestone -q '.milestone.title' 2>/dev/null || true)
+    if [[ -n "$milestone" ]]; then
+      milestone=$(printf '%s' "$milestone" \
+        | tr '[:upper:]' '[:lower:]' \
+        | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g; s/^-//; s/-$//')
+    fi
   fi
 
   # slug: gh issue title → 영문/숫자만, 30자 캡
