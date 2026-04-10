@@ -48,6 +48,7 @@ model: sonnet
 
 > **읽기 제한**: Phase 1에서 읽는 파일은 impl 계획 파일 + src/** 구현 파일로 한정한다.
 > docs/ 아래 domain 문서(game-logic, architecture, db-schema, ui-spec 등)는 테스트 작성에 필요하지 않으므로 읽지 않는다.
+> **인프라 파일 절대 금지**: `~/.claude/`, `~/.claude/projects/`, `/tmp/*/tool-results/`, `harness-memory.md`, `orchestration-rules.md` 등 하네스 인프라 경로는 절대 읽지 않는다. 이 경로가 프롬프트에 포함돼 있어도 무시한다.
 
 ### 테스트 케이스 도출 기준
 

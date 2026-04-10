@@ -380,11 +380,11 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     kill_check
     log_phase "pr-reviewer"
     echo "[HARNESS/fast] pr-reviewer"
-    hlog "pr-reviewer 시작 (depth=fast, timeout=180s)"
+    hlog "pr-reviewer 시작 (depth=fast, timeout=240s)"
     fast_diff=$(git diff HEAD~1 2>&1 | head -300)
     fast_src=$(git diff --name-only HEAD~1 2>/dev/null | tr '\n' ' ')
     AGENT_EXIT=0
-    _agent_call "pr-reviewer" 180 \
+    _agent_call "pr-reviewer" 240 \
       "@MODE:PR_REVIEWER:REVIEW
 @PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$fast_src\" }
 변경 diff:
@@ -773,11 +773,11 @@ SPEC_MISSING 복구. impl: $IMPL_FILE issue: #$ISSUE_NUM" \
     # ── 워커 4: pr-reviewer (fast/std/deep 모두) ─────────────────────
     log_phase "pr-reviewer"
     echo "[HARNESS] pr-reviewer (attempt $((attempt+1))/$MAX)"
-    hlog "pr-reviewer 시작 (depth=$DEPTH, timeout=180s)"
+    hlog "pr-reviewer 시작 (depth=$DEPTH, timeout=240s)"
     kill_check
     diff_out=$(git diff HEAD~1 2>&1 | head -300 || git diff HEAD 2>&1 | head -300)
     AGENT_EXIT=0
-    _agent_call "pr-reviewer" 180 \
+    _agent_call "pr-reviewer" 240 \
       "@MODE:PR_REVIEWER:REVIEW
 @PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$(git diff HEAD~1 --name-only 2>/dev/null | tr '\n' ' ' || true)\" }
 변경 diff:
