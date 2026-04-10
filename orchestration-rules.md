@@ -12,7 +12,7 @@
 | 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
 | UI 변경 요청 | → **ux 스킬** → designer 에이전트 직접 호출 (Pencil 캔버스, 하네스 루프 없음). 상세: [orchestration/design.md](orchestration/design.md) |
 | 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth fast\|std\|deep]` |
-| 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** — `bash ~/.claude/harness/executor.sh bugfix --bug "<설명>" [--issue <N>] [--prefix <P>]` — qa 라우팅 기반 4-way 분기. SEVERITY:HIGH → depth=std 강제 |
+| 버그 보고 | → **qa 스킬** → QA 에이전트 직접 분류 + 라우팅. 상세: [orchestration/direct.md](orchestration/direct.md)<br>FUNCTIONAL_BUG → `executor.sh direct --issue <N>` / DESIGN_ISSUE → ux 스킬 / SCOPE_ESCALATE → 유저 보고 |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>]` |
 | **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획 루프) |
 
@@ -21,7 +21,7 @@
 → 상세: [orchestration/plan.md](orchestration/plan.md)
 → 상세: [orchestration/design.md](orchestration/design.md)
 → 상세: [orchestration/impl.md](orchestration/impl.md)
-→ 상세: [orchestration/bugfix.md](orchestration/bugfix.md)
+→ 상세: [orchestration/direct.md](orchestration/direct.md)
 → 상세: [orchestration/tech-epic.md](orchestration/tech-epic.md)
 
 ---
@@ -35,8 +35,9 @@
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | ~~`VALIDATION_ESCALATE`~~ | ~~validator Code Validation~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
 | ~~`REVIEW_LOOP_ESCALATE`~~ | ~~pr-reviewer~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
-| `KNOWN_ISSUE` | qa (1회 분석으로 원인 특정 불가) | 메인 Claude 보고 |
-| `SCOPE_ESCALATE` | qa (관련 모듈/파일 = 0 → 신규 기능 판정) | 메인 Claude 보고 — product-planner 라우팅 |
+| `DESIGN_ISSUE` | qa 스킬 (QA 에이전트 분류 결과) | ux 스킬 자동 진입 (COMPONENT_ONE_WAY 기본) → DESIGN_HANDOFF 후 executor.sh direct |
+| `KNOWN_ISSUE` | qa 에이전트 (1회 분석으로 원인 특정 불가) | 메인 Claude 보고 |
+| `SCOPE_ESCALATE` | qa 에이전트 (관련 모듈/파일 = 0 → 신규 기능 판정) | 메인 Claude 보고 — product-planner 라우팅 |
 | `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
 | `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 동결 초과) | 메인 Claude 보고 — 복귀 옵션 제시 |
@@ -53,22 +54,24 @@
 이유 불문. 규모 불문. 상황 불문.
 반드시 `bash ~/.claude/harness/executor.sh`를 통해서만 구현.
 
-**1b. 메인 Claude — 에이전트 직접 호출 절대 금지 (designer 예외 있음)**
-qa, architect, engineer, validator 등 하네스 내부 에이전트를 메인 Claude가 Agent 도구로 직접 호출 금지.
+**1b. 메인 Claude — 에이전트 직접 호출 절대 금지 (qa·designer 예외 있음)**
+architect, engineer, validator 등 하네스 내부 에이전트를 메인 Claude가 Agent 도구로 직접 호출 금지.
 반드시 `bash ~/.claude/harness/executor.sh <mode> ...` 를 통해서만 에이전트를 실행한다.
+
+**qa 예외**: qa 스킬이 QA 에이전트를 Agent 도구로 직접 호출해 분류 + 이슈 생성을 수행한다.
+분류 결과에 따라 qa 스킬이 직접 라우팅한다 (executor.sh direct / ux 스킬 / 유저 보고).
+executor.sh bugfix 경유 금지 (deprecated).
 
 **designer 예외**: designer 에이전트는 결과물이 Pencil 캔버스(파일 변경 없음, git 없음)이므로 하네스 루프 적용 대상이 아니다.
 ux 스킬이 designer 에이전트를 Agent 도구로 직접 호출한다. executor.sh design 경유 금지.
 
 금지 예시:
-- 버그 보고 수신 → qa 에이전트 직접 호출 ❌ → `executor.sh bugfix` 로 진입 ✅
+- 버그 보고 수신 → executor.sh bugfix 직접 호출 ❌ → qa 스킬 사용 ✅
 - 구현 전 analyst 직접 호출 ❌ → `executor.sh impl` 로 진입 ✅
 
 예외:
+- 버그 보고 → qa 스킬 → QA 에이전트 직접 호출 ✅ (분류 + 이슈 생성 후 라우팅)
 - UX 디자인 요청 → ux 스킬 → designer 에이전트 직접 호출 ✅ (Pencil 캔버스 결과물, 하네스 불필요)
-
-이유: qa/architect 등은 하네스 내부 워크플로우의 일부이다. 직접 호출 시 라우팅·플래그·이슈 생성·재진입 감지 등 하네스 인프라가 전부 누락된다.
-designer는 src/ 파일을 변경하지 않으므로 하네스 인프라 불필요. 유저가 Pencil 앱에서 시각적으로 확인 후 구현 단계로 직접 진행한다.
 
 **1c. 메인 Claude — 하네스 진입 전 GitHub 이슈 직접 생성 금지**
 `create_issue` MCP를 하네스 진입 전 메인 Claude가 직접 호출 금지.
@@ -147,7 +150,7 @@ READY_FOR_IMPL
 `harness/utils.sh`에 정의하여 양쪽에서 source로 공유한다.
 
 **9. 하네스 관련 수정 순서**
-`harness/executor.sh` / `harness/{impl,design,bugfix,plan}.sh` / `harness/impl-process.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` / 에이전트 파일 변경 시:
+`harness/executor.sh` / `harness/{impl,design,direct,plan}.sh` / `harness/impl-process.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` / 에이전트 파일 변경 시:
 1. **먼저** `docs/harness-backlog.md` — 해당 항목 상태 업데이트 또는 신규 항목 추가
 2. **그 다음** 실제 파일 수정
 3. **마지막** `docs/harness-state.md` 관련 섹션 현행화 (완료 기능 / 플래그 / 파일 인벤토리)
@@ -178,7 +181,7 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 | 3회 실패 | `IMPLEMENTATION_ESCALATE` |
 | 킬 스위치 | `HARNESS_KILLED` |
 | 비용 상한 초과 | `HARNESS_BUDGET_EXCEEDED` |
-| bugfix functional_bug 성공 | `HARNESS_DONE` |
+| direct 루프 성공 | `HARNESS_DONE` |
 | 크래시/unhandled exit | `HARNESS_CRASH` (write_run_end이 unknown 감지 시 자동 변환) |
 | merge 충돌 | `MERGE_CONFLICT_ESCALATE` |
 
@@ -416,7 +419,7 @@ Write 도구(`batch_design`, `batch_design` 등) 는 designer 전용.
 
 | 변경 내용 | 업데이트 대상 |
 |-----------|---------------|
-| 루프 순서 / 조건 변경 | `harness/executor.sh`, `harness/{impl,design,bugfix,plan}.sh`, `harness/impl-process.sh`, `docs/harness-state.md` |
+| 루프 순서 / 조건 변경 | `harness/executor.sh`, `harness/{impl,design,direct,plan}.sh`, `harness/impl-process.sh`, `docs/harness-state.md` |
 | 마커 추가 / 변경 | 해당 에이전트 md 파일 + 해당 루프 파일(`orchestration/*.md`) |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 |
 | 에이전트 추가 / 삭제 | 역할 경계 표 + 해당 루프 다이어그램 + 마커 표 + 스크립트 |

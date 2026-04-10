@@ -64,9 +64,12 @@ description: 기능 추가/변경 요청을 명확히 정의한 뒤 하네스 pl
 Bash 도구로 실행한다:
 
 ```bash
+# PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략 (executor.sh 기본값 사용)
+PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
 bash ~/.claude/harness/executor.sh plan \
   --context "[기능] <무엇> / [목적] <왜> / [범위] <범위>" \
-  --prefix mb
+  $PREFIX_FLAG
 ```
 
 GitHub 이슈 번호를 유저가 언급했으면 `--issue <N>` 추가.

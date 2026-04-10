@@ -55,10 +55,10 @@ TYPE이 불명확하면 물어본다 ("전체 화면인가요, 아니면 특정 
 - 수정 요청 → 수정 후 2×2 모드 선택 화면 재출력
 - 취소 → 종료
 
-## designer 직접 호출
+## designer 직접 호출 및 critic 루프
 
-유저 확인 후 Agent 도구로 designer 에이전트를 직접 호출한다.
-**executor.sh design은 사용하지 않는다.**
+유저 확인 후 Agent 도구로 에이전트를 직접 호출한다.
+**executor.sh design은 사용하지 않는다. 오케스트레이션은 이 스킬이 담당한다.**
 
 ### 모드별 @MODE 매핑
 
@@ -81,15 +81,55 @@ TYPE이 불명확하면 물어본다 ("전체 화면인가요, 아니면 특정 
 }
 ```
 
+### ONE_WAY 실행 절차
+
+1. designer 에이전트 호출 (Agent 도구)
+2. `DESIGN_READY_FOR_REVIEW` 수신 → 유저에게 Pencil 캔버스 확인 안내
+3. 유저 APPROVE → DESIGN_HANDOFF 대기 / REJECT → designer 재호출 (max 3회)
+
+### THREE_WAY 실행 절차
+
+attempt = 0, max = 3
+
+1. designer 에이전트 호출 (Agent 도구) — `DESIGN_READY_FOR_REVIEW` 수신 대기
+2. `DESIGN_READY_FOR_REVIEW` 수신 후 **design-critic 에이전트 호출** (Agent 도구):
+   ```
+   @MODE:CRITIC:REVIEW
+   designer 출력: <DESIGN_READY_FOR_REVIEW 전문>
+   variant A/B/C 각각 PASS/REJECT 판정하라.
+   ```
+3. critic 결과 판정:
+   - `VARIANTS_APPROVED` → 유저에게 PASS된 variant 안내 + PICK 요청, 종료
+   - `VARIANTS_ALL_REJECTED` → attempt += 1
+     - attempt < max → critic 피드백을 포함해 designer 재호출 (1번으로)
+     - attempt == max → `DESIGN_LOOP_ESCALATE` 출력, 유저에게 직접 선택 요청, 종료
+
+> **주의**: designer → critic → (재시도 시) designer 순서는 반드시 순차 실행.
+> 이전 단계 결과를 받은 후 다음 에이전트를 호출한다. 병렬 호출 금지.
+
 ## 구현 연결
 
 유저가 Pencil 캔버스에서 디자인을 확인하고 구현 요청 시:
 
-```
-"이 프레임으로 구현해줘" →
-bash ~/.claude/harness/executor.sh impl \
-  --context "Pencil frame ID: {node_id}" \
-  --impl <impl_path> --issue <N> [--prefix <P>]
+### 1. GitHub 이슈 생성 (DESIGN_HANDOFF 직후)
+
+DESIGN_HANDOFF 패키지를 기반으로 GitHub 이슈를 생성한다:
+- 제목: `[bugs] <대상> 디자인 적용`
+- 라벨: `bug`, `design-fix`
+- 마일스톤: Bugs
+- 본문: DESIGN_HANDOFF 패키지 전문 (Pencil frame ID, 디자인 토큰, 컴포넌트 구조, 애니메이션 스펙)
+
+> QA 경로에서 넘어온 경우 이미 이슈가 존재하므로 생성 스킵, 기존 이슈에 DESIGN_HANDOFF 내용을 코멘트로 추가한다.
+
+### 2. executor.sh direct 호출
+
+```bash
+# PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
+PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
+bash ~/.claude/harness/executor.sh direct \
+  --issue <생성된 이슈 번호> \
+  $PREFIX_FLAG
 ```
 
-engineer가 `batch_get`으로 해당 프레임을 읽어 `src/`에 구현한다.
+engineer가 GitHub 이슈에서 DESIGN_HANDOFF 패키지를 읽고 `batch_get`으로 Pencil 프레임을 참조해 `src/`에 구현한다.

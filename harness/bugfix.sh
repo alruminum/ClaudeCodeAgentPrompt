@@ -1,10 +1,13 @@
 #!/bin/bash
 # ~/.claude/harness/bugfix.sh
-# bugfix 모드: qa 라우팅 기반 4-way 분기 (functional_bug/architect_full/design/backlog)
 #
-# functional_bug 경로 세부:
-#   fast (AFFECTED_FILES ≤ 2): QA → engineer 직행 (architect 스킵)
-#   std  (그 외):              QA → architect 경량 Bugfix Plan → engineer → vitest → validator
+# ⚠️  DEPRECATED — v5 아키텍처에서 폐기됨.
+# 버그 보고는 qa 스킬이 QA 에이전트를 직접 호출해 분류 후 executor.sh direct로 라우팅한다.
+# 신규 프로젝트에서 사용 금지. 하위 호환성을 위해 보존.
+# 새 흐름: commands/qa.md → harness/direct.sh 참조.
+#
+# --- 구 아키텍처 (보존) ---
+# bugfix 모드: qa 라우팅 기반 4-way 분기 (functional_bug/architect_full/design/backlog)
 #
 # harness/executor.sh에서 source — 전역변수(PREFIX, IMPL_FILE, ISSUE_NUM 등) 사용
 

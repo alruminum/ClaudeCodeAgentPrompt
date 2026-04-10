@@ -3,6 +3,11 @@
 진입 조건: 유저 UX 변경 요청 → ux 스킬 → designer 에이전트 직접 호출
 **harness/executor.sh design 경유 없음. designer는 하네스 루프 밖.**
 
+> **오케스트레이션 주체**: `ux` 스킬(commands/ux.md)이 담당한다.
+> `harness/design.sh`는 deprecated — 레거시 참조용으로만 보존. 신규 작업에서 사용 금지.
+> ONE_WAY: 스킬이 designer 직접 호출 후 유저 확인.
+> THREE_WAY: 스킬이 designer → design-critic 루프(max 3회)를 순차 오케스트레이션.
+
 ---
 
 ## 2×2 포맷 매트릭스

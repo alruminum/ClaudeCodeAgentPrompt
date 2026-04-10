@@ -7,15 +7,19 @@
 #     --impl <path> --issue <N> [--prefix <p>] [--bug <desc>] [--context <ctx>]
 #     [--choice]  ← design 모드 전용(DEPRECATED): 3 variant + design-critic PASS/REJECT
 #
-# 3가지 mode (design은 ux 스킬이 직접 처리 — harness 경유 없음):
+# mode 목록:
 #   impl   — harness/impl.sh (계획) + harness/impl-process.sh (실행)
-#   bugfix — harness/bugfix.sh (qa → 5-way 분기: engineer_direct/architect/design/backlog/KNOWN_ISSUE)
+#   direct — harness/direct.sh (impl 파일 없이 engineer 직행, qa 스킬 / ux 스킬 경유)
 #   plan   — harness/plan.sh (product-planner → architect → validator)
 #
 # ⚠️  design 모드: DEPRECATED (v4)
 #   designer는 ux 스킬에서 Agent 도구로 직접 호출 (하네스 루프 밖).
 #   'executor.sh design' 은 레거시 호환용으로만 유지.
 #   신규 UX 요청은 ux 스킬 → designer 에이전트 직접 호출 사용.
+#
+# ⚠️  bugfix 모드: DEPRECATED (v5)
+#   버그 보고는 qa 스킬이 QA 에이전트를 직접 호출해 분류 후 executor.sh direct로 라우팅.
+#   'executor.sh bugfix' 는 레거시 호환용으로만 유지.
 
 set -euo pipefail
 
@@ -28,6 +32,7 @@ command -v timeout &>/dev/null || timeout() {
 source "${HOME}/.claude/harness/utils.sh"
 source "${HOME}/.claude/harness/impl.sh"
 source "${HOME}/.claude/harness/design.sh"
+source "${HOME}/.claude/harness/direct.sh"
 source "${HOME}/.claude/harness/bugfix.sh"
 source "${HOME}/.claude/harness/plan.sh"
 
@@ -117,8 +122,13 @@ PROCESS_SCRIPT="${HOME}/.claude/harness/impl-process.sh"
 # ══════════════════════════════════════════════════════════════════════
 case "$MODE" in
   impl)    run_impl ;;
+  direct)  run_direct ;;
   design)  run_design ;;
-  bugfix)  run_bugfix ;;
+  bugfix)
+    echo "[HARNESS] ⚠️  bugfix 모드는 deprecated입니다. qa 스킬을 사용하세요."
+    echo "[HARNESS] 하위 호환성을 위해 실행합니다."
+    run_bugfix
+    ;;
   plan)    run_plan ;;
   *)       export HARNESS_RESULT="HARNESS_CRASH"; echo "[HARNESS] 알 수 없는 mode: $MODE"; exit 1 ;;
 esac

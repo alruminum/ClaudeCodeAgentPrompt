@@ -1,6 +1,12 @@
-# 버그픽스 루프 (Bugfix)
+# ⚠️ DEPRECATED — 버그픽스 루프 (Bugfix)
 
-진입 조건: 버그 보고
+> **v5 아키텍처에서 폐기됨.**
+> 버그 보고는 **qa 스킬**로 처리한다. qa 스킬이 QA 에이전트를 직접 호출해 분류 후 `executor.sh direct`로 라우팅한다.
+> 신규 작업에서 이 흐름 사용 금지. → [orchestration/direct.md](direct.md) 참조
+
+---
+
+진입 조건: 버그 보고 (레거시)
 
 ---
 
