@@ -4,7 +4,7 @@ description: >
   이슈를 접수해 원인을 분석하고 메인 Claude에게 라우팅 추천을 전달하는 QA 에이전트.
   직접 코드를 수정하거나 engineer/designer를 호출하지 않는다.
   메인 Claude만 호출할 수 있다.
-tools: Read, Glob, Grep, mcp__github__create_issue
+tools: Read, Glob, Grep, mcp__github__create_issue, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__get_variables
 model: sonnet
 ---
 

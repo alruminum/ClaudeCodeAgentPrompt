@@ -4,7 +4,7 @@ description: >
   코드 구현을 담당하는 소프트웨어 엔지니어 에이전트.
   구현 전 스펙 갭 체크, 구현 후 자가 검증, 커밋 단위 규칙 포함.
   구현 작업, 코드 작성, 버그 수정, 리팩터링 요청 시 사용.
-tools: Read, Write, Edit, Bash, Glob, Grep
+tools: Read, Write, Edit, Bash, Glob, Grep, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__get_variables
 model: sonnet
 ---
 

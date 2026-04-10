@@ -8,7 +8,7 @@ description: >
   Task Decompose: Epic stories → 기술 태스크 분해 + impl batch 작성.
   Technical Epic: 기술부채/인프라 에픽 설계.
   Bugfix Plan: 국소적 버그 수정 계획 — 아키텍처 변경 없는 단순 수정.
-tools: Read, Glob, Grep, Write, Edit, mcp__github__create_issue, mcp__github__list_issues, mcp__github__get_issue, mcp__github__update_issue, Bash
+tools: Read, Glob, Grep, Write, Edit, mcp__github__create_issue, mcp__github__list_issues, mcp__github__get_issue, mcp__github__update_issue, Bash, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__get_variables
 model: sonnet
 ---
 
