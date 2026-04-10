@@ -33,8 +33,10 @@ DRIFT_MAP = {
     'agents/validator.md': ['harness/impl-process.sh', 'harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh'],
     'agents/engineer.md': ['harness/impl-process.sh', 'harness/bugfix.sh'],
     'agents/test-engineer.md': ['harness/impl-process.sh'],
-    'agents/designer.md': ['harness/design.sh'],
-    'agents/design-critic.md': ['harness/design.sh'],
+    # designer/design-critic는 하네스 루프 밖 (v4). ux 스킬이 직접 호출.
+    # harness/design.sh는 DEPRECATED — 드리프트 체크 대상에서 제외.
+    'agents/designer.md': ['commands/ux.md'],
+    'agents/design-critic.md': ['orchestration/design.md'],
     'agents/product-planner.md': ['harness/plan.sh'],
     'agents/pr-reviewer.md': ['harness/impl-process.sh'],
     'agents/security-reviewer.md': ['harness/impl-process.sh'],

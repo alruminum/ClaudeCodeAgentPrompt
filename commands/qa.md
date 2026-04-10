@@ -64,35 +64,25 @@ bash ~/.claude/harness/executor.sh bugfix \
 
 ## design 루프 경로
 
-### 정보 추출
+디자인 이슈는 **ux 스킬**로 처리한다.
+`executor.sh design`은 사용하지 않는다 — designer는 하네스 루프 밖(v4 아키텍처).
 
-| 항목 | 설명 | 예시 |
-|------|------|------|
-| **화면/컴포넌트** (WHERE) | 어느 화면인가 | "게임 메인 화면" |
-| **문제/요청** (WHAT) | 무엇이 이상하거나 어떻게 바꾸고 싶은가 | "칸이 안 맞아", "더 임팩트 있게" |
-| **참고** (REF) | 스크린샷, 시안, 기준 있으면 | 이미지 첨부 등 |
+### 처리 방식
 
-화면/컴포넌트가 없으면 물어본다. 참고는 없어도 진행.
-
-### 확인 및 실행
+디자인 이슈로 판정되면 ux 스킬로 넘긴다:
 
 ```
 ---
-**QA Loop 실행 설정** (design)
+**디자인 이슈로 분류됨**
 
 [화면] ...
 [요청] ...
 [참고] ...
 
-이대로 design 루프 시작할까요? (designer → design-critic → 유저 선택)
+ux 스킬로 전달합니다. 계속 진행할까요?
 ---
 ```
 
-확인 후 Bash 실행:
-```bash
-bash ~/.claude/harness/executor.sh design \
-  --context "[화면] <화면> / [요청] <요청>" \
-  --prefix mb
-```
+확인 후 ux 스킬을 실행한다 (ux 스킬이 TYPE/variant 수 선택 → designer 직접 호출).
 
-GitHub 이슈 번호를 유저가 언급했으면 `--issue <N>` 추가.
+> ux 스킬 흐름: `commands/ux.md` 참조

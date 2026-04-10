@@ -38,8 +38,8 @@ bash .claude/harness/executor.sh impl --impl docs/impl/01-module.md --issue 42 -
 # 버그픽스 루프
 bash .claude/harness/executor.sh bugfix --bug "설명" --issue 42 --prefix proj
 
-# 디자인 루프
-bash .claude/harness/executor.sh design --impl docs/impl/01-module.md --issue 42 --prefix proj
+# 디자인 루프 — ux 스킬이 designer를 직접 호출 (harness 경유 없음)
+# /ux 스킬 실행 → TYPE(SCREEN/COMPONENT) + variant 수 선택 → designer Agent 직접 호출
 ```
 
 ## 핵심 파일
@@ -48,7 +48,7 @@ bash .claude/harness/executor.sh design --impl docs/impl/01-module.md --issue 42
 |------|------|
 | `orchestration-rules.md` | 마스터 규칙 (루프, 마커, 정책) |
 | `harness/executor.sh` | 순수 라우터 + 공유 인프라 |
-| `harness/{impl,design,bugfix,plan}.sh` | 모드별 로직 |
+| `harness/{impl,bugfix,plan}.sh` | 모드별 로직 (design.sh는 DEPRECATED — ux 스킬이 designer 직접 호출) |
 | `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep) |
 | `hooks/harness_common.py` | 훅 공유 유틸 (get_prefix, deny) |
 | `hooks/*.py` | PreToolUse/PostToolUse 게이트 (11개) |

@@ -88,7 +88,8 @@
 | **S75** | **하네스 출력 현행화 — Phase A/B/C·Mode A/B/C/D/F 레이블 제거, _agent_call 입력 미리보기·토큰·비용 출력, 에이전트 프롬프트 @MODE: 형식 통일** | S | ✅ 완료 |
 | **S76** | **에이전트 인프라 탐색 금지 강화 — architect/engineer/validator Universal Preamble에 orchestration-rules.md 등 인프라 파일 Read 금지 명시** | S | ✅ 완료 |
 | **S77** | **harness-review INFRA 분류 오탐 수정 — agent-config/ 경로를 INFRA_EXCLUSIONS로 제외 (의도된 프로젝트 컨텍스트 읽기)** | S | ✅ 완료 |
-| **S78** | **디자인 루프 2모드 분리 — DEFAULT(1variant, 크리틱 없음, 유저 직접 확인) / CHOICE(3variant, 크리틱 PASS/REJECT, 유저 PICK). designer/design-critic/design.sh/executor.sh/orchestration/design.md/commands/design.md 일괄 업데이트** | S | 🔧 진행 |
+| **S78** | **디자인 루프 2모드 분리 — DEFAULT(1variant, 크리틱 없음, 유저 직접 확인) / CHOICE(3variant, 크리틱 PASS/REJECT, 유저 PICK). designer/design-critic/design.sh/executor.sh/orchestration/design.md/commands/design.md 일괄 업데이트** | S | ✅ 완료 |
+| **S81** | **디자인 아키텍처 v4 — 2×2 포맷 매트릭스(SCREEN/COMPONENT × ONE_WAY/THREE_WAY), designer 하네스 루프 밖으로, ux 스킬 Agent 직접 호출로 전환. designer/design-critic/commands/ux.md/orchestration-rules.md/orchestration/design.md/harness/design.sh 일괄 업데이트** | S | ✅ 완료 |
 | **S79** | **bugfix.sh SPEC_ISSUE 오염 수정 — _bugfix_full() MODULE_PLAN 호출 시 "버그픽스 —" 프리픽스 제거 (SPEC_ISSUE는 표준 MODULE_PLAN 경로)** | S | ✅ 완료 |
 | **S80** | **MODULE_PLAN mode 파라미터 도입 — @PARAMS mode=spec_issue/new_impl 명시, SPEC_ISSUE 분기 복원(module-plan.md), _bugfix_full→_architect_route 리네임** | S | ✅ 완료 |
 | S13 | 에이전트 병목 리포트 (/harness-stats) | S | ⬜ 보류 |

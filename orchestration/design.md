@@ -1,90 +1,93 @@
-# 디자인 루프 (Design) — v3 Pencil MCP 기반
+# 디자인 루프 (Design) — v4 2×2 포맷 매트릭스
 
-진입 조건: impl 파일에 UI 키워드 감지 + design_critic_passed 없음
-
----
-
-## 모드 선택
-
-| 모드 | 진입 플래그 | 시안 수 | 크리틱 |
-|---|---|---|---|
-| **DEFAULT** | (미지정, 기본값) | 1 variant | 없음 — 유저 직접 확인 |
-| **CHOICE** | `--choice` | 3 variants | PASS/REJECT per variant → 유저 PICK |
-| **UX_REDESIGN** | `--ux-redesign` | 5→3 → variant A/B/C | UX_SHORTLIST 경유 |
+진입 조건: 유저 UX 변경 요청 → ux 스킬 → designer 에이전트 직접 호출
+**harness/executor.sh design 경유 없음. designer는 하네스 루프 밖.**
 
 ---
 
-## DEFAULT 모드 흐름 (1 variant, 크리틱 없음)
+## 2×2 포맷 매트릭스
+
+| | ONE_WAY (1개) | THREE_WAY (3개) |
+|---|---|---|
+| **SCREEN** (전체 화면) | `SCREEN_ONE_WAY` | `SCREEN_THREE_WAY` |
+| **COMPONENT** (개별 컴포넌트) | `COMPONENT_ONE_WAY` | `COMPONENT_THREE_WAY` |
+
+| 모드 | 진입 @MODE | 크리틱 |
+|---|---|---|
+| **SCREEN_ONE_WAY** | `@MODE:DESIGNER:SCREEN_ONE_WAY` | 없음 — 유저 직접 확인 |
+| **SCREEN_THREE_WAY** | `@MODE:DESIGNER:SCREEN_THREE_WAY` | design-critic PASS/REJECT → 유저 PICK |
+| **COMPONENT_ONE_WAY** | `@MODE:DESIGNER:COMPONENT_ONE_WAY` | 없음 — 유저 직접 확인 |
+| **COMPONENT_THREE_WAY** | `@MODE:DESIGNER:COMPONENT_THREE_WAY` | design-critic PASS/REJECT → 유저 PICK |
+
+---
+
+## ONE_WAY 모드 흐름 (SCREEN_ONE_WAY / COMPONENT_ONE_WAY)
 
 ```mermaid
 flowchart TD
-    DES_D["designer
-@MODE:DESIGNER:DEFAULT"]
-    P0_D["Phase 0: 컨텍스트 수집
+    UX_SKILL["ux 스킬
+(TYPE=SCREEN|COMPONENT, variant=ONE_WAY)"]
+    DES["designer 에이전트
+@MODE:DESIGNER:[SCREEN|COMPONENT]_ONE_WAY
+직접 호출 (Agent 도구)"]
+    P0["Phase 0: 컨텍스트 수집
 + Pencil 캔버스 준비"]
-    P1_D["Phase 1: variant-A 1개 생성
+    P1["Phase 1: variant-A 1개 생성
 (Pencil batch_design)
-+ 애니메이션 스펙
-+ get_screenshot"]
-    DRR_D{"DESIGN_READY_FOR_REVIEW"}
++ 애니메이션 스펙 + get_screenshot"]
+    DRR{"DESIGN_READY_FOR_REVIEW"}
 
     USER_CHK{{"유저 직접 확인
-Pencil 캔버스에서 확인 후
+Pencil 앱에서 시각적 확인
 APPROVE / REJECT 입력"}}
 
-    DES_RETRY_D["designer 재시도
+    DES_RETRY["designer 재시도
 (max 3회)"]
-    DLE_D["DESIGN_LOOP_ESCALATE"]:::escalation
+    DLE["DESIGN_LOOP_ESCALATE"]:::escalation
 
-    HANDOFF_D{"DESIGN_HANDOFF"}
-    P4_D["Phase 4: 코드 생성
-(design-variants/)"]
-    IMPL_CHK_D{{"impl 파일 영향 있음?"}}
-    ARC_MP_D["architect
-@MODE:ARCHITECT:MODULE_PLAN"]
-    RFI_D{"READY_FOR_IMPL"}
-    KEEP_D["기존 impl 파일 유지"]
-    FLAG_D["/tmp/{prefix}_design_critic_passed
-플래그 생성"]
-    USER_APPROVE_D{{"유저 승인 대기"}}
-    IMPL_ENTRY_D["→ 구현 루프 진입"]
+    HANDOFF{"DESIGN_HANDOFF
+(Pencil frame node_id 포함)"}
+    P4["Phase 4: DESIGN_HANDOFF 패키지 출력
+(디자인 토큰 + 컴포넌트 구조 + 애니메이션 스펙)"]
 
-    DES_D --> P0_D
-    P0_D --> P1_D
-    P1_D --> DRR_D
-    DRR_D --> USER_CHK
-    USER_CHK -->|"APPROVE"| HANDOFF_D
-    USER_CHK -->|"REJECT"| DES_RETRY_D
-    DES_RETRY_D -->|"3회 초과"| DLE_D
-    DES_RETRY_D -->|"3회 이내"| P1_D
+    USER_IMPL{{"유저: 구현 요청
+'이 프레임으로 구현해줘'"}}
+    IMPL_ENTRY["→ 구현 루프 진입
+executor.sh impl
+--context 'Pencil frame ID: {node_id}'"]
 
-    HANDOFF_D --> P4_D
-    P4_D --> IMPL_CHK_D
-    IMPL_CHK_D -->|YES| ARC_MP_D
-    ARC_MP_D -->|"design_doc, module"| RFI_D
-    IMPL_CHK_D -->|NO| KEEP_D
-    RFI_D --> FLAG_D
-    KEEP_D --> FLAG_D
-    FLAG_D --> USER_APPROVE_D
-    USER_APPROVE_D --> IMPL_ENTRY_D
+    UX_SKILL --> DES
+    DES --> P0
+    P0 --> P1
+    P1 --> DRR
+    DRR --> USER_CHK
+    USER_CHK -->|"APPROVE"| HANDOFF
+    USER_CHK -->|"REJECT"| DES_RETRY
+    DES_RETRY -->|"3회 초과"| DLE
+    DES_RETRY -->|"3회 이내"| P1
+    HANDOFF --> P4
+    P4 --> USER_IMPL
+    USER_IMPL --> IMPL_ENTRY
 
     classDef escalation stroke:#f00,stroke-width:2px
 ```
 
 ---
 
-## CHOICE 모드 흐름 (3 variants, 크리틱 PASS/REJECT)
+## THREE_WAY 모드 흐름 (SCREEN_THREE_WAY / COMPONENT_THREE_WAY)
 
 ```mermaid
 flowchart TD
-    DES["designer
-@MODE:DESIGNER:CHOICE"]
+    UX_SKILL["ux 스킬
+(TYPE=SCREEN|COMPONENT, variant=THREE_WAY)"]
+    DES["designer 에이전트
+@MODE:DESIGNER:[SCREEN|COMPONENT]_THREE_WAY
+직접 호출 (Agent 도구)"]
     P0["Phase 0: 컨텍스트 수집
 + Pencil 캔버스 준비"]
     P1["Phase 1: variant A/B/C 3개 생성
 (Pencil batch_design)
-+ 애니메이션 스펙
-+ get_screenshot × 3"]
++ 애니메이션 스펙 + get_screenshot × 3"]
     DRR{"DESIGN_READY_FOR_REVIEW
 + 스크린샷 3개"}
 
@@ -100,27 +103,20 @@ flowchart TD
     DLE["DESIGN_LOOP_ESCALATE"]:::escalation
 
     PHASE3{{"Phase 3: 유저 PICK
-Pencil에서 PASS된 variant 확인 후
+Pencil 앱에서 PASS된 variant 시각적 확인
 A/B/C 입력"}}
-    HANDOFF{"DESIGN_HANDOFF"}
+    HANDOFF{"DESIGN_HANDOFF
+(Pencil frame node_id 포함)"}
+    P4["Phase 4: DESIGN_HANDOFF 패키지 출력
+(디자인 토큰 + 컴포넌트 구조 + 애니메이션 스펙)"]
 
-    P4["Phase 4: 코드 생성
-(batch_get 확정 프레임 읽기
-→ 디자인 토큰 + 컴포넌트 구조
-+ 애니메이션 스펙 → 코드)
-출력: design-variants/"]
+    USER_IMPL{{"유저: 구현 요청
+'이 프레임으로 구현해줘'"}}
+    IMPL_ENTRY["→ 구현 루프 진입
+executor.sh impl
+--context 'Pencil frame ID: {node_id}'"]
 
-    IMPL_CHK{{"impl 파일 영향 있음?"}}
-    ARC_MP["architect
-@MODE:ARCHITECT:MODULE_PLAN"]
-    RFI{"READY_FOR_IMPL"}
-    KEEP["기존 impl 파일 유지"]
-
-    FLAG["/tmp/{prefix}_design_critic_passed
-플래그 생성"]
-    USER_APPROVE{{"유저 승인 대기"}}
-    IMPL_ENTRY["→ 구현 루프 진입"]
-
+    UX_SKILL --> DES
     DES --> P0
     P0 --> P1
     P1 --> DRR
@@ -135,14 +131,8 @@ A/B/C 입력"}}
 
     PHASE3 --> HANDOFF
     HANDOFF --> P4
-    P4 --> IMPL_CHK
-    IMPL_CHK -->|YES| ARC_MP
-    ARC_MP -->|"design_doc, module"| RFI
-    IMPL_CHK -->|NO| KEEP
-    RFI --> FLAG
-    KEEP --> FLAG
-    FLAG --> USER_APPROVE
-    USER_APPROVE --> IMPL_ENTRY
+    P4 --> USER_IMPL
+    USER_IMPL --> IMPL_ENTRY
 
     classDef escalation stroke:#f00,stroke-width:2px
 ```
@@ -151,27 +141,36 @@ A/B/C 입력"}}
 
 ## 마커 레퍼런스
 
-### 인풋 마커 (이 루프에서 호출하는 @MODE)
+### 인풋 마커 (designer에게 전달하는 @MODE)
 
 | @MODE | 대상 에이전트 | 호출 시점 |
 |---|---|---|
-| `@MODE:DESIGNER:DEFAULT` | designer | Pencil MCP 기반 1 variant 생성 (기본값) |
-| `@MODE:DESIGNER:CHOICE` | designer | --choice 플래그 시 3 variant 생성 |
-| `@MODE:DESIGNER:UX_REDESIGN` | designer | UX 전면 개편 요청 시 |
-| `@MODE:CRITIC:REVIEW` | design-critic | CHOICE 모드 — 3 variant PASS/REJECT 심사 |
-| `@MODE:CRITIC:UX_SHORTLIST` | design-critic | UX 개편 5→3 선별 |
-| `@MODE:ARCHITECT:MODULE_PLAN` | architect | DESIGN_HANDOFF 후 impl 영향 있을 때 |
+| `@MODE:DESIGNER:SCREEN_ONE_WAY` | designer | SCREEN 전체 화면 + 1 variant |
+| `@MODE:DESIGNER:SCREEN_THREE_WAY` | designer | SCREEN 전체 화면 + 3 variants |
+| `@MODE:DESIGNER:COMPONENT_ONE_WAY` | designer | COMPONENT 단독 + 1 variant |
+| `@MODE:DESIGNER:COMPONENT_THREE_WAY` | designer | COMPONENT 단독 + 3 variants |
+| `@MODE:CRITIC:REVIEW` | design-critic | THREE_WAY 모드 — 3 variant PASS/REJECT 심사 |
+| `@MODE:CRITIC:UX_SHORTLIST` | design-critic | SCREEN_THREE_WAY 심층 모드 — 스케치 5→3 선별 |
 
 ### 아웃풋 마커 (이 루프에서 발생하는 시그널)
 
 | 마커 | 발행 주체 | 다음 행동 |
 |------|-----------|-----------|
-| `DESIGN_READY_FOR_REVIEW` | designer | DEFAULT: 유저 직접 확인 / CHOICE: design-critic 호출 |
-| `VARIANTS_APPROVED` | design-critic (CHOICE) | 1개 이상 PASS — Phase 3 유저 PICK 안내 |
-| `VARIANTS_ALL_REJECTED` | design-critic (CHOICE) | 전체 REJECT — designer 재시도 (max 3회, 피드백 누적) |
-| `UX_REDESIGN_SHORTLIST` | design-critic | 3개 선별 → Phase 1 variant 생성 |
+| `DESIGN_READY_FOR_REVIEW` | designer | ONE_WAY: 유저 직접 확인 / THREE_WAY: design-critic 호출 |
+| `VARIANTS_APPROVED` | design-critic (THREE_WAY) | 1개 이상 PASS — Phase 3 유저 PICK 안내 |
+| `VARIANTS_ALL_REJECTED` | design-critic (THREE_WAY) | 전체 REJECT — designer 재시도 (max 3회, 피드백 누적) |
+| `UX_REDESIGN_SHORTLIST` | design-critic | SCREEN_THREE_WAY 심층 모드 — 3개 선별 → Phase 1 variant 생성 |
 | `DESIGN_LOOP_ESCALATE` | designer (3회 초과) | 유저 직접 선택 |
-| `DESIGN_HANDOFF` | designer Phase 4 (유저 선택 후) | architect Module Plan (영향 시) → 구현 루프 |
+| `DESIGN_HANDOFF` | designer Phase 4 (유저 선택 후) | Pencil frame node_id 전달 → 유저 구현 요청 시 executor.sh impl |
+
+---
+
+## 핵심 아키텍처 원칙
+
+- **designer는 하네스 루프 밖**: 결과물이 Pencil 캔버스(파일 변경 없음, git 없음)
+- **유저 확인은 Pencil 앱**: 터미널 APPROVE/REJECT 대신 시각적 확인
+- **ux 스킬이 designer 직접 호출**: harness/executor.sh design 경유 없음
+- **구현 연결**: 확정된 Pencil 프레임 node_id → engineer에게 전달 → batch_get으로 읽어 src/ 구현
 
 ---
 
@@ -180,4 +179,3 @@ A/B/C 입력"}}
 - **Pencil.dev** 설치 필요 (VS Code 확장 또는 데스크톱 앱)
 - **Pencil MCP 서버** 활성화 필요
 - 사용 MCP 도구: `batch_design`, `batch_get`, `get_screenshot`, `get_editor_state`
-- 추가 비용: $0 (Pencil.dev 얼리 액세스 무료)

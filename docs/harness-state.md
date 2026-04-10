@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-10 (S78 — 디자인 루프 2모드 분리: DEFAULT=1variant 유저직접확인 / CHOICE=3variant design-critic PASS/REJECT)
+> 최종 업데이트: 2026-04-10 (S81 — 디자인 아키텍처 v4: 2×2 포맷 매트릭스(SCREEN/COMPONENT × ONE_WAY/THREE_WAY), designer 하네스 루프 밖, ux 스킬 Agent 직접 호출)
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -32,7 +32,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,bugfix,plan}.sh |
 | `harness/impl.sh` | impl 모드: 재진입 감지 → architect → `run_plan_validation()` → engineer 루프 | harness/impl-process.sh |
 | `harness/impl-process.sh` | impl engineer 루프 엔진 (fast/std/deep depth 분기, 3회 재시도, SPEC_GAP 동결) + memory candidate | /tmp/{p}_* 플래그들 |
-| `harness/design.sh` | design 모드 v3: DEFAULT(1variant, 크리틱 없음, 유저 직접 확인) / CHOICE(--choice, 3variant, design-critic PASS/REJECT → 유저 PICK). DESIGN_DONE 또는 DESIGN_LOOP_ESCALATE 반환. | 에이전트들 |
+| `harness/design.sh` | ⚠️ DEPRECATED (v4). designer는 ux 스킬에서 Agent 도구로 직접 호출. 레거시 코드 보존용. 신규 UX 요청은 ux 스킬 → designer 에이전트 직접 호출 사용. | 레거시 |
 | `harness/bugfix.sh` | bugfix 모드: qa → 5-way 분기 (engineer_direct/architect_full/design/backlog/KNOWN_ISSUE) + `run_plan_validation()` 활용 | 에이전트들 |
 | `harness/plan.sh` | plan 모드: product-planner → architect SD → `run_design_validation()` → architect MP → `run_plan_validation()` → PLAN_VALIDATION_PASS | 에이전트들 |
 | `setup-harness.sh` | 프로젝트별 훅 설치 → `.claude/settings.json` + `harness.config.json` | - |
@@ -80,8 +80,8 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `{p}_validator_b_passed` | validator Mode B (PASS) | harness/impl-process.sh | 코드 검증 통과 |
 | `{p}_pr_reviewer_lgtm` | pr-reviewer (LGTM) | harness/impl-process.sh | PR 리뷰 승인 |
 | `{p}_security_review_passed` | security-reviewer (SECURE) | harness/impl-process.sh | 보안 감사 통과 |
-| `{p}_designer_ran` | harness/executor.sh (design mode) | harness/executor.sh | designer 실행 완료 |
-| `{p}_design_critic_passed` | design-critic (PICK) | harness/executor.sh | 디자인 승인 |
+| `{p}_designer_ran` | ux 스킬 (designer 직접 호출 완료 시) | ux 스킬 | designer 실행 완료 |
+| `{p}_design_critic_passed` | ux 스킬 / design-critic (THREE_WAY VARIANTS_APPROVED 시) | ux 스킬 | 디자인 승인 |
 | `{p}_{agent}_active` | `harness/utils.sh` `_agent_call()` (호출 전 touch / 종료 후 rm) | agent-boundary.py | 에이전트 경계 검사용 |
 | `{p}_pr_body.txt` | harness/impl-process.sh (HARNESS_DONE) | 메인 Claude (PR 생성 시 활용) | PR 본문 자동 생성 |
 | `{p}_memory_candidate.md` | harness/impl-process.sh (FAIL 시) | 메인 Claude (유저 승인 후 harness-memory.md에 기록) | 실패 패턴 초안 (S5) |
@@ -168,6 +168,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S76 | 에이전트 인프라 탐색 금지 강화 | `agents/architect.md`, `agents/engineer.md`, `agents/validator.md` Universal Preamble에 orchestration-rules.md·harness/·hooks/ 인프라 파일 Read 금지 명시. validator에 Bash 사용 절대 금지 추가. harness-review WASTE_INFRA_READ HIGH 3건 해소 | 2026-04-09 |
 | S77 | harness-review INFRA 오탐 수정 | `scripts/harness-review.py` INFRA_EXCLUSIONS 상수 추가(`agent-config/`). INFRA 체크 3곳에 exclusion 적용 — 의도된 프로젝트 컨텍스트 읽기를 WASTE_INFRA_READ로 오분류하던 문제 해소 | 2026-04-09 |
 | S72 | git checkout stdout 오염 + QA 타임아웃 수정 | `utils.sh` `create_feature_branch()`: 브랜치 존재 시 `git checkout`이 수정 파일 목록을 stdout 출력 → `>/dev/null 2>&1` 추가. `bugfix.sh` QA timeout 300→600s + QA exit code 체크 (타임아웃/실패 시 HARNESS_CRASH 조기 종료). `utils.sh` `_agent_call()` 완료 메시지 exit 코드 분기. `agents/qa.md` (global+project): Grep-first 전략 + Read 최대 3개/150줄 제한 + 총 도구 10회 제한. `hooks/harness-router.py` fast_classify: 발생해/아무것도 안나온/왜~거야 패턴 추가 (14/14 PASS) | 2026-04-09 |
+| S81 | 디자인 아키텍처 v4 — 2×2 포맷 매트릭스 | `agents/designer.md` 4가지 모드(SCREEN/COMPONENT × ONE_WAY/THREE_WAY) 전면 개편. `agents/design-critic.md` CHOICE→THREE_WAY, DEFAULT→ONE_WAY 용어 통일. `commands/ux.md` 직접 호출 방식으로 전환(executor.sh design 제거, Agent 도구 직접 호출). `orchestration-rules.md` 1b designer 예외 추가, 루프 진입 기준 업데이트. `orchestration/design.md` v4 재작성 — 2×2 매트릭스 + 하네스 루프 밖 아키텍처. `harness/design.sh` DEPRECATED 주석. `docs/harness-state.md` design.sh DEPRECATED 반영 | 2026-04-10 |
 
 ---
 

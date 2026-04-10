@@ -1,8 +1,17 @@
 #!/bin/bash
 # ~/.claude/harness/design.sh
+#
+# ⚠️  DEPRECATED — v4 아키텍처에서 designer는 하네스 루프 밖으로 이동됨.
+# ux 스킬이 designer 에이전트를 Agent 도구로 직접 호출한다.
+# executor.sh design 진입은 더 이상 사용하지 않는다.
+#
+# 이 파일은 레거시 참조용으로 보존. 신규 프로젝트에서는 사용 금지.
+# 새 흐름: orchestration/design.md 참조.
+#
+# --- 구 아키텍처 (보존) ---
 # design 모드: DEFAULT(1variant, 크리틱 없음) 또는 CHOICE(3variant, 크리틱 PASS/REJECT)
 #
-# 흐름 (orchestration/design.md 기반):
+# 구 흐름 (v3, orchestration/design.md v3 기반):
 #   DEFAULT 모드 (DESIGN_MODE=default, 기본값):
 #     Phase 0: 컨텍스트 수집 + Pencil 캔버스 준비
 #     Phase 1: designer — 1 variant (Pencil 프레임 + 스크린샷)

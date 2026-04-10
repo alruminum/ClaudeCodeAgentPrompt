@@ -10,7 +10,7 @@
 | 상황 | 호출 |
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
-| UI 변경 요청 (design_critic_passed 없음) | → **[디자인 루프](orchestration/design.md)** (Pencil MCP v2) |
+| UI 변경 요청 | → **ux 스킬** → designer 에이전트 직접 호출 (Pencil 캔버스, 하네스 루프 없음). 상세: [orchestration/design.md](orchestration/design.md) |
 | 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth fast\|std\|deep]` |
 | 버그 보고 | → **[버그픽스 루프](orchestration/bugfix.md)** — `bash ~/.claude/harness/executor.sh bugfix --bug "<설명>" [--issue <N>] [--prefix <P>]` — qa 라우팅 기반 4-way 분기. SEVERITY:HIGH → depth=std 강제 |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>]` |
@@ -30,8 +30,8 @@
 
 | 마커 | 발행 주체 | 처리 |
 |------|-----------|------|
-| `VARIANTS_APPROVED` | design-critic CHOICE 모드 (1개 이상 PASS) | 유저 PICK 안내 |
-| `VARIANTS_ALL_REJECTED` | design-critic CHOICE 모드 (전체 REJECT) | designer 재시도 (max 3회) |
+| `VARIANTS_APPROVED` | design-critic THREE_WAY 모드 (1개 이상 PASS) | 유저 PICK 안내 |
+| `VARIANTS_ALL_REJECTED` | design-critic THREE_WAY 모드 (전체 REJECT) | designer 재시도 (max 3회) |
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | ~~`VALIDATION_ESCALATE`~~ | ~~validator Code Validation~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
 | ~~`REVIEW_LOOP_ESCALATE`~~ | ~~pr-reviewer~~ | **폐기** — 루프 attempt 카운터에 통합. IMPLEMENTATION_ESCALATE로 대체. |
@@ -40,7 +40,7 @@
 | `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
 | `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 동결 초과) | 메인 Claude 보고 — 복귀 옵션 제시 |
-| `DESIGN_LOOP_ESCALATE` | designer (DEFAULT: 3회 재시도 후에도 REJECT / CHOICE: 3라운드 후에도 VARIANTS_ALL_REJECTED) | 유저 직접 선택 |
+| `DESIGN_LOOP_ESCALATE` | designer (ONE_WAY: 3회 재시도 후에도 REJECT / THREE_WAY: 3라운드 후에도 VARIANTS_ALL_REJECTED) | 유저 직접 선택 |
 | `TECH_CONSTRAINT_CONFLICT` | architect SPEC_GAP (기술 제약 충돌) | 메인 Claude 보고 |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | `MERGE_CONFLICT_ESCALATE` | harness/impl-process.sh / harness/executor.sh (merge 실패) | 메인 Claude 보고 |
@@ -53,15 +53,22 @@
 이유 불문. 규모 불문. 상황 불문.
 반드시 `bash ~/.claude/harness/executor.sh`를 통해서만 구현.
 
-**1b. 메인 Claude — 에이전트 직접 호출 절대 금지**
-qa, architect, engineer, validator, designer 등 하네스 내부 에이전트를 메인 Claude가 Agent 도구로 직접 호출 금지.
+**1b. 메인 Claude — 에이전트 직접 호출 절대 금지 (designer 예외 있음)**
+qa, architect, engineer, validator 등 하네스 내부 에이전트를 메인 Claude가 Agent 도구로 직접 호출 금지.
 반드시 `bash ~/.claude/harness/executor.sh <mode> ...` 를 통해서만 에이전트를 실행한다.
+
+**designer 예외**: designer 에이전트는 결과물이 Pencil 캔버스(파일 변경 없음, git 없음)이므로 하네스 루프 적용 대상이 아니다.
+ux 스킬이 designer 에이전트를 Agent 도구로 직접 호출한다. executor.sh design 경유 금지.
 
 금지 예시:
 - 버그 보고 수신 → qa 에이전트 직접 호출 ❌ → `executor.sh bugfix` 로 진입 ✅
 - 구현 전 analyst 직접 호출 ❌ → `executor.sh impl` 로 진입 ✅
 
+예외:
+- UX 디자인 요청 → ux 스킬 → designer 에이전트 직접 호출 ✅ (Pencil 캔버스 결과물, 하네스 불필요)
+
 이유: qa/architect 등은 하네스 내부 워크플로우의 일부이다. 직접 호출 시 라우팅·플래그·이슈 생성·재진입 감지 등 하네스 인프라가 전부 누락된다.
+designer는 src/ 파일을 변경하지 않으므로 하네스 인프라 불필요. 유저가 Pencil 앱에서 시각적으로 확인 후 구현 단계로 직접 진행한다.
 
 **1c. 메인 Claude — 하네스 진입 전 GitHub 이슈 직접 생성 금지**
 `create_issue` MCP를 하네스 진입 전 메인 Claude가 직접 호출 금지.
@@ -370,7 +377,7 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 | architect | 설계 문서 · impl 파일 작성 | src/** 수정 |
 | engineer | 소스 코드 구현 | 설계 문서 수정, Agent 도구 사용 |
 | validator | PASS/FAIL 판정 리포트 | 파일 수정 |
-| designer | DEFAULT=variant 1개 생성(유저 직접 확인), CHOICE=variant 3개 생성(크리틱 경유), DESIGN_HANDOFF 패키지 출력 | src/** 수정, 코드 생성 |
+| designer | 2×2 포맷 매트릭스 기반 variant 생성 (SCREEN/COMPONENT × ONE_WAY/THREE_WAY), DESIGN_HANDOFF 패키지 출력. ux 스킬이 직접 호출 — 하네스 루프 밖 | src/** 수정, 코드 생성 |
 | design-critic | PICK/ITERATE/ESCALATE 판정 | 파일 수정 |
 | qa | 원인 분석 + 라우팅 추천 | 코드·문서 수정 |
 | product-planner | PRD/TRD 작성 | 코드·설계 문서 수정 |
@@ -416,4 +423,4 @@ Write 도구(`batch_design`, `batch_design` 등) 는 designer 전용.
 | 하네스 기능 추가 / 변경 | `docs/harness-state.md` (완료/한계 섹션) + `docs/harness-backlog.md` (항목 상태) |
 | 훅 패턴/매핑 변경 | `hooks/*.py` 대상 파일 + `setup-harness.sh` 주석 |
 | architect @MODE 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
-| 디자인 도구 변경 (Pencil MCP 등) | `agents/designer.md`, `agents/design-critic.md`, `orchestration/design.md`, `harness/design.sh`, `commands/design.md` |
+| 디자인 도구 변경 (Pencil MCP 등) | `agents/designer.md`, `agents/design-critic.md`, `orchestration/design.md`, `commands/ux.md` |

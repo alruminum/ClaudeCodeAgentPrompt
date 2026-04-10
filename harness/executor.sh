@@ -5,15 +5,17 @@
 # 호출 형식:
 #   bash .claude/harness/executor.sh <mode> \
 #     --impl <path> --issue <N> [--prefix <p>] [--bug <desc>] [--context <ctx>]
-#     [--choice]  ← design 모드 전용: 3 variant + design-critic PASS/REJECT
+#     [--choice]  ← design 모드 전용(DEPRECATED): 3 variant + design-critic PASS/REJECT
 #
-# 4가지 mode:
+# 3가지 mode (design은 ux 스킬이 직접 처리 — harness 경유 없음):
 #   impl   — harness/impl.sh (계획) + harness/impl-process.sh (실행)
-#   design — harness/design.sh
-#             DEFAULT(기본): 1 variant, 크리틱 없음, 유저 직접 확인
-#             CHOICE(--choice): 3 variants, design-critic PASS/REJECT → 유저 PICK
 #   bugfix — harness/bugfix.sh (qa → 5-way 분기: engineer_direct/architect/design/backlog/KNOWN_ISSUE)
 #   plan   — harness/plan.sh (product-planner → architect → validator)
+#
+# ⚠️  design 모드: DEPRECATED (v4)
+#   designer는 ux 스킬에서 Agent 도구로 직접 호출 (하네스 루프 밖).
+#   'executor.sh design' 은 레거시 호환용으로만 유지.
+#   신규 UX 요청은 ux 스킬 → designer 에이전트 직접 호출 사용.
 
 set -euo pipefail
 

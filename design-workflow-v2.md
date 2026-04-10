@@ -1,4 +1,7 @@
-# 디자인 워크플로우 v2 — 확정안
+# 디자인 워크플로우 v2 — 확정안 (ARCHIVED)
+
+> ⚠️ 이 문서는 v3 아키텍처 기준 설계안으로, v4에서 2×2 포맷 매트릭스로 교체됨. 레거시 참조용으로만 보존.
+> v4 현행 아키텍처: `orchestration/design.md` 참조.
 
 > 확정일: 2026-04-09
 > 적용 대상: designer.md, design-critic.md, orchestration/design.md, harness/design.sh
