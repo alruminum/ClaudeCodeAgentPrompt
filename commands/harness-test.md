@@ -17,8 +17,11 @@ argument-hint: "[prefix]"
 ```bash
 for f in \
   ~/.claude/harness/executor.sh \
-  ~/.claude/harness/impl-process.sh \
   ~/.claude/harness/impl.sh \
+  ~/.claude/harness/impl_fast.sh \
+  ~/.claude/harness/impl_std.sh \
+  ~/.claude/harness/impl_deep.sh \
+  ~/.claude/harness/impl_helpers.sh \
   ~/.claude/harness/design.sh \
   ~/.claude/harness/bugfix.sh \
   ~/.claude/harness/plan.sh \
@@ -43,8 +46,11 @@ echo "PREFIX: $PREFIX"
 
 ```bash
 bash -n ~/.claude/harness/executor.sh && echo "OK executor syntax" || echo "FAIL executor syntax"
-bash -n ~/.claude/harness/impl-process.sh && echo "OK impl-process syntax" || echo "FAIL impl-process syntax"
 bash -n ~/.claude/harness/impl.sh && echo "OK impl syntax" || echo "FAIL impl syntax"
+bash -n ~/.claude/harness/impl_fast.sh && echo "OK impl_fast syntax" || echo "FAIL impl_fast syntax"
+bash -n ~/.claude/harness/impl_std.sh && echo "OK impl_std syntax" || echo "FAIL impl_std syntax"
+bash -n ~/.claude/harness/impl_deep.sh && echo "OK impl_deep syntax" || echo "FAIL impl_deep syntax"
+bash -n ~/.claude/harness/impl_helpers.sh && echo "OK impl_helpers syntax" || echo "FAIL impl_helpers syntax"
 bash -n ~/.claude/harness/design.sh && echo "OK design syntax" || echo "FAIL design syntax"
 bash -n ~/.claude/harness/bugfix.sh && echo "OK bugfix syntax" || echo "FAIL bugfix syntax"
 bash -n ~/.claude/harness/plan.sh && echo "OK plan syntax" || echo "FAIL plan syntax"

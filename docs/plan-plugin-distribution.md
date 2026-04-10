@@ -107,8 +107,12 @@ harness-engineering/
 ├── scripts/
 │   ├── harness/
 │   │   ├── executor.sh                # 메인 라우터
-│   │   ├── impl.sh                    # impl 모드
-│   │   ├── impl-process.sh            # engineer 루프
+│   │   ├── impl.sh                    # impl 모드 dispatcher
+│   │   ├── impl_fast.sh               # fast depth 루프
+│   │   ├── impl_std.sh                # std depth 루프
+│   │   ├── impl_deep.sh               # deep depth 루프
+│   │   ├── impl_direct.sh             # direct 루프
+│   │   ├── impl_helpers.sh            # impl 공유 헬퍼
 │   │   ├── design.sh                  # design 모드
 │   │   ├── bugfix.sh                  # bugfix 모드
 │   │   ├── plan.sh                    # plan 모드
@@ -167,7 +171,7 @@ harness-engineering/
 |---|---|
 | `source "${HOME}/.claude/harness/utils.sh"` | `source "${CLAUDE_PLUGIN_ROOT}/scripts/harness/utils.sh"` |
 | `python3 ~/.claude/hooks/harness-router.py` | `python3 "${CLAUDE_PLUGIN_ROOT}/hooks/harness-router.py"` |
-| `"${HOME}/.claude/harness/impl-process.sh"` | `"${CLAUDE_PLUGIN_ROOT}/scripts/harness/impl-process.sh"` |
+| `"${HOME}/.claude/harness/impl_{fast,std,deep,direct}.sh"` | `"${CLAUDE_PLUGIN_ROOT}/scripts/harness/impl_{fast,std,deep,direct}.sh"` |
 | `~/.claude/orchestration-rules.md` | `"${CLAUDE_PLUGIN_ROOT}/orchestration/orchestration-rules.md"` |
 
 **폴백 전략**: `CLAUDE_PLUGIN_ROOT` 미설정 시 (비-플러그인 설치) `${HOME}/.claude/`로 폴백.
@@ -433,8 +437,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-project.sh"
 |---|---|---|
 | 2.1 | `scripts/harness/utils.sh` 상단에 `HARNESS_ROOT` 폴백 로직 | utils.sh |
 | 2.2 | `executor.sh` source 경로 → `HARNESS_ROOT` 기반 | executor.sh |
-| 2.3 | `impl-process.sh` source 경로 → `HARNESS_ROOT` 기반 | impl-process.sh |
-| 2.4 | 모든 `harness/*.sh` source 경로 변경 | impl.sh, design.sh, bugfix.sh, plan.sh |
+| 2.3 | `impl_{fast,std,deep,direct}.sh` source 경로 → `HARNESS_ROOT` 기반 | impl_fast.sh, impl_std.sh, impl_deep.sh, impl_direct.sh |
+| 2.4 | 모든 `harness/*.sh` source 경로 변경 | impl.sh, impl_helpers.sh, design.sh, bugfix.sh, plan.sh |
 | 2.5 | `harness-router.py` executor 경로 → `CLAUDE_PLUGIN_ROOT` 기반 | harness-router.py |
 | 2.6 | 모든 `hooks/*.py`의 경로 참조 검사 + 수정 | hooks/*.py |
 

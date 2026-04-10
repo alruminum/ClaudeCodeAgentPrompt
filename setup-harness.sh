@@ -20,7 +20,7 @@
 #
 # prefix 결정: 각 훅이 harness_common.get_prefix()로 harness.config.json → dirname → "proj" 폴백
 #
-# 주의: harness-*.sh (executor, impl-plan, impl-process, design, bugfix, plan, utils)는 글로벌(~/.claude/) 전용.
+# 주의: harness-*.sh (executor, impl, impl_fast, impl_std, impl_deep, design, bugfix, plan, utils)는 글로벌(~/.claude/) 전용.
 #       프로젝트에 복사하지 않으며, 기존 낡은 복사본은 자동 삭제.
 
 set -e
@@ -114,7 +114,7 @@ PYEOF
 # harness-*.sh — 글로벌 전용 (프로젝트에 복사하지 않음)
 # 실행 인프라는 ~/.claude/ 에서만 관리. 프로젝트엔 설정(harness.config.json)만 둔다.
 # 기존 프로젝트에 낡은 복사본이 있으면 삭제
-for old_file in ".claude/harness-loop.sh" ".claude/harness/executor.sh" ".claude/harness/impl-process.sh"; do
+for old_file in ".claude/harness-loop.sh" ".claude/harness/executor.sh"; do
   if [ -f "$old_file" ]; then
     rm -f "$old_file"
     echo "  🗑 낡은 $old_file 삭제 (글로벌 전용으로 전환)"

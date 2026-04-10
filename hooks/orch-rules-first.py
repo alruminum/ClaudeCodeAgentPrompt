@@ -4,7 +4,7 @@ orch-rules-first.py — PreToolUse(Edit/Write) 전역 훅
 단일 소스 원칙 강제: 하네스 인프라 파일 수정 시 orchestration-rules.md 선행 수정 확인.
 
 대상 파일 (하네스 인프라):
-  - harness/executor.sh, harness/impl.sh, harness/impl-process.sh, harness/design.sh
+  - harness/executor.sh, harness/impl.sh, harness/impl_{fast,std,deep,direct}.sh, harness/design.sh
   - harness/bugfix.sh, harness/plan.sh, setup-harness.sh, setup-agents.sh
   - hooks/harness-router.py, hooks/harness-session-start.py
   - agents/*.md (에이전트 정의 파일)
@@ -28,7 +28,11 @@ HARNESS_INFRA_PATTERNS = [
     # harness/*.sh 스크립트 (디렉토리 구조)
     r'harness/executor\.sh',
     r'harness/impl\.sh',
-    r'harness/impl-process\.sh',
+    r'harness/impl_fast\.sh',
+    r'harness/impl_std\.sh',
+    r'harness/impl_deep\.sh',
+    r'harness/impl_direct\.sh',
+    r'harness/impl_helpers\.sh',
     r'harness/design\.sh',
     r'harness/bugfix\.sh',
     r'harness/plan\.sh',

@@ -283,12 +283,12 @@ EOF
   [[ $status -eq 0 ]]
 }
 
-@test "safety: SPEC_GAP_FOUND detection exists in impl-process" {
+@test "safety: SPEC_GAP_FOUND detection exists in impl_std" {
   run grep 'SPEC_GAP_FOUND' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
 }
 
-@test "safety: IMPLEMENTATION_ESCALATE in impl-process and bugfix" {
+@test "safety: IMPLEMENTATION_ESCALATE in impl_std and bugfix" {
   run grep -l 'IMPLEMENTATION_ESCALATE' "${HARNESS_DIR}/impl_std.sh" "${HARNESS_DIR}/bugfix.sh"
   [[ $(echo "$output" | wc -l) -ge 2 ]]
 }

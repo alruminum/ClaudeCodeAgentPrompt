@@ -252,7 +252,7 @@ _bugfix_direct() {
   fi
   echo "[HARNESS] bugfix depth: $depth"
 
-  # CONSTRAINTS 로딩 (impl-process.sh와 동일 로직)
+  # CONSTRAINTS 로딩 (impl_helpers.sh와 동일 로직)
   if [[ -z "$CONSTRAINTS" ]]; then
     local mem_global="${HOME}/.claude/harness-memory.md"
     local mem_local=".claude/harness-memory.md"

@@ -2,7 +2,7 @@
 """
 harness-drift-check.py — PreToolUse(Bash) 훅
 git commit 시 orchestration-rules.md 또는 agents/*.md가 변경됐지만
-관련 스크립트(harness/executor.sh, harness/impl-process.sh)가 함께 변경되지 않으면 경고.
+관련 스크립트(harness/executor.sh, harness/impl_{fast,std,deep}.sh 등)가 함께 변경되지 않으면 경고.
 
 동작:
   - git commit 명령 감지 → staged 파일 확인
@@ -23,23 +23,26 @@ BYPASS_TTL = 300  # 5분 내 재시도만 허용
 # 규칙/에이전트 → 연동 스크립트 매핑
 DRIFT_MAP = {
     'orchestration-rules.md': [
-        'harness/executor.sh', 'harness/impl-process.sh',
-        'harness/impl.sh', 'harness/bugfix.sh',
-        'harness/design.sh', 'harness/plan.sh',
-        'harness/utils.sh',
+        'harness/executor.sh',
+        'harness/impl.sh', 'harness/impl_fast.sh', 'harness/impl_std.sh',
+        'harness/impl_deep.sh', 'harness/impl_helpers.sh',
+        'harness/bugfix.sh', 'harness/plan.sh', 'harness/utils.sh',
     ],
     'agents/qa.md': ['harness/bugfix.sh'],
     'agents/architect.md': ['harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh'],
-    'agents/validator.md': ['harness/impl-process.sh', 'harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh'],
-    'agents/engineer.md': ['harness/impl-process.sh', 'harness/bugfix.sh'],
-    'agents/test-engineer.md': ['harness/impl-process.sh'],
+    'agents/validator.md': [
+        'harness/impl_fast.sh', 'harness/impl_std.sh', 'harness/impl_deep.sh',
+        'harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh',
+    ],
+    'agents/engineer.md': ['harness/impl_std.sh', 'harness/impl_deep.sh', 'harness/impl_helpers.sh', 'harness/bugfix.sh'],
+    'agents/test-engineer.md': ['harness/impl_std.sh', 'harness/impl_deep.sh'],
     # designer/design-critic는 하네스 루프 밖 (v4). ux 스킬이 직접 호출.
     # harness/design.sh는 DEPRECATED — 드리프트 체크 대상에서 제외.
     'agents/designer.md': ['commands/ux.md'],
     'agents/design-critic.md': ['orchestration/design.md'],
     'agents/product-planner.md': ['harness/plan.sh'],
-    'agents/pr-reviewer.md': ['harness/impl-process.sh'],
-    'agents/security-reviewer.md': ['harness/impl-process.sh'],
+    'agents/pr-reviewer.md': ['harness/impl_fast.sh', 'harness/impl_std.sh', 'harness/impl_deep.sh'],
+    'agents/security-reviewer.md': ['harness/impl_deep.sh'],
 }
 
 

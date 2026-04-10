@@ -87,7 +87,7 @@ Phase 1 완료 후, 테스트 작성 전에 테스트 플랜과 대조하여 갭
 
 **TEST_PLAN_GAP 에스컬레이션 경로**:
 1. `TESTS_PASS` 출력 시 갭 목록을 `## TEST_PLAN_GAP` 섹션에 포함
-2. harness/impl-process.sh가 이 섹션을 감지하면 architect에게 impl 보강 태스크로 전달 (현재 루프는 블록하지 않음)
+2. harness/impl_{std,deep}.sh가 이 섹션을 감지하면 architect에게 impl 보강 태스크로 전달 (현재 루프는 블록하지 않음)
 3. 갭이 보안·데이터 무결성 관련이면 `TESTS_FAIL` + 사유에 `CRITICAL_GAP` 태그 → 루프 즉시 중단
 
 ---

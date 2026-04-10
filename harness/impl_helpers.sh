@@ -1,7 +1,7 @@
 #!/bin/bash
 # ~/.claude/harness/impl_helpers.sh
 # impl_fast/std/deep.sh 공유 헬퍼 함수 모음
-# impl-process.sh에서 추출 — 기능 변경 없음
+# 기능 변경 없이 순수 추출됨
 #
 # 이 파일은 단독 실행 불가. impl_fast/std/deep.sh에서 source로 사용:
 #   source "${HOME}/.claude/harness/impl_helpers.sh"

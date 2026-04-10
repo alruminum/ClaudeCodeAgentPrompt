@@ -1,6 +1,6 @@
 #!/bin/bash
 # ~/.claude/harness/utils.sh
-# 하네스 공용 유틸 — harness/executor.sh + harness/impl-process.sh에서 source
+# 하네스 공용 유틸 — harness/executor.sh + harness/impl_{fast,std,deep}.sh에서 source
 
 HARNESS_LOG_DIR="${HOME}/.claude/harness-logs"
 RUN_LOG=""          # rotate_harness_logs() 호출 후 설정
@@ -53,7 +53,7 @@ write_run_end() {
   fi
 }
 
-# ── hlog: 공용 로그 함수 (impl-process 외 design/bugfix/plan 루프에서도 사용) ──
+# ── hlog: 공용 로그 함수 (impl_fast/std/deep 외 design/bugfix/plan 루프에서도 사용) ──
 hlog() {
   local _log="${HLOG:-/tmp/${PREFIX:-mb}-harness-debug.log}"
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$_log"
@@ -576,7 +576,7 @@ merge_to_main() {
 }
 
 # ── 커밋 메시지 생성 ─────────────────────────────────────────────────
-# IMPL_FILE, ISSUE_NUM 전역변수 의존 (harness/impl-process.sh, harness/executor.sh에서 설정)
+# IMPL_FILE, ISSUE_NUM 전역변수 의존 (harness/impl_{fast,std,deep}.sh, harness/executor.sh에서 설정)
 generate_commit_msg() {
   local impl_name
   if [[ -n "$IMPL_FILE" ]]; then
