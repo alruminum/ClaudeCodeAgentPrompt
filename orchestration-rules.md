@@ -43,11 +43,11 @@
 | `SCOPE_ESCALATE` | qa 에이전트 (관련 모듈/파일 = 0 → 신규 기능 판정) | 메인 Claude 보고 — product-planner 라우팅 |
 | `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
-| `IMPLEMENTATION_ESCALATE` | harness/impl-process.sh (3회 실패 or SPEC_GAP 동결 초과) | 메인 Claude 보고 — 복귀 옵션 제시 |
+| `IMPLEMENTATION_ESCALATE` | harness/impl_{fast,std,deep,direct}.sh (3회 실패 or SPEC_GAP 동결 초과) | 메인 Claude 보고 — 복귀 옵션 제시 |
 | `DESIGN_LOOP_ESCALATE` | designer (ONE_WAY: 3회 재시도 후에도 REJECT / THREE_WAY: 3라운드 후에도 VARIANTS_ALL_REJECTED) | 유저 직접 선택 |
 | `TECH_CONSTRAINT_CONFLICT` | architect SPEC_GAP (기술 제약 충돌) | 메인 Claude 보고 |
 | `PLAN_VALIDATION_ESCALATE` | validator Plan Validation (재검 후 재FAIL) | 메인 Claude 보고 |
-| `MERGE_CONFLICT_ESCALATE` | harness/impl-process.sh / harness/executor.sh (merge 실패) | 메인 Claude 보고 |
+| `MERGE_CONFLICT_ESCALATE` | harness/impl_{fast,std,deep,direct}.sh / harness/executor.sh (merge 실패) | 메인 Claude 보고 |
 
 ---
 
@@ -149,7 +149,7 @@ READY_FOR_IMPL
 > Note: 정책 8 게이트는 별도 validator 호출이 아닌 Plan Validation 체크리스트 C로 통합 수행.
 
 **9a. kill_check 공용화**
-`kill_check()` 함수는 `harness/impl-process.sh`와 `harness/executor.sh` 양쪽에서 사용한다.
+`kill_check()` 함수는 `harness/impl_{fast,std,deep,direct}.sh`와 `harness/executor.sh` 양쪽에서 사용한다.
 `harness/utils.sh`에 정의하여 양쪽에서 source로 공유한다.
 
 **9. 하네스 관련 수정 순서**
@@ -350,7 +350,7 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 예시: `feat/mvp-42-add-login` / `fix/57` (한국어 제목)
 
 ### 브랜치 생성 시점
-- harness/impl-process.sh impl 모드 engineer 루프 진입 직후 (engineer 호출 전)
+- harness/impl_{fast,std,deep}.sh 진입 직후 (engineer 호출 전)
 - harness/executor.sh _run_bugfix_direct() 진입 직후
 
 ### 커밋 규칙
