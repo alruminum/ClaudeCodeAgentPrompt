@@ -1,6 +1,7 @@
 #!/bin/bash
-# ~/.claude/harness/direct.sh
-# direct 모드: impl 파일 없이 engineer 직행하는 경량 구현 루프
+# ~/.claude/harness/impl_direct.sh
+# impl_direct 모드: impl 파일 없이 engineer 직행하는 경량 구현 루프
+# (구 direct.sh — orchestration/impl_direct.md 참조)
 #
 # 진입 조건:
 #   - qa 스킬이 FUNCTIONAL_BUG 분류 후 GitHub 이슈 생성 완료

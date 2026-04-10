@@ -145,7 +145,7 @@ teardown() {
 @test "SPEC_GAP: attempt is NOT incremented on SPEC_GAP_FOUND" {
   # Verify the code path: after SPEC_GAP_FOUND -> continue (no attempt++)
   run bash -c '
-    grep -A30 "SPEC_GAP_FOUND" "'"${HARNESS_DIR}/impl-process.sh"'" \
+    grep -A30 "SPEC_GAP_FOUND" "'"${HARNESS_DIR}/impl_std.sh"'" \
       | grep -B1 "continue" | head -5
   '
   # Should find "continue" after SPEC_GAP handling, before any attempt++
@@ -153,18 +153,18 @@ teardown() {
 }
 
 @test "SPEC_GAP: error_trace is cleared after RESOLVED" {
-  run grep -A3 'SPEC_GAP_RESOLVED' "${HARNESS_DIR}/impl-process.sh"
+  run grep -A3 'SPEC_GAP_RESOLVED' "${HARNESS_DIR}/impl_std.sh"
   [[ "$output" == *'error_trace=""'* ]]
   [[ "$output" == *'fail_type=""'* ]]
 }
 
 @test "SPEC_GAP: 3-way branch covers all architect outcomes" {
   # Verify SPEC_GAP_RESOLVED, PRODUCT_PLANNER_ESCALATION_NEEDED, TECH_CONSTRAINT_CONFLICT
-  run grep -c 'SPEC_GAP_RESOLVED\|PRODUCT_PLANNER_ESCALATION_NEEDED\|TECH_CONSTRAINT_CONFLICT' "${HARNESS_DIR}/impl-process.sh"
+  run grep -c 'SPEC_GAP_RESOLVED\|PRODUCT_PLANNER_ESCALATION_NEEDED\|TECH_CONSTRAINT_CONFLICT' "${HARNESS_DIR}/impl_std.sh"
   [[ "$output" -ge 3 ]]
 }
 
-# === impl-process.sh: automated checks ===
+# === impl_std.sh: automated checks ===
 
 @test "automated checks: no_changes detected" {
   run_automated_checks() {

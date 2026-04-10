@@ -158,7 +158,7 @@ exit 0' > "$mock_script"
 @test "regression: fast mode calls pr-reviewer" {
   # After commit-strategy refactor, pr-reviewer runs on fast/std/deep
   run bash -c '
-    grep -c "pr-reviewer" "'"${HARNESS_DIR}/impl-process.sh"'"
+    grep -c "pr-reviewer" "'"${HARNESS_DIR}/impl_std.sh"'"
   '
   # Must appear in the file (covers fast path)
   [[ "$output" -ge 1 ]]
@@ -167,7 +167,7 @@ exit 0' > "$mock_script"
 @test "regression: fast mode uses git diff HEAD~1 for pr-reviewer diff" {
   # After early commit, diff must reference HEAD~1 (not HEAD)
   run bash -c '
-    sed -n "/fast: pr-reviewer/,/fast: merge/p" "'"${HARNESS_DIR}/impl-process.sh"'" \
+    sed -n "/fast: pr-reviewer/,/fast: merge/p" "'"${HARNESS_DIR}/impl_fast.sh"'" \
       | grep "diff HEAD~1"
   '
   [[ "$output" == *"HEAD~1"* ]]
@@ -178,7 +178,7 @@ exit 0' > "$mock_script"
 @test "regression: fast path touches pr_reviewer_lgtm after pr-reviewer" {
   run bash -c '
     # The fast section should touch pr_reviewer_lgtm
-    sed -n "/HARNESS.fast. pr-reviewer/,/HARNESS.fast. merge/p" "'"${HARNESS_DIR}/impl-process.sh"'" \
+    sed -n "/HARNESS.fast. pr-reviewer/,/HARNESS.fast. merge/p" "'"${HARNESS_DIR}/impl_fast.sh"'" \
       | grep "pr_reviewer_lgtm"
   '
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
@@ -187,9 +187,9 @@ exit 0' > "$mock_script"
 # === policy 15: max rounds = attempt 3 + spec_gap 2 = 5 ===
 
 @test "policy15: max total rounds is 5 (attempt 3 + spec_gap 2)" {
-  run grep 'MAX=3' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'MAX=3' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
-  run grep 'MAX_SPEC_GAP=2' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'MAX_SPEC_GAP=2' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
   # Both exist, so max rounds = 3 + 2 = 5
 }

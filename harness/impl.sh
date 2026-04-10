@@ -12,7 +12,8 @@ run_impl() {
     echo "[HARNESS] 재진입: plan_validation_passed + impl 존재 → engineer 루프 직접 진입"
     [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
     echo "[HARNESS] depth: $DEPTH"
-    bash "$PROCESS_SCRIPT" impl --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --depth "$DEPTH" --branch-type "$BRANCH_TYPE"
+    local sub_script="${IMPL_SCRIPT_DIR}/impl_${DEPTH}.sh"
+    bash "$sub_script" --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --branch-type "$BRANCH_TYPE"
     return
   fi
 

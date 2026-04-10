@@ -253,16 +253,16 @@ EOF
 # === safety: no infinite loops ===
 
 @test "safety: impl attempt counter MAX=3" {
-  run grep 'MAX=3' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'MAX=3' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
-  run grep 'while.*attempt.*lt.*MAX' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'while.*attempt.*lt.*MAX' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
 }
 
 @test "safety: SPEC_GAP counter MAX_SPEC_GAP=2" {
-  run grep 'MAX_SPEC_GAP=2' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'MAX_SPEC_GAP=2' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
-  run grep 'spec_gap_count.*gt.*MAX_SPEC_GAP' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'spec_gap_count.*gt.*MAX_SPEC_GAP' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
 }
 
@@ -277,19 +277,19 @@ EOF
 }
 
 @test "safety: budget check exists with limit" {
-  run grep 'MAX_TOTAL_COST=10' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'MAX_TOTAL_COST=10' "${HARNESS_DIR}/impl_helpers.sh"
   [[ $status -eq 0 ]]
-  run grep 'HARNESS_BUDGET_EXCEEDED' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'HARNESS_BUDGET_EXCEEDED' "${HARNESS_DIR}/impl_helpers.sh"
   [[ $status -eq 0 ]]
 }
 
 @test "safety: SPEC_GAP_FOUND detection exists in impl-process" {
-  run grep 'SPEC_GAP_FOUND' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'SPEC_GAP_FOUND' "${HARNESS_DIR}/impl_std.sh"
   [[ $status -eq 0 ]]
 }
 
 @test "safety: IMPLEMENTATION_ESCALATE in impl-process and bugfix" {
-  run grep -l 'IMPLEMENTATION_ESCALATE' "${HARNESS_DIR}/impl-process.sh" "${HARNESS_DIR}/bugfix.sh"
+  run grep -l 'IMPLEMENTATION_ESCALATE' "${HARNESS_DIR}/impl_std.sh" "${HARNESS_DIR}/bugfix.sh"
   [[ $(echo "$output" | wc -l) -ge 2 ]]
 }
 

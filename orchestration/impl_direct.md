@@ -1,7 +1,8 @@
-# Direct 루프 (engineer 직행)
+# Direct 구현 루프 (impl_direct)
 
 진입 조건: qa 스킬이 FUNCTIONAL_BUG 분류 + GitHub 이슈 생성 완료 후 호출
 또는: ux 스킬 DESIGN_HANDOFF 후 구현 진입 시
+스크립트: `harness/impl_direct.sh`
 
 ---
 

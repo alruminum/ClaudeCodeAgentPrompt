@@ -248,7 +248,7 @@ if [ -d ".git/hooks" ]; then
     cat >> "$PRECOMMIT_HOOK" <<HOOKEOF
 
 ${RULE_AUDIT_MARKER}
-_harness_changed=\$(git diff --cached --name-only 2>/dev/null | grep -E "(impl-process\.sh|bugfix\.sh|utils\.sh|orchestration-rules\.md|RULE_INDEX\.md)" || true)
+_harness_changed=\$(git diff --cached --name-only 2>/dev/null | grep -E "(impl_fast\.sh|impl_std\.sh|impl_deep\.sh|impl_direct\.sh|impl_helpers\.sh|impl\.sh|bugfix\.sh|utils\.sh|orchestration-rules\.md|RULE_INDEX\.md)" || true)
 if [ -n "\$_harness_changed" ]; then
   echo "[pre-commit] harness 파일 변경 감지 — rule-audit.bats 실행 중..."
   if command -v bats &>/dev/null && [ -f "${GLOBAL_HARNESS_DIR}/tests/rule-audit.bats" ]; then

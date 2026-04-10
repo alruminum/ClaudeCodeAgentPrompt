@@ -11,8 +11,8 @@
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
 | UI 변경 요청 | → **ux 스킬** → designer 에이전트 직접 호출 (Pencil 캔버스, 하네스 루프 없음). 상세: [orchestration/design.md](orchestration/design.md) |
-| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth fast\|std\|deep]` |
-| 버그 보고 | → **qa 스킬** → QA 에이전트 직접 분류 + 라우팅. 상세: [orchestration/direct.md](orchestration/direct.md)<br>FUNCTIONAL_BUG → `executor.sh direct --issue <N>` / DESIGN_ISSUE → ux 스킬 / SCOPE_ESCALATE → 유저 보고 |
+| 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프 개요](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth fast\|std\|deep]`<br>depth 상세: [fast](orchestration/impl_fast.md) / [std](orchestration/impl_std.md) / [deep](orchestration/impl_deep.md) |
+| 버그 보고 | → **qa 스킬** → QA 에이전트 직접 분류 + 라우팅. 상세: [orchestration/impl_direct.md](orchestration/impl_direct.md)<br>FUNCTIONAL_BUG → `executor.sh direct --issue <N>` / DESIGN_ISSUE → ux 스킬 / SCOPE_ESCALATE → 유저 보고 |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>]` |
 | **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획 루프) |
 
@@ -20,8 +20,11 @@
 
 → 상세: [orchestration/plan.md](orchestration/plan.md)
 → 상세: [orchestration/design.md](orchestration/design.md)
-→ 상세: [orchestration/impl.md](orchestration/impl.md)
-→ 상세: [orchestration/direct.md](orchestration/direct.md)
+→ 상세 (개요): [orchestration/impl.md](orchestration/impl.md)
+→ 상세 (fast): [orchestration/impl_fast.md](orchestration/impl_fast.md)
+→ 상세 (std): [orchestration/impl_std.md](orchestration/impl_std.md)
+→ 상세 (deep): [orchestration/impl_deep.md](orchestration/impl_deep.md)
+→ 상세 (direct): [orchestration/impl_direct.md](orchestration/impl_direct.md)
 → 상세: [orchestration/tech-epic.md](orchestration/tech-epic.md)
 
 ---
@@ -109,7 +112,7 @@ ux 스킬이 designer 에이전트를 Agent 도구로 직접 호출한다. execu
 **6. 단일 소스 원칙 — orchestration-rules.md 선행 수정 강제**
 워크플로우 변경(에이전트 추가/삭제, 루프 순서 변경, 마커 추가, 플래그 추가)이 필요할 때:
 1. **먼저** 이 파일(`orchestration-rules.md`)에 변경 사항을 반영한다.
-2. **그 다음** 스크립트(`harness/executor.sh`, `harness/impl.sh`, `harness/impl-process.sh`, `harness/design.sh`, `harness/bugfix.sh`, `harness/plan.sh`, `setup-harness.sh` 등)를 업데이트한다.
+2. **그 다음** 스크립트(`harness/executor.sh`, `harness/impl.sh`, `harness/impl_fast.sh`, `harness/impl_std.sh`, `harness/impl_deep.sh`, `harness/impl_direct.sh`, `harness/design.sh`, `harness/bugfix.sh`, `harness/plan.sh`, `setup-harness.sh` 등)를 업데이트한다.
 3. 스크립트를 먼저 수정하고 이 파일을 나중에 수정하는 것은 **절대 금지**.
 위반 시 PreToolUse 훅이 차단한다 (`orch_rules_first` 게이트).
 
@@ -150,7 +153,7 @@ READY_FOR_IMPL
 `harness/utils.sh`에 정의하여 양쪽에서 source로 공유한다.
 
 **9. 하네스 관련 수정 순서**
-`harness/executor.sh` / `harness/{impl,design,direct,plan}.sh` / `harness/impl-process.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` / 에이전트 파일 변경 시:
+`harness/executor.sh` / `harness/{impl,impl_fast,impl_std,impl_deep,impl_direct,design,bugfix,plan}.sh` / `hooks/*.py` / `settings.json(hooks 섹션)` / 에이전트 파일 변경 시:
 1. **먼저** `docs/harness-backlog.md` — 해당 항목 상태 업데이트 또는 신규 항목 추가
 2. **그 다음** 실제 파일 수정
 3. **마지막** `docs/harness-state.md` 관련 섹션 현행화 (완료 기능 / 플래그 / 파일 인벤토리)
@@ -191,7 +194,7 @@ HARNESS_CRASH 시에는 `write_run_end()`이 백그라운드로 리뷰를 자동
 결과는 `/tmp/{prefix}_scan_report.txt`에 저장.
 
 **14. 쉘 스크립트 코드 품질 규칙**
-하네스 쉘 스크립트(`harness/executor.sh`, `harness/{impl,design,bugfix,plan}.sh`, `harness/impl-process.sh`, `harness/utils.sh`) 수정 시:
+하네스 쉘 스크립트(`harness/executor.sh`, `harness/{impl,impl_fast,impl_std,impl_deep,impl_direct,design,bugfix,plan}.sh`, `harness/utils.sh`) 수정 시:
 - **변수 인용**: `$var` → `"$var"` (for 루프, grep 패턴, 조건식). 예외: `${array[@]}`, `$?`, `$#`
 - **grep 리터럴**: 파이프(`|`) 등 메타문자가 포함된 패턴은 `grep -F` 사용
 - **원자적 쓰기**: 공유 파일(harness-memory.md 등) append 시 `mktemp` → `cat >> target` → `rm` 패턴 사용
@@ -419,7 +422,7 @@ Write 도구(`batch_design`, `batch_design` 등) 는 designer 전용.
 
 | 변경 내용 | 업데이트 대상 |
 |-----------|---------------|
-| 루프 순서 / 조건 변경 | `harness/executor.sh`, `harness/{impl,design,direct,plan}.sh`, `harness/impl-process.sh`, `docs/harness-state.md` |
+| 루프 순서 / 조건 변경 | `harness/executor.sh`, `harness/{impl,impl_fast,impl_std,impl_deep,impl_direct,design,bugfix,plan}.sh`, `docs/harness-state.md` |
 | 마커 추가 / 변경 | 해당 에이전트 md 파일 + 해당 루프 파일(`orchestration/*.md`) |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 |
 | 에이전트 추가 / 삭제 | 역할 경계 표 + 해당 루프 다이어그램 + 마커 표 + 스크립트 |

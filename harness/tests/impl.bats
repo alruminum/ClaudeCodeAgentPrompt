@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# harness/tests/impl.bats — impl.sh + impl-process.sh flow tests
+# harness/tests/impl.bats — impl.sh + impl_std.sh flow tests
 
 load test_helper
 

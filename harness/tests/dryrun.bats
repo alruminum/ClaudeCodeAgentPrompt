@@ -478,7 +478,7 @@ make_staged_test_file() {
   create_test_commit "base.txt"
   git checkout -b "feat/999-rollback" 2>/dev/null
 
-  # rollback_attempt 정의 (impl-process.sh 실제 로직 — 로그만 기록, git 연산 없음)
+  # rollback_attempt 정의 (impl_std.sh 실제 로직 — 로그만 기록, git 연산 없음)
   hlog() { true; }
   rollback_attempt() {
     local attempt_num="$1"
@@ -532,7 +532,7 @@ make_staged_test_file() {
 
   make_staged_change "src/logged.ts"
 
-  # early commit + RUN_LOG 기록 (impl-process.sh 로직 재현)
+  # early commit + RUN_LOG 기록 (impl_std.sh 로직 재현)
   if collect_changed_files > /dev/null 2>&1; then
     collect_changed_files | while IFS= read -r _cf; do
       [[ -n "$_cf" ]] && git add -- "$_cf"
@@ -745,7 +745,7 @@ make_staged_test_file() {
 
   make_staged_change "src/feature.ts"
 
-  # 실제 impl-process.sh 로직 재현 (attempt=1)
+  # 실제 impl_std.sh 로직 재현 (attempt=1)
   if collect_changed_files > /dev/null 2>&1; then
     collect_changed_files | while IFS= read -r _cf; do
       [[ -n "$_cf" ]] && git add -- "$_cf"

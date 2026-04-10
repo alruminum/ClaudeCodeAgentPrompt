@@ -22,7 +22,7 @@ import re
 patterns = [
     r"harness/executor\.sh",
     r"harness/impl\.sh",
-    r"harness/impl-process\.sh",
+    r"harness/impl_std\.sh",
     r"harness/design\.sh",
     r"harness/bugfix\.sh",
     r"harness/plan\.sh",
@@ -34,7 +34,7 @@ patterns = [
 test_files = [
     ".claude/harness/executor.sh",
     ".claude/harness/impl.sh",
-    ".claude/harness/impl-process.sh",
+    ".claude/harness/impl_std.sh",
     ".claude/harness/design.sh",
     ".claude/harness/bugfix.sh",
     ".claude/harness/plan.sh",
@@ -62,7 +62,7 @@ import re
 patterns = [
     r"harness/executor\.sh",
     r"harness/impl\.sh",
-    r"harness/impl-process\.sh",
+    r"harness/impl_std\.sh",
     r"harness/design\.sh",
     r"harness/bugfix\.sh",
     r"harness/plan\.sh",
@@ -96,7 +96,7 @@ import re
 patterns = [
     r"harness/executor\.sh",
     r"harness/impl\.sh",
-    r"harness/impl-process\.sh",
+    r"harness/impl_std\.sh",
     r"harness/design\.sh",
     r"harness/bugfix\.sh",
     r"harness/plan\.sh",
@@ -108,7 +108,7 @@ patterns = [
 old_names = [
     "harness-executor.sh",
     "harness-impl-plan.sh",
-    "harness-impl-process.sh",
+    "harness-impl_std.sh",
     "harness-design.sh",
     "harness-bugfix.sh",
     "harness-plan.sh",
@@ -142,7 +142,7 @@ drift_map = eval(m.group(1))
 orch_scripts = drift_map.get("orchestration-rules.md", [])
 required = [
     "harness/executor.sh",
-    "harness/impl-process.sh",
+    "harness/impl_std.sh",
     "harness/impl.sh",
     "harness/bugfix.sh",
     "harness/design.sh",

@@ -8,8 +8,8 @@
 #     [--choice]  ← design 모드 전용(DEPRECATED): 3 variant + design-critic PASS/REJECT
 #
 # mode 목록:
-#   impl   — harness/impl.sh (계획) + harness/impl-process.sh (실행)
-#   direct — harness/direct.sh (impl 파일 없이 engineer 직행, qa 스킬 / ux 스킬 경유)
+#   impl   — harness/impl.sh (계획 + dispatcher) → impl_fast/std/deep.sh (실행)
+#   direct — harness/impl_direct.sh (impl 파일 없이 engineer 직행, qa 스킬 / ux 스킬 경유)
 #   plan   — harness/plan.sh (product-planner → architect → validator)
 #
 # ⚠️  design 모드: DEPRECATED (v4)
@@ -32,7 +32,7 @@ command -v timeout &>/dev/null || timeout() {
 source "${HOME}/.claude/harness/utils.sh"
 source "${HOME}/.claude/harness/impl.sh"
 source "${HOME}/.claude/harness/design.sh"
-source "${HOME}/.claude/harness/direct.sh"
+source "${HOME}/.claude/harness/impl_direct.sh"
 source "${HOME}/.claude/harness/bugfix.sh"
 source "${HOME}/.claude/harness/plan.sh"
 
@@ -113,9 +113,8 @@ detect_depth() {
   fi
 }
 
-# ── 공통: harness/impl-process.sh 경로 결정 (글로벌 우선) ──
-PROCESS_SCRIPT="${HOME}/.claude/harness/impl-process.sh"
-[[ ! -f "$PROCESS_SCRIPT" ]] && PROCESS_SCRIPT=".claude/harness/impl-process.sh"
+# ── impl 서브 스크립트 기본 경로 (impl.sh dispatcher가 참조) ──
+IMPL_SCRIPT_DIR="${HOME}/.claude/harness"
 
 # ══════════════════════════════════════════════════════════════════════
 # 모드 라우터

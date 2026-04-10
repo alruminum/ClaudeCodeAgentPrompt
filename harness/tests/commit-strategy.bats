@@ -29,13 +29,13 @@ teardown() {
   # automated_checks PASS 바로 다음 즉시 커밋 블록이 있어야 한다
   run bash -c '
     awk "/automated_checks PASS/{found=1} found && /즉시 커밋/{print; exit}" \
-      "'"${HARNESS_DIR}/impl-process.sh"'"
+      "'"${HARNESS_DIR}/impl_std.sh"'"
   '
   [[ "$output" == *"즉시 커밋"* ]]
 }
 
 @test "commit-strategy: attempt-N-fix suffix logic exists" {
-  run grep 'attempt.*fix' "${HARNESS_DIR}/impl-process.sh"
+  run grep 'attempt.*fix' "${HARNESS_DIR}/impl_std.sh"
   [[ "$output" == *"attempt"* ]]
   [[ "$output" == *"fix"* ]]
 }
@@ -43,7 +43,7 @@ teardown() {
 @test "commit-strategy: early commit uses generate_commit_msg" {
   # 즉시 커밋 블록이 generate_commit_msg를 사용해야 한다
   run bash -c '
-    awk "/즉시 커밋/,/워커 2/{print}" "'"${HARNESS_DIR}/impl-process.sh"'" \
+    awk "/즉시 커밋/,/워커 2/{print}" "'"${HARNESS_DIR}/impl_std.sh"'" \
       | grep "generate_commit_msg"
   '
   [[ "$output" == *"generate_commit_msg"* ]]
@@ -51,7 +51,7 @@ teardown() {
 
 @test "commit-strategy: early commit logs to RUN_LOG" {
   run bash -c '
-    awk "/즉시 커밋/,/워커 2/{print}" "'"${HARNESS_DIR}/impl-process.sh"'" \
+    awk "/즉시 커밋/,/워커 2/{print}" "'"${HARNESS_DIR}/impl_std.sh"'" \
       | grep "RUN_LOG"
   '
   [[ "$output" == *"RUN_LOG"* ]]
@@ -131,7 +131,7 @@ teardown() {
   # early commit 이후 changed_files는 HEAD~1 diff를 참조해야 한다
   run bash -c '
     awk "/워커 2: test-engineer/,/te_prompt/{print}" \
-      "'"${HARNESS_DIR}/impl-process.sh"'" | grep "HEAD~1"
+      "'"${HARNESS_DIR}/impl_std.sh"'" | grep "HEAD~1"
   '
   [[ "$output" == *"HEAD~1"* ]]
 }
@@ -139,7 +139,7 @@ teardown() {
 @test "commit-strategy: changed_files fallback to git status when no HEAD~1" {
   run bash -c '
     # 폴백 경로가 있어야 한다
-    grep -A3 "changed_files=\$(git diff HEAD~1" "'"${HARNESS_DIR}/impl-process.sh"'" \
+    grep -A3 "changed_files=\$(git diff HEAD~1" "'"${HARNESS_DIR}/impl_std.sh"'" \
       | grep "git status"
   '
   [[ "$output" == *"git status"* ]]
@@ -165,7 +165,7 @@ teardown() {
   # pr-reviewer 블록이 deep-only 조건 없이 std/deep 경로에 있어야 한다
   run bash -c '
     # std/deep 루프 내에서 pr-reviewer가 깊이 조건 밖에 있어야 한다
-    grep -n "pr-reviewer 시작 (depth=" "'"${HARNESS_DIR}/impl-process.sh"'"
+    grep -n "pr-reviewer 시작 (depth=" "'"${HARNESS_DIR}/impl_std.sh"'"
   '
   # depth=fast와 depth=DEPTH(std/deep) 모두 pr-reviewer 호출
   [[ "$output" == *"depth=fast"* ]]
@@ -176,7 +176,7 @@ teardown() {
   # early commit 이후 비어있는 HEAD diff 방지
   # diff_out 라인이 HEAD~1을 참조해야 한다
   run bash -c '
-    grep "diff_out=\$(git diff HEAD~1" "'"${HARNESS_DIR}/impl-process.sh"'"
+    grep "diff_out=\$(git diff HEAD~1" "'"${HARNESS_DIR}/impl_std.sh"'"
   '
   [[ "$output" == *"HEAD~1"* ]]
 }
@@ -185,7 +185,7 @@ teardown() {
   # std/deep 경로에서 pr_reviewer_lgtm을 touch (fast 경로 제외하고 std/deep 루프 내)
   run bash -c '
     # pr_reviewer_lgtm touch가 두 곳 이상 있어야 한다 (fast + std/deep)
-    grep -c "touch.*pr_reviewer_lgtm" "'"${HARNESS_DIR}/impl-process.sh"'"
+    grep -c "touch.*pr_reviewer_lgtm" "'"${HARNESS_DIR}/impl_std.sh"'"
   '
   [[ "$output" -ge 2 ]]
 }
@@ -197,11 +197,11 @@ teardown() {
 @test "commit-strategy: security-reviewer is inside deep-only block" {
   run bash -c '
     awk "/워커 5: security-reviewer/,/DEPTH.*deep/{print; exit}" \
-      "'"${HARNESS_DIR}/impl-process.sh"'"
+      "'"${HARNESS_DIR}/impl_std.sh"'"
   '
   # 워커 5 앞에 DEPTH==deep 조건이 있어야 한다
   run bash -c '
-    grep -B5 "security-reviewer 시작 (deep only" "'"${HARNESS_DIR}/impl-process.sh"'" \
+    grep -B5 "security-reviewer 시작 (deep only" "'"${HARNESS_DIR}/impl_deep.sh"'" \
       | grep "DEPTH.*deep"
   '
   [[ "$output" == *"deep"* ]]
@@ -210,7 +210,7 @@ teardown() {
 @test "commit-strategy: std skips security-reviewer but auto-touches flag" {
   run bash -c '
     # std: security-reviewer 스킵, 플래그 자동 생성
-    grep -A5 "std: security-reviewer 스킵" "'"${HARNESS_DIR}/impl-process.sh"'"
+    grep -A5 "std: security-reviewer 스킵" "'"${HARNESS_DIR}/impl_std.sh"'"
   '
   [[ "$output" == *"security_review_passed"* ]]
 }
@@ -223,14 +223,14 @@ teardown() {
   run bash -c '
     # merge to main 섹션 직전에 test-files 커밋 블록이 있어야 한다
     awk "/merge to main/,/merge_to_main/{print}" \
-      "'"${HARNESS_DIR}/impl-process.sh"'" | grep "test-files"
+      "'"${HARNESS_DIR}/impl_std.sh"'" | grep "test-files"
   '
   [[ "$output" == *"test-files"* ]]
 }
 
 @test "commit-strategy: test-files commit uses [test-files] suffix" {
-  run grep '"'"$(generate_commit_msg) \[test-files\]"'"' "${HARNESS_DIR}/impl-process.sh" 2>/dev/null \
-    || grep 'test-files' "${HARNESS_DIR}/impl-process.sh"
+  run grep '"'"$(generate_commit_msg) \[test-files\]"'"' "${HARNESS_DIR}/impl_std.sh" 2>/dev/null \
+    || grep 'test-files' "${HARNESS_DIR}/impl_std.sh"
   [[ "$output" == *"test-files"* ]]
 }
 
