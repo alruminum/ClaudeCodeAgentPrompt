@@ -479,7 +479,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
     kill_check
 
     # attempt 디렉토리 생성 → prune → 파일 기록
-    local attempt_dir="${LOOP_OUT_DIR}/attempt-${attempt}"
+    attempt_dir="${LOOP_OUT_DIR}/attempt-${attempt}"
     mkdir -p "$attempt_dir"
     prune_history "$LOOP_OUT_DIR"  # 생성 직후, 파일 기록 전 (race condition 방지)
 
@@ -489,7 +489,7 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_fix_out.txt" || AGENT_EXIT=$?
       task="impl 파일의 구현 명세 전체 이행"
     else
       # ── C1: 실패 유형별 수정 전략 (탐색 지시 + next_action_hints 경로 활용) ─
-      local prev_dir="${LOOP_OUT_DIR}/attempt-$((attempt-1))"
+      prev_dir="${LOOP_OUT_DIR}/attempt-$((attempt-1))"
       wt_prefix="[주의] 이전 attempt의 변경이 working tree에 남아있음. 추가 수정으로 해결하라 (stash/reset 금지).
 "
       case "$fail_type" in

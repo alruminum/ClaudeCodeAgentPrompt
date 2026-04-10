@@ -12,6 +12,7 @@
 #   PreToolUse(Read)       — agent-boundary.py
 #   PreToolUse(Bash)       — harness-drift-check.py + commit-gate.py
 #   PreToolUse(Agent)      — agent-gate.py
+#   PreToolUse(mcp__github__create_issue) — issue-gate.py
 #   PostToolUse(Edit)      — harness-settings-watcher.py
 #   PostToolUse(Bash)      — post-commit-cleanup.py + harness-review-trigger.py
 #   PostToolUse(Agent)     — post-agent-flags.py

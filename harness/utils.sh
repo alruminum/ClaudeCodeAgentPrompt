@@ -98,7 +98,10 @@ run_plan_validation() {
 impl: $impl_file issue: #$issue_num" \
     "$val_out_file"
   local val_result
-  val_result=$(parse_marker "$val_out_file" "PASS|FAIL")
+  val_result=$(parse_marker "$val_out_file" "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+  # PLAN_VALIDATION_PASS → PASS 정규화
+  [[ "$val_result" == "PLAN_VALIDATION_PASS" ]] && val_result="PASS"
+  [[ "$val_result" == "PLAN_VALIDATION_FAIL" ]] && val_result="FAIL"
   echo "[HARNESS] Plan Validation 결과: $val_result"
 
   if [[ "$val_result" == "PASS" ]]; then
@@ -123,7 +126,9 @@ Plan Validation FAIL 피드백 반영. impl: $impl_file feedback: ${fail_feedbac
       "@MODE:VALIDATOR:PLAN_VALIDATION
 impl: $impl_file issue: #$issue_num" \
       "$val_out_file2"
-    val_result=$(parse_marker "$val_out_file2" "PASS|FAIL")
+    val_result=$(parse_marker "$val_out_file2" "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
+    [[ "$val_result" == "PLAN_VALIDATION_PASS" ]] && val_result="PASS"
+    [[ "$val_result" == "PLAN_VALIDATION_FAIL" ]] && val_result="FAIL"
     echo "[HARNESS] Plan Validation 재검증 결과: $val_result"
 
     if [[ "$val_result" == "PASS" ]]; then

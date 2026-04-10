@@ -37,7 +37,7 @@ description: 디자인/UX 변경 요청을 명확히 정의한 뒤 하네스 des
 
 ## 실행 절차
 
-### 1단계: 디자인 컨텍스트 제시
+### 1단계: 디자인 컨텍스트 + 모드 제시
 
 ```
 ---
@@ -47,13 +47,18 @@ description: 디자인/UX 변경 요청을 명확히 정의한 뒤 하네스 des
 [요청] ...
 [참고] ...
 
-이대로 design 루프 시작할까요? (designer 3개 variant → design-critic → 유저 선택)
+**모드 선택:**
+- DEFAULT (기본): 시안 1개 → 유저 직접 확인 (APPROVE/REJECT)
+- CHOICE: 시안 3개 → design-critic 심사 → 유저 PICK
+
+어떤 모드로 실행할까요? (기본값: DEFAULT)
 ---
 ```
 
 ### 2단계: 유저 확인 대기
 
-- 긍정 응답 ("응", "ㅇㅇ", "ok", "고", "실행", "그래", "ㅇ") → 3단계 진행
+- 긍정 응답 / 모드 미언급 ("응", "ㅇㅇ", "ok", "고", "그래", "ㅇ") → DEFAULT로 3단계 진행
+- "3개", "choice", "골라볼게", "비교" 등 → CHOICE로 3단계 진행
 - 수정 요청 → 수정 후 1단계 재출력
 - 취소 → 종료
 
@@ -61,9 +66,18 @@ description: 디자인/UX 변경 요청을 명확히 정의한 뒤 하네스 des
 
 Bash 도구로 실행한다:
 
+**DEFAULT 모드:**
 ```bash
 bash ~/.claude/harness/executor.sh design \
   --context "[화면] <화면> / [요청] <요청>" \
+  --prefix mb
+```
+
+**CHOICE 모드:**
+```bash
+bash ~/.claude/harness/executor.sh design \
+  --context "[화면] <화면> / [요청] <요청>" \
+  --choice \
   --prefix mb
 ```
 

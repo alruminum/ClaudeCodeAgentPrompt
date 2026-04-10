@@ -219,6 +219,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "mcp__github__create_issue",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/issue-gate.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
       }
     ]
   },
