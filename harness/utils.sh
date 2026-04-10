@@ -564,13 +564,12 @@ merge_to_main() {
   local merge_msg
   merge_msg=$(printf 'merge: %s (#%s)' "$branch_name" "$issue_num")
 
-  if ! git merge --squash "$branch_name" 2>/dev/null; then
+  if ! git merge --no-ff -m "$merge_msg" "$branch_name" 2>/dev/null; then
     git merge --abort 2>/dev/null || true
     git checkout "$branch_name" 2>/dev/null || true
     echo "MERGE_CONFLICT_ESCALATE"
     return 1
   fi
-  git commit -m "$merge_msg" 2>/dev/null
 
   git branch -d "$branch_name" 2>/dev/null || true
   return 0

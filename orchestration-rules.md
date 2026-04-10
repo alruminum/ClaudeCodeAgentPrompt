@@ -352,7 +352,7 @@ SPEC_GAP_FOUND → architect SPEC_GAP → SPEC_GAP_RESOLVED 사이클은 attempt
 | deep | pr_reviewer_lgtm + security_review_passed |
 | bugfix | code_validation_passed (스크립트 플래그: `validator_b_passed`) |
 
-머지: `git merge --squash` + 단일 커밋, 충돌 시 `MERGE_CONFLICT_ESCALATE` → 메인 Claude 보고
+머지: `git merge --no-ff`, 충돌 시 `MERGE_CONFLICT_ESCALATE` → 메인 Claude 보고
 
 ### 브랜치 정리
 | 결과 | 처리 |
