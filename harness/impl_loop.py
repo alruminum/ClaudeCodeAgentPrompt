@@ -226,15 +226,9 @@ def run_simple(
             if sg_result == "SPEC_GAP_RESOLVED":
                 new_depth = detect_depth(impl_file)
                 if new_depth != "simple" and new_depth in ("std", "deep"):
-                    hlog_fn(f"depth 상향: simple → {new_depth}. 새 depth 루프로 전환")
-                    # exec 대신 subprocess로 새 depth 스크립트 실행
-                    sub_script = Path.home() / ".claude" / "harness" / f"impl_{new_depth}.sh"
-                    os.execv(
-                        "/bin/bash",
-                        ["bash", str(sub_script),
-                         "--impl", impl_file, "--issue", issue_num,
-                         "--prefix", prefix, "--branch-type", branch_type],
-                    )
+                    hlog_fn(f"depth 상향: simple → {new_depth}. Python 함수로 직접 전환")
+                    runner = run_std if new_depth == "std" else run_deep
+                    return runner(impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger)
                 hlog_fn("SPEC_GAP_RESOLVED → engineer 재시도 (depth=simple 유지, attempt 동결)")
                 error_trace = ""
                 fail_type = ""
@@ -648,13 +642,8 @@ def _run_std_deep(
                 if depth == "std":
                     new_depth = detect_depth(impl_file)
                     if new_depth == "deep":
-                        hlog_fn(f"depth 상향: std → deep. deep 루프로 전환")
-                        sub_script = Path.home() / ".claude" / "harness" / "impl_deep.sh"
-                        os.execv("/bin/bash", [
-                            "bash", str(sub_script),
-                            "--impl", impl_file, "--issue", issue_num,
-                            "--prefix", prefix, "--branch-type", branch_type,
-                        ])
+                        hlog_fn("depth 상향: std → deep. Python 함수로 직접 전환")
+                        return run_deep(impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger)
                 hlog_fn(f"SPEC_GAP_RESOLVED → engineer 재시도 (depth={depth} 유지, attempt 동결)")
                 error_trace = ""
                 fail_type = ""

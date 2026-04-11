@@ -85,6 +85,7 @@ def main() -> None:
 
     # ── EXIT 정리 ──
     run_logger_ref: list = [None]  # mutable container for atexit closure
+    _run_end_written = [False]
 
     def cleanup() -> None:
         hb_stop.set()
@@ -93,8 +94,8 @@ def main() -> None:
         # *_active 정리
         for f in state_dir.path.glob(f"{prefix}_*_active"):
             f.unlink(missing_ok=True)
-        # write_run_end
-        if run_logger_ref[0]:
+        # write_run_end — 루프 함수에서 이미 호출했으면 스킵 (이중 호출 방지)
+        if run_logger_ref[0] and not _run_end_written[0]:
             result = os.environ.get("HARNESS_RESULT", "unknown")
             branch = os.environ.get("HARNESS_BRANCH", "")
             run_logger_ref[0].write_run_end(result, branch, args.issue_num)
@@ -118,6 +119,7 @@ def main() -> None:
             state_dir=state_dir,
         )
         os.environ["HARNESS_RESULT"] = result
+        _run_end_written[0] = True  # run_impl 내부에서 write_run_end 호출됨
 
     elif args.mode == "plan":
         from .plan_loop import run_plan
@@ -132,6 +134,7 @@ def main() -> None:
             run_logger=run_logger,
         )
         os.environ["HARNESS_RESULT"] = result
+        _run_end_written[0] = True
 
 
 if __name__ == "__main__":
