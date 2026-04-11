@@ -7,7 +7,7 @@
 
 ## 핵심 원칙
 
-1. 메인 Claude는 src/**를 직접 수정하지 않는다 — 반드시 executor.sh(→executor.py) 경유
+1. 메인 Claude는 src/**를 직접 수정하지 않는다 — 반드시 executor.sh 경유
 2. 모든 구현은 하네스 루프를 거친다 — 예외 없음 (depth=simple로 경량화 가능)
 3. 유저 게이트(READY_FOR_IMPL 등)에서 자동 진행 금지 — 승인 후 진행
 4. 에스컬레이션 수신 시 자동 복구 금지 — 유저 보고 후 대기
@@ -70,7 +70,7 @@
 
 | 변경 내용 | 업데이트 대상 |
 |-----------|---------------|
-| 루프 순서 / 조건 변경 | `harness/executor.py` (Python 진입점), `harness/{impl_router,impl_loop,plan_loop,helpers,core,config}.py`, `docs/harness-state.md`<br>레거시 .sh.bak 참조용 보존 |
+| 루프 순서 / 조건 변경 | `harness/executor.sh`, `harness/{impl,impl_simple,impl_std,impl_deep,design,plan}.sh`, `docs/harness-state.md` |
 | 마커 추가 / 변경 | 해당 에이전트 md 파일 + 해당 루프 파일(`orchestration/*.md`) |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 + `orchestration/agent-boundaries.md` |
 | 에이전트 추가 / 삭제 | `orchestration/agent-boundaries.md` + 해당 루프 다이어그램 + 마커 표 + 스크립트 |
