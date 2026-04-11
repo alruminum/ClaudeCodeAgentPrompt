@@ -1,0 +1,1069 @@
+"""
+impl_loop.py — impl_simple/std/deep.sh 대체.
+AgentStep 체인 구조 + run_simple/run_std/run_deep 구현.
+Python 3.9+ stdlib only.
+"""
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Dict, List, Optional
+
+from .config import HarnessConfig, load_config
+from .core import (
+    Flag, Marker, RunLogger, StateDir,
+    agent_call, parse_marker,
+    create_feature_branch, merge_to_main, generate_commit_msg,
+    collect_changed_files,
+    build_smart_context, build_validator_context, explore_instruction,
+    prune_history, kill_check, detect_depth,
+)
+from .helpers import (
+    load_constraints, append_failure, append_success,
+    rollback_attempt, check_agent_output, run_automated_checks,
+    budget_check, generate_pr_body, save_impl_meta,
+    setup_hlog, log_decision, log_phase,
+)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 1. AgentStep dataclass
+# ═══════════════════════════════════════════════════════════════════════
+
+@dataclass
+class AgentStep:
+    agent: str
+    timeout: int
+    prompt_builder: Callable  # (context_dict) -> str
+    success_markers: str      # "PASS|LGTM" etc.
+    fail_type: str            # "engineer_fail" etc.
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 2. run_simple — impl_simple.sh 전체 흐름
+# ═══════════════════════════════════════════════════════════════════════
+
+def run_simple(
+    impl_file: str,
+    issue_num: str | int,
+    config: HarnessConfig,
+    state_dir: StateDir,
+    prefix: str,
+    branch_type: str = "feat",
+    run_logger: Optional[RunLogger] = None,
+) -> str:
+    """simple depth 구현 루프. impl_simple.sh와 동일한 흐름.
+
+    Returns:
+        결과 문자열 (HARNESS_DONE, IMPLEMENTATION_ESCALATE, etc.)
+    """
+    issue_num = str(issue_num)
+    depth = "simple"
+
+    if not Path(impl_file).exists():
+        print(f"[HARNESS] 오류: impl 파일을 찾을 수 없음: {impl_file}")
+        return "ERROR"
+
+    # Phase 0: setup
+    constraints = load_constraints(config)
+    hlog_fn = setup_hlog(state_dir, prefix)
+
+    # harness_active 플래그
+    state_dir.flag_touch(Flag.HARNESS_ACTIVE)
+    # simple은 plan_validation 스킵
+    if not state_dir.flag_exists(Flag.PLAN_VALIDATION_PASSED):
+        state_dir.flag_touch(Flag.PLAN_VALIDATION_PASSED)
+
+    # 로그 초기화
+    if run_logger is None:
+        run_logger = RunLogger(prefix, "impl", issue_num)
+
+    # feature branch
+    feature_branch = create_feature_branch(branch_type, issue_num)
+    os.environ["HARNESS_BRANCH"] = feature_branch
+    hlog_fn(f"feature branch: {feature_branch}")
+    run_logger.log_event({
+        "event": "branch_create",
+        "branch": feature_branch,
+        "t": int(time.time()),
+    })
+
+    MAX = 3
+    MAX_SPEC_GAP = 2
+    attempt = 0
+    spec_gap_count = 0
+    error_trace = ""
+    fail_type = ""
+
+    hlog_fn(f"=== 하네스 루프 시작 (depth=simple, max_retries={MAX}) ===")
+
+    # 히스토리 디렉토리
+    hist_dir = state_dir.path / f"{prefix}_history"
+    run_ts = os.environ.get("HARNESS_RUN_TS", time.strftime("%Y%m%d_%H%M%S"))
+    loop_out_dir = hist_dir / "impl" / f"run_{run_ts}"
+    loop_out_dir.mkdir(parents=True, exist_ok=True)
+
+    # config 이벤트
+    run_logger.log_event({
+        "event": "config",
+        "impl_file": impl_file,
+        "issue": issue_num,
+        "depth": "simple",
+        "max_retries": MAX,
+        "constraints_chars": len(constraints),
+    })
+
+    while attempt < MAX:
+        hlog_fn.set_attempt(attempt)
+        kill_check(state_dir)
+
+        attempt_dir = loop_out_dir / f"attempt-{attempt}"
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["HARNESS_HIST_DIR"] = str(attempt_dir)
+        prune_history(str(loop_out_dir))
+
+        # 컨텍스트 구성
+        context = build_smart_context(impl_file, 0)
+        if attempt == 0:
+            task = "impl 파일의 구현 명세 전체 이행"
+        else:
+            prev_dir = loop_out_dir / f"attempt-{attempt - 1}"
+            wt_prefix = (
+                "[주의] 이전 attempt의 변경이 working tree에 남아있음. "
+                "추가 수정으로 해결하라 (stash/reset 금지).\n"
+            )
+            if fail_type == "pr_fail":
+                task = (
+                    f"[코드 품질] 시도 {attempt}회.\n"
+                    f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'pr.log'))}\n"
+                    "MUST FIX 항목만 수정하라. 기능 변경 금지."
+                )
+            else:
+                task = (
+                    f"[재시도] 시도 {attempt}회.\n"
+                    f"{explore_instruction(str(loop_out_dir))}"
+                )
+            task = wt_prefix + task
+
+        run_logger.log_event({
+            "event": "context",
+            "chars": len(context),
+            "attempt": attempt,
+        })
+
+        # ── 워커 1: engineer ─────────────────────────────────────
+        log_phase("engineer", run_logger, attempt)
+        print(f"[HARNESS] engineer (attempt {attempt + 1}/{MAX})")
+        hlog_fn(f"engineer 시작 (depth=simple, timeout=900s)")
+        kill_check(state_dir)
+
+        eng_out = str(state_dir.path / f"{prefix}_eng_out.txt")
+        agent_exit = agent_call(
+            "engineer", 900,
+            f"impl: {impl_file}\nissue: #{issue_num}\ntask:\n{task}\n"
+            f"context:\n{context}\nconstraints:\n{constraints}",
+            eng_out, run_logger, config, str(attempt_dir),
+        )
+        hlog_fn(f"engineer 종료 (exit={agent_exit})")
+        if agent_exit == 124:
+            hlog_fn("engineer timeout")
+        total_cost = budget_check("engineer", eng_out, 0, config.max_total_cost, state_dir, prefix)
+
+        # engineer 출력 보존
+        try:
+            shutil.copy2(eng_out, str(attempt_dir / "engineer.log"))
+        except OSError:
+            pass
+
+        if not check_agent_output("engineer", eng_out):
+            fail_type = "autocheck_fail"
+            error_trace = f"engineer agent produced no output (exit={agent_exit})"
+            append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type, "engineer 출력 없음")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        # ── SPEC_GAP 감지 + depth 재판정 ────────────────────────
+        eng_content = Path(eng_out).read_text(encoding="utf-8", errors="replace")
+        if "SPEC_GAP_FOUND" in eng_content:
+            spec_gap_count += 1
+            hlog_fn(f"SPEC_GAP_FOUND (spec_gap_count={spec_gap_count}/{MAX_SPEC_GAP})")
+            log_decision("spec_gap", str(spec_gap_count), "SPEC_GAP_FOUND in engineer output", run_logger, attempt)
+
+            if spec_gap_count > MAX_SPEC_GAP:
+                hlog_fn("SPEC_GAP 동결 초과 → IMPLEMENTATION_ESCALATE")
+                os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+                print(f"IMPLEMENTATION_ESCALATE (spec_gap_count {spec_gap_count} > {MAX_SPEC_GAP})")
+                print(f"branch: {feature_branch}")
+                run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+                return "IMPLEMENTATION_ESCALATE"
+
+            # architect SPEC_GAP 처리
+            log_phase("architect-spec-gap", run_logger, attempt)
+            print("[HARNESS] SPEC_GAP → architect (depth 재판정 포함)")
+            spec_gap_context = "\n".join(eng_content.splitlines()[-50:])
+            arch_out = str(state_dir.path / f"{prefix}_arch_sg_out.txt")
+            agent_call(
+                "architect", 900,
+                f"@MODE:ARCHITECT:SPEC_GAP\n"
+                f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                f"현재 depth: simple\nengineer 보고:\n{spec_gap_context}\n"
+                f"[지시] SPEC_GAP 해결 후 depth 재판정. frontmatter depth: 필드를 재선언하라. "
+                f"상향만 허용(simple→std→deep).",
+                arch_out, run_logger, config,
+            )
+            budget_check("architect", arch_out, total_cost, config.max_total_cost, state_dir, prefix)
+
+            sg_result = parse_marker(arch_out, "SPEC_GAP_RESOLVED|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+
+            if sg_result == "SPEC_GAP_RESOLVED":
+                new_depth = detect_depth(impl_file)
+                if new_depth != "simple" and new_depth in ("std", "deep"):
+                    hlog_fn(f"depth 상향: simple → {new_depth}. 새 depth 루프로 전환")
+                    # exec 대신 subprocess로 새 depth 스크립트 실행
+                    sub_script = Path.home() / ".claude" / "harness" / f"impl_{new_depth}.sh"
+                    os.execv(
+                        "/bin/bash",
+                        ["bash", str(sub_script),
+                         "--impl", impl_file, "--issue", issue_num,
+                         "--prefix", prefix, "--branch-type", branch_type],
+                    )
+                hlog_fn("SPEC_GAP_RESOLVED → engineer 재시도 (depth=simple 유지, attempt 동결)")
+                error_trace = ""
+                fail_type = ""
+                continue
+
+            elif sg_result == "PRODUCT_PLANNER_ESCALATION_NEEDED":
+                os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
+                print("PRODUCT_PLANNER_ESCALATION_NEEDED")
+                print(f"branch: {feature_branch}")
+                run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", feature_branch, issue_num)
+                return "PRODUCT_PLANNER_ESCALATION_NEEDED"
+
+            elif sg_result == "TECH_CONSTRAINT_CONFLICT":
+                os.environ["HARNESS_RESULT"] = "TECH_CONSTRAINT_CONFLICT"
+                print("TECH_CONSTRAINT_CONFLICT")
+                print(f"branch: {feature_branch}")
+                run_logger.write_run_end("TECH_CONSTRAINT_CONFLICT", feature_branch, issue_num)
+                return "TECH_CONSTRAINT_CONFLICT"
+
+            else:
+                hlog_fn(f"architect SPEC_GAP 결과 불명확: {sg_result} → engineer 재시도")
+                error_trace = ""
+                fail_type = ""
+                continue
+
+        # ── automated_checks ──────────────────────────────────────
+        check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix)
+        if not check_ok:
+            error_trace = check_err or "automated_checks FAIL"
+            fail_type = "autocheck_fail"
+            log_decision("fail_type", fail_type, "automated_checks failed", run_logger, attempt)
+            append_failure(impl_file, "autocheck_fail", error_trace, state_dir, prefix)
+            try:
+                shutil.copy2(
+                    str(state_dir.path / f"{prefix}_autocheck_fail.txt"),
+                    str(attempt_dir / "autocheck.log"),
+                )
+            except OSError:
+                pass
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, "autocheck_fail",
+                           f"{attempt_dir}/autocheck.log 참조")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+        print("[HARNESS] automated_checks PASS")
+
+        # ── 즉시 커밋 ────────────────────────────────────────────
+        changed = collect_changed_files()
+        if changed:
+            subprocess.run(["git", "add", "--"] + changed, capture_output=True, timeout=10)
+            commit_suffix = ""
+            if attempt > 0:
+                commit_suffix = f" [attempt-{attempt}-fix]"
+            msg = generate_commit_msg(impl_file, issue_num) + commit_suffix
+            subprocess.run(["git", "commit", "-m", msg], capture_output=True, timeout=10)
+
+            r = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            early_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
+            run_logger.log_event({
+                "event": "commit",
+                "hash": early_commit,
+                "attempt": attempt + 1,
+                "t": int(time.time()),
+            })
+            hlog_fn(f"early commit: {early_commit} (attempt={attempt + 1})")
+
+        # ── 워커 2: pr-reviewer ──────────────────────────────────
+        log_phase("pr-reviewer", run_logger, attempt)
+        print(f"[HARNESS] pr-reviewer (attempt {attempt + 1}/{MAX})")
+        hlog_fn("pr-reviewer 시작 (depth=simple, timeout=240s)")
+        kill_check(state_dir)
+
+        # diff 생성
+        r = subprocess.run(
+            ["git", "diff", "HEAD~1"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            r = subprocess.run(
+                ["git", "diff", "HEAD"],
+                capture_output=True, text=True, timeout=10,
+            )
+        diff_out = "\n".join(r.stdout.splitlines()[:300])
+
+        # src_files
+        r_names = subprocess.run(
+            ["git", "diff", "HEAD~1", "--name-only"],
+            capture_output=True, text=True, timeout=5,
+        )
+        src_files = " ".join(r_names.stdout.strip().splitlines()) if r_names.returncode == 0 else ""
+
+        pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
+        agent_exit = agent_call(
+            "pr-reviewer", 240,
+            f'@MODE:PR_REVIEWER:REVIEW\n'
+            f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
+            f"변경 diff:\n{diff_out}",
+            pr_out, run_logger, config, str(attempt_dir),
+        )
+        hlog_fn(f"pr-reviewer 종료 (exit={agent_exit})")
+        if agent_exit == 124:
+            hlog_fn("pr-reviewer timeout")
+        total_cost = budget_check("pr-reviewer", pr_out, total_cost, config.max_total_cost, state_dir, prefix)
+
+        try:
+            shutil.copy2(pr_out, str(attempt_dir / "pr.log"))
+        except OSError:
+            pass
+
+        if not check_agent_output("pr-reviewer", pr_out):
+            fail_type = "pr_fail"
+            error_trace = f"pr-reviewer agent produced no output (exit={agent_exit})"
+            append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        pr_result = parse_marker(pr_out, "LGTM|CHANGES_REQUESTED")
+        print(f"[HARNESS] pr-reviewer 결과: {pr_result}")
+
+        if pr_result != "LGTM":
+            fail_type = "pr_fail"
+            log_decision("fail_type", fail_type, f"pr-reviewer result={pr_result}", run_logger, attempt)
+            append_failure(impl_file, "pr_fail",
+                           f"pr-reviewer CHANGES_REQUESTED (see {attempt_dir}/pr.log)",
+                           state_dir, prefix)
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, "pr_fail",
+                           f"{attempt_dir}/pr.log 의 MUST FIX 항목만 수정")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        # LGTM
+        state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
+        print("[HARNESS] LGTM")
+
+        # simple: test-engineer, validator, security-reviewer 스킵
+        state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
+        state_dir.flag_touch(Flag.VALIDATOR_B_PASSED)
+        state_dir.flag_touch(Flag.SECURITY_REVIEW_PASSED)
+        hlog_fn("test-engineer, validator, security-reviewer 스킵 (depth=simple)")
+
+        # ── merge to main ─────────────────────────────────────────
+        r = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        impl_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
+
+        if not merge_to_main(feature_branch, issue_num, "simple", prefix, state_dir):
+            os.environ["HARNESS_RESULT"] = "MERGE_CONFLICT_ESCALATE"
+            print("MERGE_CONFLICT_ESCALATE")
+            print(f"branch: {feature_branch}")
+            print(f"impl_commit: {impl_commit}")
+            hlog_fn("=== merge conflict ===")
+            run_logger.write_run_end("MERGE_CONFLICT_ESCALATE", feature_branch, issue_num)
+            return "MERGE_CONFLICT_ESCALATE"
+
+        r = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        merge_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
+        run_logger.log_event({
+            "event": "branch_merge",
+            "branch": feature_branch,
+            "impl_commit": impl_commit,
+            "merge_commit": merge_commit,
+            "t": int(time.time()),
+        })
+
+        # PR body, success, meta
+        pr_body_file = state_dir.path / f"{prefix}_pr_body.txt"
+        try:
+            pr_body_file.write_text(
+                generate_pr_body(impl_file, issue_num, attempt + 1, MAX, state_dir, prefix),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+        append_success(impl_file, attempt + 1)
+        save_impl_meta(attempt_dir, attempt, "PASS", depth, hints="구현 완료")
+        (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
+
+        os.environ["HARNESS_RESULT"] = "HARNESS_DONE"
+        hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")
+        print("HARNESS_DONE")
+        print(f"impl: {impl_file}")
+        print(f"issue: #{issue_num}")
+        print(f"attempts: {attempt + 1}")
+        print(f"commit: {merge_commit}")
+        print(f"pr_body: {pr_body_file}")
+
+        # memory candidate 출력
+        candidate_file = state_dir.path / f"{prefix}_memory_candidate.md"
+        if candidate_file.exists():
+            print()
+            print("[HARNESS MEMORY] 이번 루프에서 실패 패턴이 감지됐습니다.")
+            print(f"   파일: {candidate_file}")
+            print(candidate_file.read_text(encoding="utf-8"))
+            print()
+            print(f"memory_candidate: {candidate_file}")
+
+        run_logger.write_run_end("HARNESS_DONE", feature_branch, issue_num)
+        return "HARNESS_DONE"
+
+    # ── MAX 초과 → ESCALATE ─────────────────────────────────────
+    state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+    os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+    hlog_fn(f"=== 루프 종료 (IMPLEMENTATION_ESCALATE, attempt={MAX}) ===")
+    print("IMPLEMENTATION_ESCALATE")
+    print(f"attempts: {MAX}")
+    print(f"spec_gap_count: {spec_gap_count}")
+    print(f"branch: {feature_branch}")
+    print("마지막 에러:")
+    if error_trace:
+        for line in error_trace.splitlines()[:20]:
+            print(line)
+
+    run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+    return "IMPLEMENTATION_ESCALATE"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 3. _run_std_deep — std/deep 공통 내부 함수
+# ═══════════════════════════════════════════════════════════════════════
+
+def _run_std_deep(
+    impl_file: str,
+    issue_num: str | int,
+    config: HarnessConfig,
+    state_dir: StateDir,
+    prefix: str,
+    depth: str,  # "std" or "deep"
+    branch_type: str = "feat",
+    run_logger: Optional[RunLogger] = None,
+) -> str:
+    """std/deep depth 공통 구현 루프.
+
+    std와 deep의 차이:
+    - deep: pr-reviewer LGTM 후 security-reviewer 추가
+    - std: SPEC_GAP에서 deep으로 상향 가능
+    - deep: SPEC_GAP에서 상향 없음 (최고 depth)
+    """
+    issue_num = str(issue_num)
+
+    if not Path(impl_file).exists():
+        print(f"[HARNESS] 오류: impl 파일을 찾을 수 없음: {impl_file}")
+        return "ERROR"
+
+    constraints = load_constraints(config)
+    hlog_fn = setup_hlog(state_dir, prefix)
+
+    state_dir.flag_touch(Flag.HARNESS_ACTIVE)
+    if not state_dir.flag_exists(Flag.PLAN_VALIDATION_PASSED):
+        state_dir.flag_touch(Flag.PLAN_VALIDATION_PASSED)
+
+    if run_logger is None:
+        run_logger = RunLogger(prefix, "impl", issue_num)
+
+    feature_branch = create_feature_branch(branch_type, issue_num)
+    os.environ["HARNESS_BRANCH"] = feature_branch
+    hlog_fn(f"feature branch: {feature_branch}")
+    run_logger.log_event({"event": "branch_create", "branch": feature_branch, "t": int(time.time())})
+
+    MAX = 3
+    MAX_SPEC_GAP = 2
+    attempt = 0
+    spec_gap_count = 0
+    error_trace = ""
+    fail_type = ""
+
+    hlog_fn(f"=== 하네스 루프 시작 (depth={depth}, max_retries={MAX}) ===")
+
+    hist_dir = state_dir.path / f"{prefix}_history"
+    run_ts = os.environ.get("HARNESS_RUN_TS", time.strftime("%Y%m%d_%H%M%S"))
+    loop_out_dir = hist_dir / "impl" / f"run_{run_ts}"
+    loop_out_dir.mkdir(parents=True, exist_ok=True)
+
+    run_logger.log_event({
+        "event": "config", "impl_file": impl_file, "issue": issue_num,
+        "depth": depth, "max_retries": MAX, "constraints_chars": len(constraints),
+    })
+
+    while attempt < MAX:
+        hlog_fn.set_attempt(attempt)
+        kill_check(state_dir)
+
+        attempt_dir = loop_out_dir / f"attempt-{attempt}"
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["HARNESS_HIST_DIR"] = str(attempt_dir)
+        prune_history(str(loop_out_dir))
+
+        context = build_smart_context(impl_file, 0)
+        if attempt == 0:
+            task = "impl 파일의 구현 명세 전체 이행"
+        else:
+            prev_dir = loop_out_dir / f"attempt-{attempt - 1}"
+            wt_prefix = (
+                "[주의] 이전 attempt의 변경이 working tree에 남아있음. "
+                "추가 수정으로 해결하라 (stash/reset 금지).\n"
+            )
+            task_map = {
+                "autocheck_fail": (
+                    f"[사전 검사 실패] 시도 {attempt}회.\n"
+                    f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'autocheck.log'))}\n"
+                    "위 문제를 해결한 뒤 다시 구현하라."
+                ),
+                "test_fail": (
+                    f"[테스트 실패] 시도 {attempt}회.\n"
+                    f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'test-results.log'))}\n"
+                    "구현 코드를 수정하라. 테스트 코드 자체는 수정 금지."
+                ),
+                "validator_fail": (
+                    f"[스펙 불일치] 시도 {attempt}회.\n"
+                    f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'validator.log'))}\n"
+                    "impl 파일의 해당 항목을 다시 확인하고 누락된 부분을 구현하라."
+                ),
+                "pr_fail": (
+                    f"[코드 품질] 시도 {attempt}회.\n"
+                    f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'pr.log'))}\n"
+                    "MUST FIX 항목만 수정하라. 기능 변경 금지."
+                ),
+            }
+            task = task_map.get(
+                fail_type,
+                f"[재시도] 시도 {attempt}회.\n{explore_instruction(str(loop_out_dir))}",
+            )
+            task = wt_prefix + task
+
+        run_logger.log_event({"event": "context", "chars": len(context), "attempt": attempt})
+
+        # ── 워커 1: engineer ────────────────────────────────────────
+        log_phase("engineer", run_logger, attempt)
+        print(f"[HARNESS] engineer (attempt {attempt + 1}/{MAX})")
+        hlog_fn(f"engineer 시작 (depth={depth}, timeout=900s)")
+        kill_check(state_dir)
+
+        eng_out = str(state_dir.path / f"{prefix}_eng_out.txt")
+        agent_exit = agent_call(
+            "engineer", 900,
+            f"impl: {impl_file}\nissue: #{issue_num}\ntask:\n{task}\n"
+            f"context:\n{context}\nconstraints:\n{constraints}",
+            eng_out, run_logger, config, str(attempt_dir),
+        )
+        hlog_fn(f"engineer 종료 (exit={agent_exit})")
+        if agent_exit == 124:
+            hlog_fn("engineer timeout")
+        total_cost = budget_check("engineer", eng_out, 0, config.max_total_cost, state_dir, prefix)
+        try:
+            shutil.copy2(eng_out, str(attempt_dir / "engineer.log"))
+        except OSError:
+            pass
+
+        if not check_agent_output("engineer", eng_out):
+            fail_type = "autocheck_fail"
+            error_trace = f"engineer agent produced no output (exit={agent_exit})"
+            append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, fail_type, "engineer 출력 없음")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        # ── SPEC_GAP 감지 ──────────────────────────────────────────
+        eng_content = Path(eng_out).read_text(encoding="utf-8", errors="replace")
+        if "SPEC_GAP_FOUND" in eng_content:
+            spec_gap_count += 1
+            hlog_fn(f"SPEC_GAP_FOUND (spec_gap_count={spec_gap_count}/{MAX_SPEC_GAP})")
+            log_decision("spec_gap", str(spec_gap_count), "SPEC_GAP_FOUND in engineer output", run_logger, attempt)
+
+            if spec_gap_count > MAX_SPEC_GAP:
+                hlog_fn("SPEC_GAP 동결 초과 → IMPLEMENTATION_ESCALATE")
+                os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+                print(f"IMPLEMENTATION_ESCALATE (spec_gap_count {spec_gap_count} > {MAX_SPEC_GAP})")
+                print(f"branch: {feature_branch}")
+                run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+                return "IMPLEMENTATION_ESCALATE"
+
+            log_phase("architect-spec-gap", run_logger, attempt)
+            print("[HARNESS] SPEC_GAP → architect (depth 재판정 포함)")
+            spec_gap_ctx = "\n".join(eng_content.splitlines()[-50:])
+
+            if depth == "deep":
+                sg_prompt = (
+                    f"@MODE:ARCHITECT:SPEC_GAP\n"
+                    f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                    f"현재 depth: deep (최고 depth — 하향 없음)\n"
+                    f"engineer 보고:\n{spec_gap_ctx}\n"
+                    f"[지시] SPEC_GAP 해결. depth는 이미 deep이므로 재판정 불필요."
+                )
+            else:
+                sg_prompt = (
+                    f"@MODE:ARCHITECT:SPEC_GAP\n"
+                    f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                    f"현재 depth: {depth}\nengineer 보고:\n{spec_gap_ctx}\n"
+                    f"[지시] SPEC_GAP 해결 후 depth 재판정. frontmatter depth: 필드를 재선언하라. "
+                    f"상향만 허용(simple→std→deep)."
+                )
+
+            arch_out = str(state_dir.path / f"{prefix}_arch_sg_out.txt")
+            agent_call("architect", 900, sg_prompt, arch_out, run_logger, config)
+            budget_check("architect", arch_out, total_cost, config.max_total_cost, state_dir, prefix)
+
+            sg_result = parse_marker(arch_out, "SPEC_GAP_RESOLVED|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+
+            if sg_result == "SPEC_GAP_RESOLVED":
+                if depth == "std":
+                    new_depth = detect_depth(impl_file)
+                    if new_depth == "deep":
+                        hlog_fn(f"depth 상향: std → deep. deep 루프로 전환")
+                        sub_script = Path.home() / ".claude" / "harness" / "impl_deep.sh"
+                        os.execv("/bin/bash", [
+                            "bash", str(sub_script),
+                            "--impl", impl_file, "--issue", issue_num,
+                            "--prefix", prefix, "--branch-type", branch_type,
+                        ])
+                hlog_fn(f"SPEC_GAP_RESOLVED → engineer 재시도 (depth={depth} 유지, attempt 동결)")
+                error_trace = ""
+                fail_type = ""
+                continue
+            elif sg_result == "PRODUCT_PLANNER_ESCALATION_NEEDED":
+                os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
+                print("PRODUCT_PLANNER_ESCALATION_NEEDED")
+                print(f"branch: {feature_branch}")
+                run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", feature_branch, issue_num)
+                return "PRODUCT_PLANNER_ESCALATION_NEEDED"
+            elif sg_result == "TECH_CONSTRAINT_CONFLICT":
+                os.environ["HARNESS_RESULT"] = "TECH_CONSTRAINT_CONFLICT"
+                print("TECH_CONSTRAINT_CONFLICT")
+                print(f"branch: {feature_branch}")
+                run_logger.write_run_end("TECH_CONSTRAINT_CONFLICT", feature_branch, issue_num)
+                return "TECH_CONSTRAINT_CONFLICT"
+            else:
+                hlog_fn(f"architect SPEC_GAP 결과 불명확: {sg_result} → engineer 재시도")
+                error_trace = ""
+                fail_type = ""
+                continue
+
+        # ── automated_checks ──────────────────────────────────────
+        check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix)
+        if not check_ok:
+            error_trace = check_err or "automated_checks FAIL"
+            fail_type = "autocheck_fail"
+            log_decision("fail_type", fail_type, "automated_checks failed", run_logger, attempt)
+            append_failure(impl_file, "autocheck_fail", error_trace, state_dir, prefix)
+            try:
+                shutil.copy2(str(state_dir.path / f"{prefix}_autocheck_fail.txt"), str(attempt_dir / "autocheck.log"))
+            except OSError:
+                pass
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, "autocheck_fail", f"{attempt_dir}/autocheck.log 참조")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+        print("[HARNESS] automated_checks PASS")
+
+        # ── 즉시 커밋 ────────────────────────────────────────────
+        changed = collect_changed_files()
+        if changed:
+            subprocess.run(["git", "add", "--"] + changed, capture_output=True, timeout=10)
+            commit_suffix = ""
+            if attempt > 0:
+                commit_suffix = f" [attempt-{attempt}-fix]"
+            msg = generate_commit_msg(impl_file, issue_num) + commit_suffix
+            subprocess.run(["git", "commit", "-m", msg], capture_output=True, timeout=10)
+            r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
+            early_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
+            run_logger.log_event({"event": "commit", "hash": early_commit, "attempt": attempt + 1, "t": int(time.time())})
+            hlog_fn(f"early commit: {early_commit} (attempt={attempt + 1})")
+
+        # ── 워커 2: test-engineer ─────────────────────────────────
+        r_changed = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
+        if r_changed.returncode != 0:
+            r_changed = subprocess.run(["git", "status", "--short"], capture_output=True, text=True, timeout=5)
+            changed_files_str = " ".join(
+                line.split(None, 1)[1] for line in r_changed.stdout.splitlines()
+                if re.match(r"^ M|^M |^A ", line)
+            )
+        else:
+            changed_files_str = " ".join(r_changed.stdout.strip().splitlines())
+
+        log_phase("test-engineer", run_logger, attempt)
+        print(f"[HARNESS] test-engineer (attempt {attempt + 1}/{MAX})")
+        hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=600s)")
+        kill_check(state_dir)
+
+        if attempt > 0:
+            te_prompt = (
+                f"[RETRY 모드] 이전 attempt에서 테스트 파일이 이미 작성됨. 새 테스트 파일 작성 불필요.\n"
+                f"impl: {impl_file}\n수정된 파일: {changed_files_str}\nissue: #{issue_num}\n\n"
+                f"[지시] npx vitest run만 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
+            )
+        else:
+            te_prompt = (
+                f"@MODE:TEST_ENGINEER:TEST\n"
+                f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{changed_files_str}" }}\n\n'
+                f"[지시] 위 src_files 목록이 이번 구현에서 변경된 파일 전체다. 추가 탐색 없이 이 파일들만 테스트하라.\n"
+                f"issue: #{issue_num}"
+            )
+
+        te_out = str(state_dir.path / f"{prefix}_te_out.txt")
+        agent_exit = agent_call("test-engineer", 600, te_prompt, te_out, run_logger, config, str(attempt_dir))
+        hlog_fn(f"test-engineer 종료 (exit={agent_exit})")
+        if agent_exit == 124:
+            hlog_fn("test-engineer timeout")
+        total_cost = budget_check("test-engineer", te_out, total_cost, config.max_total_cost, state_dir, prefix)
+
+        if not check_agent_output("test-engineer", te_out):
+            fail_type = "test_fail"
+            error_trace = f"test-engineer agent produced no output (exit={agent_exit})"
+            append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        # ── vitest run (ground truth) ─────────────────────────────
+        print(f"[HARNESS] vitest 실행 (attempt {attempt + 1}/{MAX})")
+        hlog_fn("vitest 시작")
+        kill_check(state_dir)
+        test_result = subprocess.run(
+            ["npx", "vitest", "run"],
+            capture_output=True, text=True, timeout=300,
+        )
+        test_out_file = state_dir.path / f"{prefix}_test_out.txt"
+        test_out_file.write_text(test_result.stdout + test_result.stderr, encoding="utf-8")
+        hlog_fn(f"vitest 종료 (exit={test_result.returncode})")
+
+        if test_result.returncode != 0:
+            print("[HARNESS] TESTS_FAIL")
+            error_trace = test_out_file.read_text(encoding="utf-8")
+            fail_type = "test_fail"
+            log_decision("fail_type", fail_type, f"vitest exit={test_result.returncode}", run_logger, attempt)
+            append_failure(impl_file, "test_fail", error_trace, state_dir, prefix)
+            try:
+                shutil.copy2(str(test_out_file), str(attempt_dir / "test-results.log"))
+                shutil.copy2(te_out, str(attempt_dir / "test-engineer.log"))
+            except OSError:
+                pass
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, "test_fail",
+                           f"{attempt_dir}/test-results.log 의 실패 케이스 확인")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+        state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
+        print("[HARNESS] TESTS_PASS")
+
+        # ── 워커 3: validator ─────────────────────────────────────
+        log_phase("validator", run_logger, attempt)
+        print(f"[HARNESS] validator (attempt {attempt + 1}/{MAX})")
+        hlog_fn(f"validator 시작 (depth={depth}, timeout=300s)")
+        kill_check(state_dir)
+        val_context = build_validator_context(impl_file)
+
+        val_out = str(state_dir.path / f"{prefix}_val_out.txt")
+        agent_exit = agent_call(
+            "validator", 300,
+            f"@MODE:VALIDATOR:CODE_VALIDATION\nimpl: {impl_file}\ncontext:\n{val_context}",
+            val_out, run_logger, config, str(attempt_dir),
+        )
+        hlog_fn(f"validator 종료 (exit={agent_exit})")
+        if agent_exit == 124:
+            hlog_fn("validator timeout")
+        total_cost = budget_check("validator", val_out, total_cost, config.max_total_cost, state_dir, prefix)
+        try:
+            shutil.copy2(val_out, str(attempt_dir / "validator.log"))
+        except OSError:
+            pass
+
+        if not check_agent_output("validator", val_out):
+            fail_type = "validator_fail"
+            error_trace = f"validator agent produced no output (exit={agent_exit})"
+            append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        val_result = parse_marker(val_out, "PASS|FAIL|SPEC_MISSING")
+        print(f"[HARNESS] validator 결과: {val_result}")
+
+        if val_result == "SPEC_MISSING":
+            hlog_fn("SPEC_MISSING → architect MODULE_PLAN 복구")
+            arch_sm_out = str(state_dir.path / f"{prefix}_arch_sm_out.txt")
+            agent_call(
+                "architect", 900,
+                f"@MODE:ARCHITECT:MODULE_PLAN\nSPEC_MISSING 복구. impl: {impl_file} issue: #{issue_num}",
+                arch_sm_out, run_logger, config,
+            )
+            budget_check("architect", arch_sm_out, total_cost, config.max_total_cost, state_dir, prefix)
+            fail_type = "validator_fail"
+            error_trace = "SPEC_MISSING: impl 파일 복구 후 재시도"
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        if val_result != "PASS":
+            fail_type = "validator_fail"
+            log_decision("fail_type", fail_type, f"validator result={val_result}", run_logger, attempt)
+            append_failure(impl_file, "validator_fail", f"validator FAIL (see {attempt_dir}/validator.log)", state_dir, prefix)
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, "validator_fail",
+                           f"{attempt_dir}/validator.log 의 FAIL 항목 확인")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+        state_dir.flag_touch(Flag.VALIDATOR_B_PASSED)
+
+        # ── 워커 4: pr-reviewer ───────────────────────────────────
+        log_phase("pr-reviewer", run_logger, attempt)
+        print(f"[HARNESS] pr-reviewer (attempt {attempt + 1}/{MAX})")
+        hlog_fn(f"pr-reviewer 시작 (depth={depth}, timeout=240s)")
+        kill_check(state_dir)
+
+        r = subprocess.run(["git", "diff", "HEAD~1"], capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            r = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True, timeout=10)
+        diff_out = "\n".join(r.stdout.splitlines()[:300])
+        r_names = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
+        src_files = " ".join(r_names.stdout.strip().splitlines()) if r_names.returncode == 0 else ""
+
+        pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
+        agent_exit = agent_call(
+            "pr-reviewer", 240,
+            f'@MODE:PR_REVIEWER:REVIEW\n'
+            f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
+            f"변경 diff:\n{diff_out}",
+            pr_out, run_logger, config, str(attempt_dir),
+        )
+        hlog_fn(f"pr-reviewer 종료 (exit={agent_exit})")
+        if agent_exit == 124:
+            hlog_fn("pr-reviewer timeout")
+        total_cost = budget_check("pr-reviewer", pr_out, total_cost, config.max_total_cost, state_dir, prefix)
+        try:
+            shutil.copy2(pr_out, str(attempt_dir / "pr.log"))
+        except OSError:
+            pass
+
+        if not check_agent_output("pr-reviewer", pr_out):
+            fail_type = "pr_fail"
+            error_trace = f"pr-reviewer agent produced no output (exit={agent_exit})"
+            append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+
+        pr_result = parse_marker(pr_out, "LGTM|CHANGES_REQUESTED")
+        print(f"[HARNESS] pr-reviewer 결과: {pr_result}")
+        if pr_result != "LGTM":
+            fail_type = "pr_fail"
+            log_decision("fail_type", fail_type, f"pr-reviewer result={pr_result}", run_logger, attempt)
+            append_failure(impl_file, "pr_fail", f"pr-reviewer CHANGES_REQUESTED (see {attempt_dir}/pr.log)", state_dir, prefix)
+            save_impl_meta(attempt_dir, attempt, "FAIL", depth, "pr_fail",
+                           f"{attempt_dir}/pr.log 의 MUST FIX 항목만 수정")
+            rollback_attempt(attempt, run_logger)
+            attempt += 1
+            continue
+        state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
+        print("[HARNESS] LGTM")
+
+        # ── 워커 5: security-reviewer (deep only) ─────────────────
+        if depth == "deep":
+            log_phase("security-reviewer", run_logger, attempt)
+            print(f"[HARNESS] security-reviewer (attempt {attempt + 1}/{MAX})")
+            hlog_fn("security-reviewer 시작 (deep only, timeout=180s)")
+            kill_check(state_dir)
+
+            r_src = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
+            changed_src = " ".join(
+                l for l in r_src.stdout.splitlines()
+                if re.search(r"\.(ts|tsx|js|jsx)$", l)
+            )[:10] if r_src.returncode == 0 else ""
+
+            r_diff = subprocess.run(["git", "diff", "HEAD~1"], capture_output=True, text=True, timeout=10)
+            if r_diff.returncode != 0:
+                r_diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True, timeout=10)
+            sec_diff = "\n".join(r_diff.stdout.splitlines()[:500])
+
+            sec_out = str(state_dir.path / f"{prefix}_sec_out.txt")
+            agent_exit = agent_call(
+                "security-reviewer", 180,
+                f"보안 리뷰 대상 파일:\n{changed_src}\n\n변경 diff:\n{sec_diff}",
+                sec_out, run_logger, config, str(attempt_dir),
+            )
+            hlog_fn(f"security-reviewer 종료 (exit={agent_exit})")
+            if agent_exit == 124:
+                hlog_fn("security-reviewer timeout")
+            total_cost = budget_check("security-reviewer", sec_out, total_cost, config.max_total_cost, state_dir, prefix)
+            try:
+                shutil.copy2(sec_out, str(attempt_dir / "security.log"))
+            except OSError:
+                pass
+
+            if not check_agent_output("security-reviewer", sec_out):
+                fail_type = "security_fail"
+                error_trace = f"security-reviewer agent produced no output (exit={agent_exit})"
+                append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
+                rollback_attempt(attempt, run_logger)
+                attempt += 1
+                continue
+
+            sec_result = parse_marker(sec_out, "SECURE|VULNERABILITIES_FOUND")
+            print(f"[HARNESS] security-reviewer 결과: {sec_result}")
+            if sec_result != "SECURE":
+                fail_type = "security_fail"
+                log_decision("fail_type", fail_type, f"security result={sec_result}", run_logger, attempt)
+                append_failure(impl_file, "security_fail",
+                               f"security VULNERABILITIES_FOUND (see {attempt_dir}/security.log)",
+                               state_dir, prefix)
+                save_impl_meta(attempt_dir, attempt, "FAIL", depth, "security_fail",
+                               f"{attempt_dir}/security.log 의 HIGH/MEDIUM 취약점 수정")
+                rollback_attempt(attempt, run_logger)
+                attempt += 1
+                continue
+            state_dir.flag_touch(Flag.SECURITY_REVIEW_PASSED)
+            print("[HARNESS] SECURE")
+        else:
+            # std: security-reviewer 스킵
+            state_dir.flag_touch(Flag.SECURITY_REVIEW_PASSED)
+            hlog_fn("security-reviewer 스킵 (depth=std)")
+
+        # ── merge to main ─────────────────────────────────────────
+        # 미커밋 변경 커밋 (테스트 파일 등)
+        changed2 = collect_changed_files()
+        if changed2:
+            subprocess.run(["git", "add", "--"] + changed2, capture_output=True, timeout=10)
+            subprocess.run(
+                ["git", "commit", "-m", generate_commit_msg(impl_file, issue_num) + " [test-files]"],
+                capture_output=True, timeout=10,
+            )
+            hlog_fn("test 파일 추가 커밋 완료")
+
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
+        impl_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
+
+        if not merge_to_main(feature_branch, issue_num, depth, prefix, state_dir):
+            os.environ["HARNESS_RESULT"] = "MERGE_CONFLICT_ESCALATE"
+            print("MERGE_CONFLICT_ESCALATE")
+            print(f"branch: {feature_branch}")
+            print(f"impl_commit: {impl_commit}")
+            hlog_fn("=== merge conflict ===")
+            run_logger.write_run_end("MERGE_CONFLICT_ESCALATE", feature_branch, issue_num)
+            return "MERGE_CONFLICT_ESCALATE"
+
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
+        merge_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
+        run_logger.log_event({
+            "event": "branch_merge", "branch": feature_branch,
+            "impl_commit": impl_commit, "merge_commit": merge_commit, "t": int(time.time()),
+        })
+
+        pr_body_file = state_dir.path / f"{prefix}_pr_body.txt"
+        try:
+            pr_body_file.write_text(
+                generate_pr_body(impl_file, issue_num, attempt + 1, MAX, state_dir, prefix),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+        append_success(impl_file, attempt + 1)
+        save_impl_meta(attempt_dir, attempt, "PASS", depth, hints="구현 완료")
+        (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
+
+        os.environ["HARNESS_RESULT"] = "HARNESS_DONE"
+        hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")
+        print("HARNESS_DONE")
+        print(f"impl: {impl_file}")
+        print(f"issue: #{issue_num}")
+        print(f"attempts: {attempt + 1}")
+        print(f"commit: {merge_commit}")
+        print(f"pr_body: {pr_body_file}")
+
+        candidate_file = state_dir.path / f"{prefix}_memory_candidate.md"
+        if candidate_file.exists():
+            print()
+            print("[HARNESS MEMORY] 이번 루프에서 실패 패턴이 감지됐습니다.")
+            print(f"   파일: {candidate_file}")
+            print(candidate_file.read_text(encoding="utf-8"))
+            print()
+            print(f"memory_candidate: {candidate_file}")
+
+        run_logger.write_run_end("HARNESS_DONE", feature_branch, issue_num)
+        return "HARNESS_DONE"
+
+    # ── MAX 초과 → ESCALATE ─────────────────────────────────────
+    state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+    os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+    hlog_fn(f"=== 루프 종료 (IMPLEMENTATION_ESCALATE, attempt={MAX}) ===")
+    print("IMPLEMENTATION_ESCALATE")
+    print(f"attempts: {MAX}")
+    print(f"spec_gap_count: {spec_gap_count}")
+    print(f"branch: {feature_branch}")
+    print("마지막 에러:")
+    if error_trace:
+        for line in error_trace.splitlines()[:20]:
+            print(line)
+    run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+    return "IMPLEMENTATION_ESCALATE"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 4. run_std / run_deep — thin wrappers
+# ═══════════════════════════════════════════════════════════════════════
+
+def run_std(
+    impl_file: str, issue_num: str | int, config: HarnessConfig,
+    state_dir: StateDir, prefix: str, branch_type: str = "feat",
+    run_logger: Optional[RunLogger] = None,
+) -> str:
+    """std depth 구현 루프. impl_std.sh 대체."""
+    return _run_std_deep(impl_file, issue_num, config, state_dir, prefix, "std", branch_type, run_logger)
+
+
+def run_deep(
+    impl_file: str, issue_num: str | int, config: HarnessConfig,
+    state_dir: StateDir, prefix: str, branch_type: str = "feat",
+    run_logger: Optional[RunLogger] = None,
+) -> str:
+    """deep depth 구현 루프. impl_deep.sh 대체."""
+    return _run_std_deep(impl_file, issue_num, config, state_dir, prefix, "deep", branch_type, run_logger)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 5. DEPTH_CHAINS — depth별 에이전트 체인 정의 (참조용)
+# ═══════════════════════════════════════════════════════════════════════
+
+DEPTH_CHAINS = {
+    "simple": ["engineer", "pr-reviewer"],
+    "std": ["engineer", "test-engineer", "validator", "pr-reviewer"],
+    "deep": ["engineer", "test-engineer", "validator", "pr-reviewer", "security-reviewer"],
+}
