@@ -16,7 +16,7 @@ import glob
 import json
 import re
 import time
-from harness_common import get_prefix, deny
+from harness_common import get_prefix, get_state_dir, deny
 
 # 하네스 인프라 파일 패턴 — 모든 에이전트에서 Read/Write/Edit 차단
 HARNESS_INFRA_PATTERNS = [
@@ -77,11 +77,11 @@ def main():
             "prefix": prefix,
             "cwd": os.getcwd(),
             "HARNESS_PREFIX": os.environ.get("HARNESS_PREFIX", ""),
-            "active_flags": [f for f in os.listdir("/tmp") if "_active" in f],
+            "active_flags": [f for f in os.listdir(get_state_dir()) if "_active" in f],
             "tool": tool_name,
             "fp": fp,
         }
-        with open("/tmp/agent_boundary_debug.log", "a") as _f:
+        with open(os.path.join(get_state_dir(), "agent_boundary_debug.log"), "a") as _f:
             _f.write(json.dumps(_dbg, ensure_ascii=False) + "\n")
     except Exception:
         pass
@@ -90,7 +90,7 @@ def main():
     active_agent = None
     # 1차: 계산된 prefix로 정확 매칭
     for agent in ALLOW_MATRIX:
-        if os.path.exists(f"/tmp/{prefix}_{agent}_active"):
+        if os.path.exists(os.path.join(get_state_dir(), f"{prefix}_{agent}_active")):
             active_agent = agent
             break
 
@@ -99,7 +99,7 @@ def main():
     if active_agent is None:
         now = time.time()
         for agent in ALLOW_MATRIX:
-            for f in glob.glob(f"/tmp/*_{agent}_active"):
+            for f in glob.glob(os.path.join(get_state_dir(), f"*_{agent}_active")):
                 try:
                     if now - os.path.getmtime(f) < 900:
                         active_agent = agent

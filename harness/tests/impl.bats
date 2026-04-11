@@ -31,7 +31,7 @@ exit 0' > "$mock_script"
     ISSUE_NUM="999"
     DEPTH="auto"
     BRANCH_TYPE="feat"
-    touch "/tmp/'"$PREFIX"'_plan_validation_passed"
+    touch "${STATE_DIR}/'"$PREFIX"'_plan_validation_passed"
     PROCESS_SCRIPT="'"$mock_script"'"
     detect_depth() { echo "std"; }
     run_impl
@@ -54,8 +54,8 @@ exit 0' > "$mock_script"
     echo "## UI 화면 컴포넌트 레이아웃" > "'"${GIT_WORK_TREE}"'/docs/impl/01-ui.md"
     IMPL_FILE="'"${GIT_WORK_TREE}"'/docs/impl/01-ui.md"
     # no design_critic_passed flag
-    rm -f "/tmp/'"$PREFIX"'_design_critic_passed"
-    rm -f "/tmp/'"$PREFIX"'_plan_validation_passed"
+    rm -f "${STATE_DIR}/'"$PREFIX"'_design_critic_passed"
+    rm -f "${STATE_DIR}/'"$PREFIX"'_plan_validation_passed"
     rotate_harness_logs() { true; }
     _agent_call() { echo "0" > "${4%.txt}_cost.txt"; echo "mock" > "$4"; }
     PROCESS_SCRIPT="echo"
@@ -77,8 +77,8 @@ exit 0' > "$mock_script"
     mkdir -p "'"${GIT_WORK_TREE}"'/docs/impl"
     echo "## UI 화면 컴포넌트" > "'"${GIT_WORK_TREE}"'/docs/impl/01-ui.md"
     IMPL_FILE="'"${GIT_WORK_TREE}"'/docs/impl/01-ui.md"
-    touch "/tmp/'"$PREFIX"'_design_critic_passed"
-    rm -f "/tmp/'"$PREFIX"'_plan_validation_passed"
+    touch "${STATE_DIR}/'"$PREFIX"'_design_critic_passed"
+    rm -f "${STATE_DIR}/'"$PREFIX"'_plan_validation_passed"
     rotate_harness_logs() { true; }
     _agent_call() {
       local agent="$1" out="$4"
@@ -156,7 +156,7 @@ exit 0' > "$mock_script"
   }
   run_plan_validation "$impl_path" "999" "$PREFIX" 1
   [[ $? -eq 0 ]]
-  [[ -f "/tmp/${PREFIX}_plan_validation_passed" ]]
+  [[ -f "${STATE_DIR}/${PREFIX}_plan_validation_passed" ]]
 }
 
 @test "run_plan_validation: FAIL then rework PASS" {

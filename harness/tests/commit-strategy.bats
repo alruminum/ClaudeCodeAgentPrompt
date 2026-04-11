@@ -273,8 +273,8 @@ teardown() {
   create_test_commit "fix.txt"
 
   # pr_reviewer_lgtm 없이 validator_b_passed만 있어도 bugfix merge 통과
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  touch "/tmp/${PREFIX}_validator_b_passed"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_validator_b_passed"
   run merge_to_main "fix/test-bugfix" "999" "bugfix" "$PREFIX"
   [[ $status -eq 0 ]]
 }
@@ -284,8 +284,8 @@ teardown() {
   git -C "${GIT_WORK_TREE}" checkout -b "fix/test-bugfix2" 2>/dev/null
   create_test_commit "fix.txt"
 
-  rm -f "/tmp/${PREFIX}_validator_b_passed"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  rm -f "${STATE_DIR}/${PREFIX}_validator_b_passed"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "fix/test-bugfix2" "999" "bugfix" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"validator_b_passed"* ]]
@@ -306,7 +306,7 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/fast-no-pr" 2>/dev/null
   create_test_commit "feature.txt"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/fast-no-pr" "999" "fast" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
@@ -316,7 +316,7 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/std-no-pr" 2>/dev/null
   create_test_commit "feature.txt"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/std-no-pr" "999" "std" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
@@ -326,7 +326,7 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/deep-no-pr" 2>/dev/null
   create_test_commit "feature.txt"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm" "/tmp/${PREFIX}_security_review_passed"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm" "${STATE_DIR}/${PREFIX}_security_review_passed"
   run merge_to_main "feat/deep-no-pr" "999" "deep" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
@@ -337,8 +337,8 @@ teardown() {
   git -C "${GIT_WORK_TREE}" checkout -b "fix/pr-not-needed" 2>/dev/null
   create_test_commit "feature.txt"
   # pr_reviewer_lgtm 없어도 bugfix는 validator_b_passed만으로 통과
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  touch "/tmp/${PREFIX}_validator_b_passed"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_validator_b_passed"
   run merge_to_main "fix/pr-not-needed" "999" "bugfix" "$PREFIX"
   [[ $status -eq 0 ]]
 }

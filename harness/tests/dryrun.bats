@@ -117,7 +117,7 @@ make_staged_test_file() {
   [[ "$(git log --format="%s" -1)" == *"test-files"* ]]
 
   # Step 5: merge (mocked)
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   merge_to_main "feat/999-std-test" "999" "std" "$PREFIX"
   [[ $? -eq 0 ]]
 
@@ -168,7 +168,7 @@ make_staged_test_file() {
   [[ -z "$head_diff" ]]
 
   # merge
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/999-fast-test" "999" "fast" "$PREFIX"
   [[ $status -eq 0 ]]
 }
@@ -333,7 +333,7 @@ make_staged_test_file() {
   [[ "$after_early" == "$after_skip" ]]
 
   # merge proceeds normally
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/999-notest" "999" "std" "$PREFIX"
   [[ $status -eq 0 ]]
 }
@@ -378,7 +378,7 @@ make_staged_test_file() {
   make_staged_change "src/simple.ts"
   git commit -m "fix: simple change" >/dev/null 2>&1
 
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
 
   run merge_to_main "feat/999-simple-test" "999" "simple" "$PREFIX"
   [[ $status -eq 0 ]]
@@ -431,8 +431,8 @@ make_staged_test_file() {
   [[ "$c1" != "$c2" ]]
 
   # Step 5: merge (mocked)
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  touch "/tmp/${PREFIX}_security_review_passed"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_security_review_passed"
   run merge_to_main "feat/999-full-std" "999" "std" "$PREFIX"
   [[ $status -eq 0 ]]
 
@@ -586,8 +586,8 @@ make_staged_test_file() {
   [[ "$before_pr" == "$after_skip" ]]
 
   # pr_reviewer_lgtm은 LGTM이든 fix 완료든 항상 set
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  [[ -f "/tmp/${PREFIX}_pr_reviewer_lgtm" ]]
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
+  [[ -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm" ]]
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -604,7 +604,7 @@ make_staged_test_file() {
 
   make_staged_change "src/fix.ts"
 
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
 
   run harness_commit_and_merge "feat/999-hcam" "999" "simple" "$PREFIX" "[simple-fix]"
   [[ $status -eq 0 ]]
@@ -616,7 +616,7 @@ make_staged_test_file() {
   git checkout -b "feat/999-nochange" 2>/dev/null
   create_test_commit "feature.txt"
 
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
 
   # 변경사항 없음 → commit 스킵, merge만
   run harness_commit_and_merge "feat/999-nochange" "999" "std" "$PREFIX"
@@ -764,13 +764,13 @@ make_staged_test_file() {
   # Step 2: pr-reviewer diff = HEAD~1 (이미 커밋됐으므로)
   local pr_diff; pr_diff=$(git diff HEAD~1 --name-only 2>/dev/null | tr '\n' ' ')
   [[ "$pr_diff" == *"service.ts"* ]]
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
 
   # Step 3: security-reviewer target = HEAD~1 ts 파일
   local sec_target; sec_target=$(git diff HEAD~1 --name-only 2>/dev/null \
     | grep -E '\.(ts|tsx|js|jsx)$' | tr '\n' ' ')
   [[ "$sec_target" == *"service.ts"* ]]
-  touch "/tmp/${PREFIX}_security_review_passed"
+  touch "${STATE_DIR}/${PREFIX}_security_review_passed"
 
   # Step 4: test-engineer 파일 추가 + test-files commit
   make_staged_test_file "src/__tests__/service.test.ts"
@@ -795,8 +795,8 @@ make_staged_test_file() {
   make_staged_change "src/feature.ts"
   git commit -m "feat: impl" >/dev/null 2>&1
 
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  rm -f "/tmp/${PREFIX}_security_review_passed"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
+  rm -f "${STATE_DIR}/${PREFIX}_security_review_passed"
 
   run merge_to_main "feat/999-no-sec" "999" "deep" "$PREFIX"
   [[ $status -ne 0 ]]

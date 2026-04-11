@@ -25,26 +25,26 @@ ${CONTEXT}"
   _agent_call "product-planner" 300 \
     "@MODE:PLANNER:PRODUCT_PLAN
 context: $CONTEXT issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_pp_out.txt"
+    "${STATE_DIR}/${PREFIX}_pp_out.txt"
   local pp_out
-  pp_out=$(cat "/tmp/${PREFIX}_pp_out.txt")
+  pp_out=$(cat "${STATE_DIR}/${PREFIX}_pp_out.txt")
   kill_check
 
   # product-planner 결과 마커 감지
   local pp_marker
-  pp_marker=$(parse_marker "/tmp/${PREFIX}_pp_out.txt" "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED")
+  pp_marker=$(parse_marker "${STATE_DIR}/${PREFIX}_pp_out.txt" "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED")
 
   # ── architect System Design ──
   echo "[HARNESS] architect System Design 작성"
   _agent_call "architect" 900 \
     "@MODE:ARCHITECT:SYSTEM_DESIGN
 ${pp_out} issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_arch_sd_out.txt"
+    "${STATE_DIR}/${PREFIX}_arch_sd_out.txt"
   kill_check
 
   # design_doc 경로 추출
   local design_doc
-  design_doc=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_sd_out.txt") || design_doc=""
+  design_doc=$(grep -oEm1 'docs/[^ ]+\.md' "${STATE_DIR}/${PREFIX}_arch_sd_out.txt") || design_doc=""
 
   # ── Design Validation ──
   if [[ -n "$design_doc" && -f "$design_doc" ]]; then
@@ -67,11 +67,11 @@ ${pp_out} issue: #$ISSUE_NUM" \
   _agent_call "architect" 900 \
     "@MODE:ARCHITECT:MODULE_PLAN
 design_doc: ${design_doc:-N/A} issue: #$ISSUE_NUM" \
-    "/tmp/${PREFIX}_arch_mp_out.txt"
+    "${STATE_DIR}/${PREFIX}_arch_mp_out.txt"
   kill_check
 
   local impl_file
-  impl_file=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_mp_out.txt") || impl_file=""
+  impl_file=$(grep -oEm1 'docs/[^ ]+\.md' "${STATE_DIR}/${PREFIX}_arch_mp_out.txt") || impl_file=""
 
   if [[ -z "$impl_file" || ! -f "$impl_file" ]]; then
     export HARNESS_RESULT="SPEC_GAP_ESCALATE"
@@ -91,7 +91,7 @@ design_doc: ${design_doc:-N/A} issue: #$ISSUE_NUM" \
   fi
 
   # ── 완료: PLAN_VALIDATION_PASS → 유저 게이트 ──
-  echo "$impl_file" > "/tmp/${PREFIX}_impl_path"
+  echo "$impl_file" > "${STATE_DIR}/${PREFIX}_impl_path"
   export HARNESS_RESULT="PLAN_VALIDATION_PASS"
   echo "PLAN_VALIDATION_PASS"
   echo "impl: $impl_file"

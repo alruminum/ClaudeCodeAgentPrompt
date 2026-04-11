@@ -11,7 +11,7 @@
 run_impl() {
   # ── 재진입 상태 감지 ──
   # plan_validation_passed 플래그 + impl 파일 있으면 → engineer 루프로 바로 진입
-  if [[ -f "/tmp/${PREFIX}_plan_validation_passed" && -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+  if [[ -f "${STATE_DIR}/${PREFIX}_plan_validation_passed" && -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     echo "[HARNESS] 재진입: plan_validation_passed + impl 존재 → engineer 루프 직접 진입"
     [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
     echo "[HARNESS] depth: $DEPTH"
@@ -24,7 +24,7 @@ run_impl() {
   if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     local ui_kw
     ui_kw=$(grep -iE "화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이" "$IMPL_FILE" || true)
-    if [[ -n "$ui_kw" && ! -f "/tmp/${PREFIX}_design_critic_passed" ]]; then
+    if [[ -n "$ui_kw" && ! -f "${STATE_DIR}/${PREFIX}_design_critic_passed" ]]; then
       export HARNESS_RESULT="UI_DESIGN_REQUIRED"
       echo "UI_DESIGN_REQUIRED"
       echo "impl: $IMPL_FILE"
@@ -77,18 +77,18 @@ labels: ${issue_labels}
 issue_summary:
 ${issue_summary}
 context: ${CONTEXT}" \
-        "/tmp/${PREFIX}_arch_out.txt"
+        "${STATE_DIR}/${PREFIX}_arch_out.txt"
     else
       echo "[HARNESS] architect Module Plan 작성"
       _agent_call "architect" 900 \
         "@MODE:ARCHITECT:MODULE_PLAN
 issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
-        "/tmp/${PREFIX}_arch_out.txt"
+        "${STATE_DIR}/${PREFIX}_arch_out.txt"
     fi
 
     # architect 결과 마커 확인 (BUGFIX_PLAN_READY 또는 READY_FOR_IMPL)
     local arch_marker
-    arch_marker=$(parse_marker "/tmp/${PREFIX}_arch_out.txt" "BUGFIX_PLAN_READY|READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+    arch_marker=$(parse_marker "${STATE_DIR}/${PREFIX}_arch_out.txt" "BUGFIX_PLAN_READY|READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
     if [[ "$arch_marker" == "PRODUCT_PLANNER_ESCALATION_NEEDED" ]]; then
       export HARNESS_RESULT="PRODUCT_PLANNER_ESCALATION_NEEDED"
       echo "PRODUCT_PLANNER_ESCALATION_NEEDED"
@@ -99,7 +99,7 @@ issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
       echo "TECH_CONSTRAINT_CONFLICT"
       exit 1
     fi
-    IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
+    IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "${STATE_DIR}/${PREFIX}_arch_out.txt") || IMPL_FILE=""
     echo "[HARNESS] impl: $IMPL_FILE"
   fi
 
@@ -112,7 +112,7 @@ issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
   # Plan Validation (구현 전 게이트)
   echo "[HARNESS] Plan Validation"
   if run_plan_validation "$IMPL_FILE" "$ISSUE_NUM" "$PREFIX" 1; then
-    echo "$IMPL_FILE" > "/tmp/${PREFIX}_impl_path"
+    echo "$IMPL_FILE" > "${STATE_DIR}/${PREFIX}_impl_path"
     export HARNESS_RESULT="PLAN_VALIDATION_PASS"
     echo "PLAN_VALIDATION_PASS"
     echo "impl: $IMPL_FILE"

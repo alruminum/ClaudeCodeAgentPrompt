@@ -35,7 +35,7 @@ teardown() {
   '
   [[ "$output" == *"DESIGN_DONE"* ]]
   [[ $status -eq 0 ]]
-  [[ -f "/tmp/${PREFIX}_design_critic_passed" ]]
+  [[ -f "${STATE_DIR}/${PREFIX}_design_critic_passed" ]]
 }
 
 @test "design: ESCALATE -> user direct pick (exit 0)" {

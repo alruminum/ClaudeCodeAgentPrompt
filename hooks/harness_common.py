@@ -47,9 +47,28 @@ def deny(reason):
     sys.exit(0)
 
 
+def get_state_dir():
+    """하네스 상태 디렉토리 반환. 프로젝트 .claude/harness-state/ 우선, 없으면 /tmp 폴백."""
+    cwd = os.path.abspath(os.getcwd())
+    while True:
+        state_dir = os.path.join(cwd, ".claude", "harness-state")
+        if os.path.isdir(state_dir):
+            return state_dir
+        # .claude 디렉토리만 있어도 harness-state 생성 가능한 프로젝트 루트
+        claude_dir = os.path.join(cwd, ".claude")
+        if os.path.isdir(claude_dir):
+            os.makedirs(state_dir, exist_ok=True)
+            return state_dir
+        parent = os.path.dirname(cwd)
+        if parent == cwd:
+            break
+        cwd = parent
+    return "/tmp"
+
+
 def flag_path(prefix, name):
     """플래그 파일 경로 반환."""
-    return f"/tmp/{prefix}_{name}"
+    return os.path.join(get_state_dir(), f"{prefix}_{name}")
 
 
 def flag_exists(prefix, name):

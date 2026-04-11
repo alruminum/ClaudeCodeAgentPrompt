@@ -53,7 +53,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-LOCK_FILE="/tmp/${PREFIX}_harness_active"
+# STATE_DIR 초기화: 프로젝트 .claude/harness-state/ 사용
+init_state_dir "$(pwd)"
+
+LOCK_FILE="${STATE_DIR}/${PREFIX}_harness_active"
 LOCK_STARTED=$(date +%s)
 
 # ── 병렬 실행 가드: 같은 PREFIX로 동시 실행 방지 ─────────────────────
@@ -90,7 +93,7 @@ _harness_heartbeat &
 HB_PID=$!
 
 # EXIT trap: 성공/실패/크래시/kill 모두 lock 해제
-trap 'kill "$HB_PID" 2>/dev/null; rm -f "$LOCK_FILE" "/tmp/${PREFIX}_harness_kill"; rm -f /tmp/${PREFIX}_*_active 2>/dev/null; write_run_end' EXIT
+trap 'kill "$HB_PID" 2>/dev/null; rm -f "$LOCK_FILE" "${STATE_DIR}/${PREFIX}_harness_kill"; rm -f ${STATE_DIR}/${PREFIX}_*_active 2>/dev/null; write_run_end' EXIT
 
 _write_lease
 

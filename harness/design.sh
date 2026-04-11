@@ -52,7 +52,7 @@ ${CONTEXT}"
 _run_design_default() {
   local attempt=0
   local MAX=3
-  local HIST_DIR="/tmp/${PREFIX}_history"
+  local HIST_DIR="${STATE_DIR}/${PREFIX}_history"
   local LOOP_OUT_DIR="${HIST_DIR}/design"
   mkdir -p "$LOOP_OUT_DIR"
 
@@ -71,11 +71,11 @@ context: ${CONTEXT}"
 $(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/round-$((attempt-1))/designer.log")
 이전 variant가 REJECT됐습니다. 개선된 variant-A를 새 방향으로 재생성하라."
     fi
-    _agent_call "designer" 900 "$designer_prompt" "/tmp/${PREFIX}_des_out.txt"
-    cp "/tmp/${PREFIX}_des_out.txt" "${round_dir}/designer.log" 2>/dev/null || true
+    _agent_call "designer" 900 "$designer_prompt" "${STATE_DIR}/${PREFIX}_des_out.txt"
+    cp "${STATE_DIR}/${PREFIX}_des_out.txt" "${round_dir}/designer.log" 2>/dev/null || true
 
     # DEFAULT 모드: 크리틱 없음 — 유저 직접 확인
-    touch "/tmp/${PREFIX}_design_critic_passed"
+    touch "${STATE_DIR}/${PREFIX}_design_critic_passed"
 
     echo ""
     echo "✅ Design DEFAULT — variant-A가 준비됐습니다."
@@ -97,7 +97,7 @@ $(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/round-$((attempt-1))/desi
 
   # 3회 재시도 후에도 미완료 — DESIGN_LOOP_ESCALATE
   hlog "DESIGN_LOOP_ESCALATE — DEFAULT ${MAX}회 후 유저 직접 선택 대기"
-  touch "/tmp/${PREFIX}_design_critic_passed"
+  touch "${STATE_DIR}/${PREFIX}_design_critic_passed"
 
   echo ""
   echo "⚠️  DESIGN_LOOP_ESCALATE — DEFAULT 모드 ${MAX}회 재시도 후에도 미승인."
@@ -107,7 +107,7 @@ $(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/round-$((attempt-1))/desi
   export HARNESS_RESULT="DESIGN_LOOP_ESCALATE"
   echo "DESIGN_LOOP_ESCALATE: DEFAULT ${MAX}회 후 REJECT 반복"
   echo "issue: #${ISSUE_NUM}"
-  echo "variants: /tmp/${PREFIX}_des_out.txt"
+  echo "variants: ${STATE_DIR}/${PREFIX}_des_out.txt"
   echo "필요 조치: 유저가 디자인 방향을 직접 지시하거나 APPROVE"
   exit 0
 }
@@ -116,7 +116,7 @@ $(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/round-$((attempt-1))/desi
 _run_design_choice() {
   local attempt=0
   local MAX=3
-  local HIST_DIR="/tmp/${PREFIX}_history"
+  local HIST_DIR="${STATE_DIR}/${PREFIX}_history"
   local LOOP_OUT_DIR="${HIST_DIR}/design"
   mkdir -p "$LOOP_OUT_DIR"
 
@@ -135,31 +135,31 @@ context: ${CONTEXT}"
 $(explore_instruction "$LOOP_OUT_DIR" "${LOOP_OUT_DIR}/round-$((attempt-1))/critic.log")
 design-critic 피드백을 직접 확인하고 개선된 variants를 생성하라."
     fi
-    _agent_call "designer" 900 "$designer_prompt" "/tmp/${PREFIX}_des_out.txt"
-    cp "/tmp/${PREFIX}_des_out.txt" "${round_dir}/designer.log" 2>/dev/null || true
+    _agent_call "designer" 900 "$designer_prompt" "${STATE_DIR}/${PREFIX}_des_out.txt"
+    cp "${STATE_DIR}/${PREFIX}_des_out.txt" "${round_dir}/designer.log" 2>/dev/null || true
 
     hlog "design-critic 심사 CHOICE (round $((attempt+1))/$MAX)"
     _agent_call "design-critic" 300 \
       "@MODE:CRITIC:REVIEW
 designer 출력 파일: ${round_dir}/designer.log
 이 파일을 직접 읽어 variant 3개를 각각 PASS/REJECT 판정하라." \
-      "/tmp/${PREFIX}_dc_out.txt"
-    cp "/tmp/${PREFIX}_dc_out.txt" "${round_dir}/critic.log" 2>/dev/null || true
+      "${STATE_DIR}/${PREFIX}_dc_out.txt"
+    cp "${STATE_DIR}/${PREFIX}_dc_out.txt" "${round_dir}/critic.log" 2>/dev/null || true
     local dc_result
-    dc_result=$(parse_marker "/tmp/${PREFIX}_dc_out.txt" "VARIANTS_APPROVED|VARIANTS_ALL_REJECTED")
+    dc_result=$(parse_marker "${STATE_DIR}/${PREFIX}_dc_out.txt" "VARIANTS_APPROVED|VARIANTS_ALL_REJECTED")
 
     case "$dc_result" in
       VARIANTS_APPROVED)
         hlog "VARIANTS_APPROVED — Phase 3 유저 variant PICK 대기"
-        touch "/tmp/${PREFIX}_design_critic_passed"
+        touch "${STATE_DIR}/${PREFIX}_design_critic_passed"
 
         echo ""
         echo "✅ Design-Critic VARIANTS_APPROVED — PASS된 variant가 있습니다."
         echo ""
         echo "Pencil 캔버스에서 확인하세요:"
-        grep -A1 "## variant-A:" "/tmp/${PREFIX}_des_out.txt" | tail -1 | sed 's/\*\*미적 방향:\*\* /  variant-A: /' 2>/dev/null || echo "  variant-A: Pencil 캔버스 확인"
-        grep -A1 "## variant-B:" "/tmp/${PREFIX}_des_out.txt" | tail -1 | sed 's/\*\*미적 방향:\*\* /  variant-B: /' 2>/dev/null || echo "  variant-B: Pencil 캔버스 확인"
-        grep -A1 "## variant-C:" "/tmp/${PREFIX}_des_out.txt" | tail -1 | sed 's/\*\*미적 방향:\*\* /  variant-C: /' 2>/dev/null || echo "  variant-C: Pencil 캔버스 확인"
+        grep -A1 "## variant-A:" "${STATE_DIR}/${PREFIX}_des_out.txt" | tail -1 | sed 's/\*\*미적 방향:\*\* /  variant-A: /' 2>/dev/null || echo "  variant-A: Pencil 캔버스 확인"
+        grep -A1 "## variant-B:" "${STATE_DIR}/${PREFIX}_des_out.txt" | tail -1 | sed 's/\*\*미적 방향:\*\* /  variant-B: /' 2>/dev/null || echo "  variant-B: Pencil 캔버스 확인"
+        grep -A1 "## variant-C:" "${STATE_DIR}/${PREFIX}_des_out.txt" | tail -1 | sed 's/\*\*미적 방향:\*\* /  variant-C: /' 2>/dev/null || echo "  variant-C: Pencil 캔버스 확인"
         echo ""
         echo "PASS된 variant를 확인하고 선택할 variant를 입력하세요 (A/B/C):"
         echo ""
@@ -192,7 +192,7 @@ designer 출력 파일: ${round_dir}/designer.log
 
   # 3라운드 모두 VARIANTS_ALL_REJECTED → DESIGN_LOOP_ESCALATE
   hlog "DESIGN_LOOP_ESCALATE — CHOICE ${MAX}라운드 후 유저 직접 선택 대기"
-  touch "/tmp/${PREFIX}_design_critic_passed"
+  touch "${STATE_DIR}/${PREFIX}_design_critic_passed"
 
   echo ""
   echo "⚠️  DESIGN_LOOP_ESCALATE — CHOICE ${MAX}라운드 반복 후에도 PASS variant 없음."
@@ -202,8 +202,8 @@ designer 출력 파일: ${round_dir}/designer.log
   export HARNESS_RESULT="DESIGN_LOOP_ESCALATE"
   echo "DESIGN_LOOP_ESCALATE: CHOICE ${MAX}라운드 후에도 VARIANTS_ALL_REJECTED"
   echo "issue: #${ISSUE_NUM}"
-  echo "variants: /tmp/${PREFIX}_des_out.txt"
-  echo "critic: /tmp/${PREFIX}_dc_out.txt"
+  echo "variants: ${STATE_DIR}/${PREFIX}_des_out.txt"
+  echo "critic: ${STATE_DIR}/${PREFIX}_dc_out.txt"
   echo "필요 조치: 유저가 직접 variant를 선택하거나 디자인 방향을 지시"
   exit 0
 }

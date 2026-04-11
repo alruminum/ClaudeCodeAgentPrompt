@@ -3,10 +3,20 @@
 # PostToolUse(Bash) 훅에서 git commit 성공 후 호출되거나,
 # git post-commit 훅으로 직접 사용 가능.
 #
-# 결과를 /tmp/{PREFIX}_scan_report.txt에 저장.
+# 결과를 STATE_DIR/{PREFIX}_scan_report.txt에 저장.
 # 다음 세션에서 harness-router.py가 참고할 수 있음.
 
 set -euo pipefail
+
+# STATE_DIR 설정 (프로젝트 .claude/harness-state/ 우선)
+if [[ -d ".claude/harness-state" ]]; then
+  STATE_DIR=".claude/harness-state"
+elif [[ -d ".claude" ]]; then
+  STATE_DIR=".claude/harness-state"
+  mkdir -p "$STATE_DIR"
+else
+  STATE_DIR="/tmp"
+fi
 
 # prefix 유도
 CONFIG=".claude/harness.config.json"
@@ -17,7 +27,7 @@ else
   [[ -z "$PREFIX" ]] && PREFIX="proj"
 fi
 
-REPORT="/tmp/${PREFIX}_scan_report.txt"
+REPORT="${STATE_DIR}/${PREFIX}_scan_report.txt"
 echo "=== Post-Commit Scan $(date +%Y-%m-%d\ %H:%M:%S) ===" > "$REPORT"
 
 # 변경된 파일만 대상

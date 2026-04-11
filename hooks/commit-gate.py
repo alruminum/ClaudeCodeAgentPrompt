@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import subprocess
-from harness_common import get_prefix, deny
+from harness_common import get_prefix, get_state_dir, deny
 
 PREFIX = get_prefix()
 
@@ -43,7 +43,7 @@ def main():
     # ── Gate 2: BUG 컨텍스트에서 executor.sh impl 직접 호출 차단 ───────
     # is_bug 플래그는 harness-router.py가 버그 감지 시 설정.
     # executor.sh bugfix 호출 시 클리어됨.
-    _is_bug_flag = f"/tmp/{PREFIX}_is_bug"
+    _is_bug_flag = f"{get_state_dir()}/{PREFIX}_is_bug"
     _IS_EXECUTOR_IMPL = re.search(r"executor\.sh\s+impl\b", cmd)
     _IS_EXECUTOR_BUGFIX = re.search(r"executor\.sh\s+bugfix\b", cmd)
 
@@ -64,7 +64,7 @@ def main():
     # ── Gate 3: 인터뷰 진행 중 executor.sh 호출 차단 ───────────────────
     # harness-router.py가 AMBIGUOUS 분류 시 interview_state.json을 생성.
     # 인터뷰 완료(DONE) 전까지 구현 루프 진입 금지.
-    _interview_path = f"/tmp/{PREFIX}_interview_state.json"
+    _interview_path = f"{get_state_dir()}/{PREFIX}_interview_state.json"
     _IS_EXECUTOR_ANY = re.search(r"executor\.sh\s+(impl|bugfix|design|plan)\b", cmd)
     if _IS_EXECUTOR_ANY and os.path.exists(_interview_path) and os.environ.get("HARNESS_INTERNAL") != "1":
         deny(
@@ -105,8 +105,8 @@ def main():
         sys.exit(0)
 
     # src 변경이 있으면 LGTM 필요
-    if not os.path.exists(f"/tmp/{PREFIX}_pr_reviewer_lgtm"):
-        deny(f"❌ git commit 전 pr-reviewer LGTM 필요. /tmp/{PREFIX}_pr_reviewer_lgtm 없음.")
+    if not os.path.exists(f"{get_state_dir()}/{PREFIX}_pr_reviewer_lgtm"):
+        deny(f"❌ git commit 전 pr-reviewer LGTM 필요. {get_state_dir()}/{PREFIX}_pr_reviewer_lgtm 없음.")
 
     sys.exit(0)
 

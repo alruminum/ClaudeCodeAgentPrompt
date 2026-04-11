@@ -19,7 +19,7 @@ teardown() {
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-merge" 2>/dev/null
   create_test_commit "feature.txt"
   # No pr_reviewer_lgtm — fast should be rejected
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/test-merge" "999" "fast" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
@@ -29,7 +29,7 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-merge2" 2>/dev/null
   create_test_commit "feature.txt"
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/test-merge2" "999" "fast" "$PREFIX"
   [[ $status -eq 0 ]]
 }
@@ -39,8 +39,8 @@ teardown() {
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-std" 2>/dev/null
   create_test_commit "feature.txt"
   # validator_b_passed alone is insufficient for std
-  touch "/tmp/${PREFIX}_validator_b_passed"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_validator_b_passed"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/test-std" "999" "std" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
@@ -50,7 +50,7 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-std2" 2>/dev/null
   create_test_commit "feature.txt"
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
   run merge_to_main "feat/test-std2" "999" "std" "$PREFIX"
   [[ $status -eq 0 ]]
 }
@@ -60,7 +60,7 @@ teardown() {
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-deep" 2>/dev/null
   create_test_commit "feature.txt"
   # Missing both flags
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm" "/tmp/${PREFIX}_security_review_passed"
+  rm -f "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm" "${STATE_DIR}/${PREFIX}_security_review_passed"
   run merge_to_main "feat/test-deep" "999" "deep" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
@@ -70,8 +70,8 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-deep2" 2>/dev/null
   create_test_commit "feature.txt"
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  rm -f "/tmp/${PREFIX}_security_review_passed"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
+  rm -f "${STATE_DIR}/${PREFIX}_security_review_passed"
   run merge_to_main "feat/test-deep2" "999" "deep" "$PREFIX"
   [[ $status -ne 0 ]]
   [[ "$output" == *"security_review_passed"* ]]
@@ -81,8 +81,8 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "feat/test-deep3" 2>/dev/null
   create_test_commit "feature.txt"
-  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  touch "/tmp/${PREFIX}_security_review_passed"
+  touch "${STATE_DIR}/${PREFIX}_pr_reviewer_lgtm"
+  touch "${STATE_DIR}/${PREFIX}_security_review_passed"
   run merge_to_main "feat/test-deep3" "999" "deep" "$PREFIX"
   [[ $status -eq 0 ]]
 }
@@ -91,7 +91,7 @@ teardown() {
   create_test_commit "init.txt"
   git -C "${GIT_WORK_TREE}" checkout -b "fix/test-bf" 2>/dev/null
   create_test_commit "feature.txt"
-  rm -f "/tmp/${PREFIX}_validator_b_passed"
+  rm -f "${STATE_DIR}/${PREFIX}_validator_b_passed"
   run merge_to_main "fix/test-bf" "999" "bugfix" "$PREFIX"
   [[ $status -ne 0 ]]
 }
@@ -169,7 +169,7 @@ teardown() {
 @test "automated checks: no_changes detected" {
   run_automated_checks() {
     local impl_file="$1"
-    local out_file="/tmp/${PREFIX}_autocheck_fail.txt"
+    local out_file="${STATE_DIR}/${PREFIX}_autocheck_fail.txt"
     rm -f "$out_file"
     if ! git status --short | grep -qE "^ M|^M |^A "; then
       echo "no_changes: engineer produced nothing" > "$out_file"

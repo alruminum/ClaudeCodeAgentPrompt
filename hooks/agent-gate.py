@@ -13,7 +13,7 @@ import json
 import re
 import subprocess
 from datetime import datetime
-from harness_common import get_prefix, deny, flag_exists
+from harness_common import get_prefix, get_state_dir, deny, flag_exists
 
 PREFIX = get_prefix()
 
@@ -50,7 +50,7 @@ def main():
     if agent == "engineer" and not flag("plan_validation_passed"):
         # bugfix_plan_ready도 허용 (Mode F 경로)
         if not flag("bugfix_plan_ready"):
-            deny(f"❌ engineer 전 Plan Validation PASS 필요. /tmp/{PREFIX}_plan_validation_passed 없음.")
+            deny(f"❌ engineer 전 Plan Validation PASS 필요. {get_state_dir()}/{PREFIX}_plan_validation_passed 없음.")
 
     # 3b. 하네스 내부 에이전트는 harness/executor.sh 경유 필수
     HARNESS_ONLY_AGENTS = ("engineer", "qa", "architect")
@@ -61,7 +61,7 @@ def main():
             "architect": "bash ~/.claude/harness/executor.sh bugfix|impl|plan ...",
         }
         deny(f"❌ {agent}는 harness/executor.sh를 통해서만 호출 가능. "
-             f"/tmp/{PREFIX}_harness_active 없음. "
+             f"{get_state_dir()}/{PREFIX}_harness_active 없음. "
              f"직접 호출 금지 → {cmds.get(agent, 'executor.sh')}")
 
     # 3c. engineer는 feature branch에서만 실행 (main 직접 작업 방지)
@@ -87,11 +87,11 @@ def main():
     # 5. validator Mode B 전 test-engineer PASS 필요
     if agent == "validator" and re.search(r"Mode B", prompt, re.IGNORECASE):
         if not flag("test_engineer_passed"):
-            deny(f"❌ validator Mode B 전 test-engineer PASS 필요. /tmp/{PREFIX}_test_engineer_passed 없음.")
+            deny(f"❌ validator Mode B 전 test-engineer PASS 필요. {get_state_dir()}/{PREFIX}_test_engineer_passed 없음.")
 
     # 6. pr-reviewer 전 validator Mode B PASS 필요
     if agent == "pr-reviewer" and not flag("validator_b_passed"):
-        deny(f"❌ pr-reviewer 전 validator Mode B PASS 필요. /tmp/{PREFIX}_validator_b_passed 없음.")
+        deny(f"❌ pr-reviewer 전 validator Mode B PASS 필요. {get_state_dir()}/{PREFIX}_validator_b_passed 없음.")
 
     # 7. 백그라운드 에이전트 금지
     if bg:
@@ -103,14 +103,14 @@ def main():
     ts = datetime.now().strftime("%H:%M:%S")
     snippet = prompt[:80].replace("\n", " ")
     try:
-        with open(f"/tmp/{PREFIX}-agent-calls.log", "a") as f:
+        with open(f"{get_state_dir()}/{PREFIX}-agent-calls.log", "a") as f:
             f.write(f"[{ts}] {caller} → {agent} | {snippet}\n")
     except Exception:
         pass
 
     # 9. 에이전트 활성 플래그 설정 (agent-boundary.py 연동)
     try:
-        open(f"/tmp/{PREFIX}_{agent}_active", "w").close()
+        open(f"{get_state_dir()}/{PREFIX}_{agent}_active", "w").close()
     except Exception:
         pass
 

@@ -82,18 +82,18 @@ teardown() {
 # === kill_check ===
 
 @test "kill_check passes when no kill file" {
-  rm -f "/tmp/${PREFIX}_harness_kill"
+  rm -f "${STATE_DIR}/${PREFIX}_harness_kill"
   run bash -c "source '${HARNESS_DIR}/utils.sh'; PREFIX='${PREFIX}'; kill_check; echo 'survived'"
   [[ "$output" == *"survived"* ]]
 }
 
 @test "kill_check exits with HARNESS_KILLED when kill file exists" {
-  touch "/tmp/${PREFIX}_harness_kill"
-  touch "/tmp/${PREFIX}_harness_active"
+  touch "${STATE_DIR}/${PREFIX}_harness_kill"
+  touch "${STATE_DIR}/${PREFIX}_harness_active"
   run bash -c "source '${HARNESS_DIR}/utils.sh'; PREFIX='${PREFIX}'; kill_check"
   [[ "$output" == *"HARNESS_KILLED"* ]]
   [[ $status -eq 0 ]]
-  [[ ! -f "/tmp/${PREFIX}_harness_kill" ]]
+  [[ ! -f "${STATE_DIR}/${PREFIX}_harness_kill" ]]
 }
 
 # === collect_changed_files ===

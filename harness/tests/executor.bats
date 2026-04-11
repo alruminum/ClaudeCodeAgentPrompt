@@ -37,7 +37,7 @@ teardown() {
 }
 
 @test "executor: stale lock with dead PID is cleaned" {
-  local lock="/tmp/${PREFIX}_harness_active"
+  local lock="${STATE_DIR}/${PREFIX}_harness_active"
   echo '{"pid":99999999,"mode":"impl","started":1000,"heartbeat":1000}' > "$lock"
   run bash -c '
     lock="'"$lock"'"
@@ -55,7 +55,7 @@ except: pass
     echo "CLEANED"
   '
   [[ "$output" == "CLEANED" ]]
-  [[ ! -f "/tmp/${PREFIX}_harness_active" ]]
+  [[ ! -f "${STATE_DIR}/${PREFIX}_harness_active" ]]
 }
 
 @test "executor: detect_depth frontmatter deep" {

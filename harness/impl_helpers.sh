@@ -93,7 +93,7 @@ append_failure() {
     fi
   fi
 
-  local candidate_file="/tmp/${PREFIX}_memory_candidate.md"
+  local candidate_file="${STATE_DIR}/${PREFIX}_memory_candidate.md"
   if ! grep -Fq "$pattern_key" "$candidate_file" 2>/dev/null; then
     cat >> "$candidate_file" <<CANDIDATE
 ---
@@ -138,7 +138,7 @@ append_success() {
 
 run_automated_checks() {
   local impl_file="$1"
-  local out_file="/tmp/${PREFIX}_autocheck_fail.txt"
+  local out_file="${STATE_DIR}/${PREFIX}_autocheck_fail.txt"
   rm -f "$out_file"
 
   if ! git status --short | grep -qE "^ M|^M |^A "; then
@@ -176,14 +176,14 @@ generate_pr_body() {
   local impl_name; impl_name=$(basename "$IMPL_FILE" .md)
 
   local test_summary
-  test_summary=$(grep -E "Tests |passed|failed" "/tmp/${PREFIX}_test_out.txt" 2>/dev/null \
+  test_summary=$(grep -E "Tests |passed|failed" "${STATE_DIR}/${PREFIX}_test_out.txt" 2>/dev/null \
     | tail -3 | tr '\n' ' ' || echo "PASS")
 
   local sec_level
-  sec_level=$(grep -oEm1 '\bHIGH\b|\bMEDIUM\b|\bLOW\b' "/tmp/${PREFIX}_sec_out.txt" 2>/dev/null) || sec_level="LOW"
+  sec_level=$(grep -oEm1 '\bHIGH\b|\bMEDIUM\b|\bLOW\b' "${STATE_DIR}/${PREFIX}_sec_out.txt" 2>/dev/null) || sec_level="LOW"
 
   local pr_notes
-  pr_notes=$(grep -A5 -i "nice to have\|권고사항" "/tmp/${PREFIX}_pr_out.txt" 2>/dev/null \
+  pr_notes=$(grep -A5 -i "nice to have\|권고사항" "${STATE_DIR}/${PREFIX}_pr_out.txt" 2>/dev/null \
     | grep "^[-•*]" | head -3 | tr '\n' ' ' || echo "없음")
 
   local why
@@ -210,7 +210,7 @@ PRBODY
 
 # ── 타임스탬프 디버그 로그 ──────────────────────────────────────────────
 _setup_hlog() {
-  HLOG="/tmp/${PREFIX}-harness-debug.log"
+  HLOG="${STATE_DIR}/${PREFIX}-harness-debug.log"
   ATTEMPT=0
   hlog() { echo "[$(date +%H:%M:%S)] [attempt=${ATTEMPT}] $*" | tee -a "$HLOG"; }
 }
@@ -229,7 +229,7 @@ log_phase() {
 
 _setup_cleanup() {
   cleanup() {
-    rm -f "/tmp/${PREFIX}_harness_active"
+    rm -f "${STATE_DIR}/${PREFIX}_harness_active"
     write_run_end
   }
   trap cleanup EXIT
@@ -249,7 +249,7 @@ budget_check() {
     hlog "BUDGET EXCEEDED (\$${TOTAL_COST} > \$${MAX_TOTAL_COST})"
     export HARNESS_RESULT="HARNESS_BUDGET_EXCEEDED"
     echo "HARNESS_BUDGET_EXCEEDED: \$${TOTAL_COST} spent, limit \$${MAX_TOTAL_COST}"
-    rm -f "/tmp/${PREFIX}_harness_active"
+    rm -f "${STATE_DIR}/${PREFIX}_harness_active"
     exit 1
   fi
 }

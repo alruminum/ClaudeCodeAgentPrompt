@@ -12,6 +12,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harness_common import get_state_dir
+
 
 def get_prefix(raw):
     if raw != "auto":
@@ -62,7 +65,7 @@ def get_project_context(prefix):
             break
 
     # 현재 이슈 (이전 세션에서 기록된 경우)
-    issue_file = f"/tmp/{prefix}_last_issue"
+    issue_file = os.path.join(get_state_dir(), f"{prefix}_last_issue")
     if os.path.exists(issue_file):
         try:
             issue = open(issue_file).read().strip()
@@ -79,7 +82,7 @@ def main():
     prefix = get_prefix(raw)
 
     # 플래그 초기화 (last_issue는 보존)
-    for f in glob.glob(f'/tmp/{prefix}_*'):
+    for f in glob.glob(os.path.join(get_state_dir(), f'{prefix}_*')):
         if not f.endswith('_last_issue'):
             try:
                 os.remove(f)

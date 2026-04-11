@@ -21,8 +21,12 @@ common_setup() {
   export RUN_LOG=""
   export _HARNESS_RUN_START=0
 
-  # /tmp 플래그 초기화
-  rm -f /tmp/${PREFIX}_* 2>/dev/null
+  # STATE_DIR: 테스트용 임시 디렉토리 (프로덕션은 .claude/harness-state/)
+  export STATE_DIR="${TEST_TMP}/harness-state"
+  mkdir -p "$STATE_DIR"
+
+  # 플래그 초기화
+  rm -f ${STATE_DIR}/${PREFIX}_* 2>/dev/null
 
   # mock git repo
   export GIT_DIR="${TEST_TMP}/repo/.git"
@@ -38,7 +42,7 @@ common_setup() {
 
 # ── teardown: 테스트 후 정리 ───────────────────────────────────────────
 common_teardown() {
-  rm -f /tmp/${PREFIX}_* 2>/dev/null
+  rm -f ${STATE_DIR}/${PREFIX}_* 2>/dev/null
   rm -rf "$TEST_TMP" 2>/dev/null
   cd /
 }

@@ -103,7 +103,7 @@ exit 0' > "$mock_script"
   chmod +x "$mock_script"
 
   local impl_path=$(create_mock_impl "(BROWSER:DOM)")
-  touch "/tmp/${PREFIX}_plan_validation_passed"
+  touch "${STATE_DIR}/${PREFIX}_plan_validation_passed"
 
   run bash -c '
     source "'"${HARNESS_DIR}/utils.sh"'"
@@ -113,7 +113,7 @@ exit 0' > "$mock_script"
     ISSUE_NUM="999"
     DEPTH="auto"
     BRANCH_TYPE="feat"
-    touch "/tmp/'"$PREFIX"'_plan_validation_passed"
+    touch "${STATE_DIR}/'"$PREFIX"'_plan_validation_passed"
     PROCESS_SCRIPT="'"$mock_script"'"
     detect_depth() {
       local impl="$1"

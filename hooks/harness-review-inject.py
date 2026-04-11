@@ -3,7 +3,7 @@
 # UserPromptSubmit 훅: 미처리 리뷰 결과를 다음 사용자 메시지에 주입 (Phase D Step A)
 #
 # 트리거: UserPromptSubmit (global)
-# 동작: /tmp/*_review-result.json 감지 → 프롬프트에 리뷰 결과 주입
+# 동작: STATE_DIR/*_review-result.json 감지 → 프롬프트에 리뷰 결과 주입
 # 안전장치:
 # - HARNESS_INTERNAL=1이면 스킵 (하네스 내부 호출 중 재트리거 방지)
 # - parse_error 결과는 조용히 제거 (사용자에게 노이즈 방지)
@@ -13,6 +13,9 @@ import json
 import os
 import glob
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harness_common import get_state_dir
 
 
 def main():
@@ -27,8 +30,9 @@ def main():
     except Exception:
         event = {}
 
-    # 미처리 리뷰 파일 검색 (/tmp/*_review-result.json)
-    review_files = sorted(glob.glob("/tmp/*_review-result.json"))
+    # 미처리 리뷰 파일 검색 (STATE_DIR/*_review-result.json)
+    state_dir = get_state_dir()
+    review_files = sorted(glob.glob(os.path.join(state_dir, "*_review-result.json")))
     if not review_files:
         print(json.dumps({"continue": True}))
         return

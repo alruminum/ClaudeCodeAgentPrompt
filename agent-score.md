@@ -25,12 +25,11 @@
 | 2 | architect | 92 | 재시도 한도 없음, Mode A 없이 Mode B 호출 방지 없음 |
 | 3 | product-planner | 90 | 이해관계자 충돌 처리 없음, PRODUCT_PLAN_READY 선언 시점 기준 모호 |
 | 4 | designer | 91 | ✅ 개선됨 (82→91). 잔여: UX 개편 진입 조건 모호, Mode A/B 출력 형식 분리 미완 |
-| 5 | qa | 87 | KNOWN_ISSUE 결정 주체 불명확, 재검증 루프 주체가 메인 Claude 의존 |
-| 6 | engineer | 87 | CHANGES_REQUESTED 피드백 처리 별도 없음 _(루프 한도 추가로 +1)_ |
-| 7 | test-engineer | 87 | 기존 테스트 파일 처리 없음 _(자체 수정 한도 추가로 +1)_ |
-| 8 | design-critic | 89 | ✅ 개선됨 (85→89). 잔여: ITERATE 피드백 구체성 기준 없음 |
-| 9 | validator | 90 | ✅ 개선됨 (86→90). 잔여: Mode A 저장 실제 보장은 메인 Claude 의존 |
-| 10 | qa | 91 | ✅ 개선됨 (87→91). 잔여: 재검증 루프 호출 주체 명시 보완 여지 |
+| 5 | engineer | 87 | CHANGES_REQUESTED 피드백 처리 별도 없음 _(루프 한도 추가로 +1)_ |
+| 6 | test-engineer | 87 | 기존 테스트 파일 처리 없음 _(자체 수정 한도 추가로 +1)_ |
+| 7 | design-critic | 89 | ✅ 개선됨 (85→89). 잔여: ITERATE 피드백 구체성 기준 없음 |
+| 8 | validator | 90 | ✅ 개선됨 (86→90). 잔여: Mode A 저장 실제 보장은 메인 Claude 의존 |
+| 9 | qa | 91 | ✅ 개선됨 (87→91). 잔여: 재검증 루프 호출 주체 명시 보완 여지 |
 
 ---
 
@@ -80,7 +79,7 @@
 
 ---
 
-### qa — 87점
+### qa — 91점
 
 | 카테고리 | 점수 | 세부 내용 |
 |---|---|---|

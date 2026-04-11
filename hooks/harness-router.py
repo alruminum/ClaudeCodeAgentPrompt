@@ -2,7 +2,7 @@
 """
 Harness Router — UserPromptSubmit hook
 Usage: python3 harness-router.py <PREFIX>
-  PREFIX: project-specific flag prefix (e.g. "mb" → /tmp/mb_plan_validation_passed)
+  PREFIX: project-specific flag prefix (e.g. "mb" → .claude/harness-state/mb_plan_validation_passed)
 """
 import sys
 import json
@@ -12,6 +12,9 @@ import time
 import subprocess
 import urllib.request
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from harness_common import get_state_dir
 
 LOG_FILE = "/tmp/harness-router.log"
 
@@ -221,7 +224,7 @@ def _check_invoke_rate(prefix):
     """훅 호출 빈도 체크 — 60초 내 5회 초과 시 블록."""
     MAX_INVOKES = 5
     WINDOW = 60
-    rate_file = f"/tmp/{prefix}_hook_rate.json"
+    rate_file = f"{get_state_dir()}/{prefix}_hook_rate.json"
     now = time.time()
     try:
         data = json.load(open(rate_file)) if os.path.exists(rate_file) else {"count": 0, "window_start": now}
@@ -304,7 +307,7 @@ def _main_inner():
         sys.exit(0)
 
     # Kill Switch 체크
-    if os.path.exists(f"/tmp/{prefix}_harness_kill"):
+    if os.path.exists(f"{get_state_dir()}/{prefix}_harness_kill"):
         log(prefix, "KILL_SWITCH — pass-through")
         sys.exit(0)
 
@@ -324,8 +327,8 @@ def _main_inner():
         sys.exit(0)
 
     # mtime 기반 스태일 designer_ran 감지
-    dr_path = f"/tmp/{prefix}_designer_ran"
-    dc_path = f"/tmp/{prefix}_design_critic_passed"
+    dr_path = f"{get_state_dir()}/{prefix}_designer_ran"
+    dc_path = f"{get_state_dir()}/{prefix}_design_critic_passed"
     if os.path.exists(dr_path) and not os.path.exists(dc_path):
         age_min = (time.time() - os.path.getmtime(dr_path)) / 60
         if age_min > 30:
@@ -339,19 +342,19 @@ def _main_inner():
 
     # 현재 플래그 상태
     flags = {
-        "harness_active":         os.path.exists(f"/tmp/{prefix}_harness_active"),
-        "plan_validation_passed": os.path.exists(f"/tmp/{prefix}_plan_validation_passed"),
-        "designer_ran":           os.path.exists(f"/tmp/{prefix}_designer_ran"),
-        "design_critic_passed":   os.path.exists(f"/tmp/{prefix}_design_critic_passed"),
-        "test_engineer_passed":   os.path.exists(f"/tmp/{prefix}_test_engineer_passed"),
-        "validator_b_passed":     os.path.exists(f"/tmp/{prefix}_validator_b_passed"),
-        "pr_reviewer_lgtm":       os.path.exists(f"/tmp/{prefix}_pr_reviewer_lgtm"),
+        "harness_active":         os.path.exists(f"{get_state_dir()}/{prefix}_harness_active"),
+        "plan_validation_passed": os.path.exists(f"{get_state_dir()}/{prefix}_plan_validation_passed"),
+        "designer_ran":           os.path.exists(f"{get_state_dir()}/{prefix}_designer_ran"),
+        "design_critic_passed":   os.path.exists(f"{get_state_dir()}/{prefix}_design_critic_passed"),
+        "test_engineer_passed":   os.path.exists(f"{get_state_dir()}/{prefix}_test_engineer_passed"),
+        "validator_b_passed":     os.path.exists(f"{get_state_dir()}/{prefix}_validator_b_passed"),
+        "pr_reviewer_lgtm":       os.path.exists(f"{get_state_dir()}/{prefix}_pr_reviewer_lgtm"),
     }
     any_active = any(flags.values())
 
     # ── 분류 ──────────────────────────────────────────────────────────
     # ≤2자 표현은 API 절약 위해 즉시 GREETING 처리
-    interview_path = f"/tmp/{prefix}_interview_state.json"
+    interview_path = f"{get_state_dir()}/{prefix}_interview_state.json"
     if len(prompt.strip()) <= 2:
         cat = "GREETING"
     else:
@@ -466,7 +469,7 @@ def _main_inner():
         # 이슈 컨텍스트 추적 — 이슈 전환 시 outer gate 플래그 초기화
         issue_match = re.search(r'#(\d+)', prompt)
         current_issue = issue_match.group(0) if issue_match else None
-        issue_file = f"/tmp/{prefix}_current_issue"
+        issue_file = f"{get_state_dir()}/{prefix}_current_issue"
         stored_issue = open(issue_file).read().strip() if os.path.exists(issue_file) else None
         if current_issue and stored_issue != current_issue:
             all_flag_keys = [
@@ -475,7 +478,7 @@ def _main_inner():
             ]
             cleared = []
             for f in all_flag_keys:
-                p = f"/tmp/{prefix}_{f}"
+                p = f"{get_state_dir()}/{prefix}_{f}"
                 if os.path.exists(p):
                     os.remove(p)
                     cleared.append(f)
@@ -523,12 +526,12 @@ def _main_inner():
             ctx = (
                 f"⚠️ [HARNESS] harness_active 플래그가 설정되어 있습니다.\n"
                 f"이전 실행이 아직 진행 중이거나 비정상 종료된 것일 수 있습니다.\n"
-                f"중복 실행 전 확인하세요: ls /tmp/{prefix}_harness_active\n\n"
+                f"중복 실행 전 확인하세요: ls {get_state_dir()}/{prefix}_harness_active\n\n"
                 f"[현재 플래그]\n{flag_lines}"
             )
             log(prefix, f"INJECT(impl/harness_active_warn) prompt={prompt[:60]!r}")
         elif flags["plan_validation_passed"]:
-            impl_path_file = f"/tmp/{prefix}_impl_path"
+            impl_path_file = f"{get_state_dir()}/{prefix}_impl_path"
             impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else "[IMPL_PATH]"
             issue_ref = current_issue or "N"
             harness_directive = (
@@ -582,7 +585,7 @@ def _main_inner():
     # (BUG 라우팅 메시지는 위 각 분기에서 ctx에 통합)
     if is_bug:
         try:
-            open(f"/tmp/{prefix}_is_bug", "w").close()
+            open(f"{get_state_dir()}/{prefix}_is_bug", "w").close()
         except Exception:
             pass
         log(prefix, f"is_bug flag set prompt={prompt[:60]!r}")

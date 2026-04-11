@@ -6,6 +6,17 @@ HARNESS_LOG_DIR="${HOME}/.claude/harness-logs"
 RUN_LOG=""          # rotate_harness_logs() 호출 후 설정
 _HARNESS_RUN_START=0  # write_run_end에서 elapsed 계산용
 
+# ── STATE_DIR: 하네스 상태 파일 영속 디렉토리 ────────────────────────────
+# /tmp 대신 프로젝트 .claude/harness-state/ 사용 → 재부팅 후에도 상태 유지
+init_state_dir() {
+  local project_root="${1:-$(pwd)}"
+  STATE_DIR="${project_root}/.claude/harness-state"
+  mkdir -p "$STATE_DIR"
+  export STATE_DIR
+}
+# 기본값: 아직 init_state_dir 호출 전이면 /tmp 폴백 (하위 호환)
+STATE_DIR="${STATE_DIR:-/tmp}"
+
 # ── FIFO 로테이션: prefix별 최신 10개 유지 ──────────────────────────────
 # mapfile 제거 → bash 3.2(macOS 기본) 호환
 rotate_harness_logs() {
@@ -55,14 +66,14 @@ write_run_end() {
 
 # ── hlog: 공용 로그 함수 (impl_simple/std/deep 외 design/plan 루프에서도 사용) ──
 hlog() {
-  local _log="${HLOG:-/tmp/${PREFIX:-mb}-harness-debug.log}"
+  local _log="${HLOG:-${STATE_DIR}/${PREFIX:-mb}-harness-debug.log}"
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$_log"
 }
 
 # ── 킬 스위치 체크 (executor + loop 양쪽에서 사용) ────────────────────
 kill_check() {
-  if [[ -f "/tmp/${PREFIX}_harness_kill" ]]; then
-    rm -f "/tmp/${PREFIX}_harness_active" "/tmp/${PREFIX}_harness_kill"
+  if [[ -f "${STATE_DIR}/${PREFIX}_harness_kill" ]]; then
+    rm -f "${STATE_DIR}/${PREFIX}_harness_active" "${STATE_DIR}/${PREFIX}_harness_kill"
     export HARNESS_RESULT="HARNESS_KILLED"
     echo "HARNESS_KILLED: 사용자 요청으로 중단됨"
     exit 0
@@ -90,7 +101,7 @@ parse_marker() {
 # 부수효과: plan_validation_passed 플래그 생성 (PASS 시)
 run_plan_validation() {
   local impl_file="$1" issue_num="$2" prefix="$3" max_rework="${4:-1}"
-  local val_out_file="/tmp/${prefix}_val_pv_out.txt"
+  local val_out_file="${STATE_DIR}/${prefix}_val_pv_out.txt"
 
   echo "[HARNESS] Plan Validation"
   _agent_call "validator" 300 \
@@ -105,7 +116,7 @@ impl: $impl_file issue: #$issue_num" \
   echo "[HARNESS] Plan Validation 결과: $val_result"
 
   if [[ "$val_result" == "PASS" ]]; then
-    touch "/tmp/${prefix}_plan_validation_passed"
+    touch "${STATE_DIR}/${prefix}_plan_validation_passed"
     return 0
   fi
 
@@ -119,9 +130,9 @@ impl: $impl_file issue: #$issue_num" \
     _agent_call "architect" 900 \
       "@MODE:ARCHITECT:SPEC_GAP
 Plan Validation FAIL 피드백 반영. impl: $impl_file feedback: ${fail_feedback}" \
-      "/tmp/${prefix}_arch_fix_out.txt"
+      "${STATE_DIR}/${prefix}_arch_fix_out.txt"
 
-    local val_out_file2="/tmp/${prefix}_val_pv_out${rework}.txt"
+    local val_out_file2="${STATE_DIR}/${prefix}_val_pv_out${rework}.txt"
     _agent_call "validator" 300 \
       "@MODE:VALIDATOR:PLAN_VALIDATION
 impl: $impl_file issue: #$issue_num" \
@@ -132,7 +143,7 @@ impl: $impl_file issue: #$issue_num" \
     echo "[HARNESS] Plan Validation 재검증 결과: $val_result"
 
     if [[ "$val_result" == "PASS" ]]; then
-      touch "/tmp/${prefix}_plan_validation_passed"
+      touch "${STATE_DIR}/${prefix}_plan_validation_passed"
       return 0
     fi
   done
@@ -146,7 +157,7 @@ impl: $impl_file issue: #$issue_num" \
 # 반환: 0=PASS, 1=ESCALATE
 run_design_validation() {
   local design_doc="$1" issue_num="$2" prefix="$3" max_rework="${4:-1}"
-  local val_out_file="/tmp/${prefix}_val_dv_out.txt"
+  local val_out_file="${STATE_DIR}/${prefix}_val_dv_out.txt"
 
   echo "[HARNESS] Design Validation"
   _agent_call "validator" 300 \
@@ -174,9 +185,9 @@ design_doc: $design_doc issue: #$issue_num" \
     _agent_call "architect" 900 \
       "@MODE:ARCHITECT:SYSTEM_DESIGN
 재설계 — Design Validation FAIL 피드백 반영. design_doc: $design_doc feedback: ${fail_feedback}" \
-      "/tmp/${prefix}_arch_dv_fix_out.txt"
+      "${STATE_DIR}/${prefix}_arch_dv_fix_out.txt"
 
-    local val_out_file2="/tmp/${prefix}_val_dv_out${rework}.txt"
+    local val_out_file2="${STATE_DIR}/${prefix}_val_dv_out${rework}.txt"
     _agent_call "validator" 300 \
       "@MODE:VALIDATOR:DESIGN_VALIDATION
 design_doc: $design_doc issue: #$issue_num" \
@@ -355,7 +366,7 @@ ${diff_out}"
 # ── 에이전트 자율 탐색 지시 템플릿 (정책 21) ─────────────────────────
 # 에이전트가 이전 시도 결과를 스스로 탐색하게 한다 (인라인 요약 전달 금지)
 # 사용법: explore_instruction <loop_out_dir> [hint_file]
-#   loop_out_dir: 이전 시도 출력이 저장된 디렉토리 (e.g. /tmp/${PREFIX}_loop_out)
+#   loop_out_dir: 이전 시도 출력이 저장된 디렉토리 (e.g. ${STATE_DIR}/${PREFIX}_loop_out)
 #   hint_file:    특히 관련성 높은 파일 경로 힌트 (선택 — 읽을지 말지는 에이전트 판단)
 explore_instruction() {
   local out_dir="$1" hint_file="${2:-}"
@@ -425,7 +436,7 @@ PYEOF
 
 # ── 히스토리 Pruning ──────────────────────────────────────────────────
 # 사용법: prune_history <loop_dir>
-#   loop_dir: e.g. /tmp/${PREFIX}_history/impl
+#   loop_dir: e.g. ${STATE_DIR}/${PREFIX}_history/impl
 # 호출 시점: attempt 디렉토리 생성 직후, 파일 기록 전 (race condition 방지)
 prune_history() {
   local loop_dir="$1"
@@ -546,19 +557,19 @@ merge_to_main() {
   # 머지 전 게이트 (depth별 분기)
   # fast/std/deep 모두 pr_reviewer_lgtm 필수
   if [[ "$depth" == "deep" || "$depth" == "std" || "$depth" == "fast" ]]; then
-    if [[ ! -f "/tmp/${prefix}_pr_reviewer_lgtm" ]]; then
+    if [[ ! -f "${STATE_DIR}/${prefix}_pr_reviewer_lgtm" ]]; then
       echo "[HARNESS] merge 거부: pr_reviewer_lgtm 없음 ($depth)"
       return 1
     fi
   fi
   if [[ "$depth" == "deep" ]]; then
-    if [[ ! -f "/tmp/${prefix}_security_review_passed" ]]; then
+    if [[ ! -f "${STATE_DIR}/${prefix}_security_review_passed" ]]; then
       echo "[HARNESS] merge 거부: security_review_passed 없음 (deep)"
       return 1
     fi
   fi
   if [[ "$depth" == "bugfix" ]]; then
-    if [[ ! -f "/tmp/${prefix}_validator_b_passed" ]]; then
+    if [[ ! -f "${STATE_DIR}/${prefix}_validator_b_passed" ]]; then
       echo "[HARNESS] merge 거부: validator_b_passed 없음 (bugfix)"
       return 1
     fi

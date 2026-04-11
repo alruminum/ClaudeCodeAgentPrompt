@@ -3,10 +3,10 @@
 # 하네스 실행 완료 후 Haiku가 로그를 분석해 개선점을 찾는다 (Phase D Step A).
 #
 # 호출: bash ~/.claude/harness/review-agent.sh <jsonl_log> [prefix]
-# 출력: /tmp/${PREFIX}_review-result.json
+# 출력: ${STATE_DIR}/${PREFIX}_review-result.json
 #
 # 완료 기준:
-# - 실행 시 /tmp/${PREFIX}_review-result.json 생성
+# - 실행 시 ${STATE_DIR}/${PREFIX}_review-result.json 생성
 # - review-result.json이 항상 유효한 JSON (parse_error 케이스 포함)
 # - promote_suggestions 필드로만 제안 (자동 수정 금지)
 
@@ -27,8 +27,8 @@ if [[ -z "$PREFIX" ]]; then
   [[ -z "$PREFIX" ]] && PREFIX="proj"
 fi
 
-RESULT_FILE="/tmp/${PREFIX}_review-result.json"
-HIST_DIR="/tmp/${PREFIX}_history"
+RESULT_FILE="${STATE_DIR}/${PREFIX}_review-result.json"
+HIST_DIR="${STATE_DIR}/${PREFIX}_history"
 
 # ── harness-review.py 실행: WASTE 패턴 + 타임라인 구조화 분석 ──────────
 WASTE_ANALYSIS=""
