@@ -7,7 +7,7 @@ description: >
   THREE_WAY 모드: design-critic PASS/REJECT → 유저 PICK.
   사용자 확정 후 Phase 4에서 DESIGN_HANDOFF 패키지를 출력한다. 코드 구현은 엔지니어 담당.
   ux 스킬이 직접 호출 — harness/design.sh 루프 없음.
-tools: Read, Glob, Grep, Write, mcp__pencil__get_editor_state, mcp__pencil__open_document, mcp__pencil__batch_get, mcp__pencil__batch_design, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__get_variables, mcp__pencil__set_variables, mcp__pencil__find_empty_space_on_canvas, mcp__pencil__snapshot_layout, mcp__pencil__export_nodes, mcp__pencil__replace_all_matching_properties, mcp__pencil__search_all_unique_properties
+tools: Read, Glob, Grep, Write, Bash, mcp__pencil__get_editor_state, mcp__pencil__open_document, mcp__pencil__batch_get, mcp__pencil__batch_design, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__get_variables, mcp__pencil__set_variables, mcp__pencil__find_empty_space_on_canvas, mcp__pencil__snapshot_layout, mcp__pencil__export_nodes, mcp__pencil__replace_all_matching_properties, mcp__pencil__search_all_unique_properties, mcp__github__create_issue, mcp__github__update_issue
 model: sonnet
 ---
 
@@ -69,9 +69,29 @@ model: sonnet
 
 ---
 
-## Phase 0 — 컨텍스트 수집 + Pencil 캔버스 준비
+## Phase 0 — 이슈 생성 + 컨텍스트 수집 + Pencil 캔버스 준비
 
 **건너뛰기 금지. 모든 모드에서 필수.**
+
+### 0-0. GitHub 이슈 생성 (디자인 작업 시작 전)
+
+UX 스킬에서 호출된 경우, 항상 디자인 작업 전에 GitHub 이슈를 먼저 생성한다.
+
+1. `.claude/agent-config/designer.md` 읽기 → owner, repo, milestone 이름 확인 (없으면 `git remote get-url origin`에서 owner/repo 추출)
+2. 마일스톤 번호 조회: `gh api repos/{owner}/{repo}/milestones --jq '.[] | {number, title}'`
+3. 이슈 생성:
+   ```
+   mcp__github__create_issue
+   - owner: <owner>, repo: <repo>
+   - title: [design] <target> <ux_goal 요약>
+   - labels: ["design-fix"]
+   - milestone: <조회된 번호>
+   - body: 요청 맥락 + "DESIGN_HANDOFF 완료 후 스펙 업데이트 예정"
+   ```
+
+생성된 이슈 번호를 기억해두고 DESIGN_HANDOFF 출력 시 함께 포함한다.
+
+> QA 경로에서 넘어온 경우(프롬프트에 기존 이슈 번호 포함) 이슈 생성 스킵. 기존 번호 사용.
 
 ### 0-1. Pencil 캔버스 읽기
 

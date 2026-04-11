@@ -111,15 +111,12 @@ attempt = 0, max = 3
 
 유저가 Pencil 캔버스에서 디자인을 확인하고 구현 요청 시:
 
-### 1. GitHub 이슈 생성 (DESIGN_HANDOFF 직후)
+### 1. GitHub 이슈 처리 (designer가 담당)
 
-DESIGN_HANDOFF 패키지를 기반으로 GitHub 이슈를 생성한다:
-- 제목: `[bugs] <대상> 디자인 적용`
-- 라벨: `bug`, `design-fix`
-- 마일스톤: Bugs
-- 본문: DESIGN_HANDOFF 패키지 전문 (Pencil frame ID, 디자인 토큰, 컴포넌트 구조, 애니메이션 스펙)
+designer 에이전트가 Phase 0-0에서 GitHub 이슈를 직접 생성한다.
+(QA 경로로 유입된 경우 기존 이슈 번호 재사용)
 
-> QA 경로에서 넘어온 경우 이미 이슈가 존재하므로 생성 스킵, 기존 이슈에 DESIGN_HANDOFF 내용을 코멘트로 추가한다.
+DESIGN_HANDOFF 후 이슈 본문에 스펙이 업데이트되어 있다.
 
 ### 2. executor.sh impl 호출
 

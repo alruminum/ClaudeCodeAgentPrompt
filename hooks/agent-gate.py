@@ -36,8 +36,9 @@ def main():
     if not agent:
         sys.exit(0)
 
-    # 1. architect/engineer/designer 호출 전 이슈 번호 필수
-    if agent in ("architect", "engineer", "designer"):
+    # 1. architect/engineer 호출 전 이슈 번호 필수
+    # (designer는 UX 시안 먼저 → DESIGN_HANDOFF 후 이슈 생성 흐름이므로 제외)
+    if agent in ("architect", "engineer"):
         if not re.search(r"#\d+", prompt):
             deny(f"❌ {agent} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.")
 
@@ -48,8 +49,8 @@ def main():
 
     # 3. engineer 전 Plan Validation PASS 필요
     if agent == "engineer" and not flag("plan_validation_passed"):
-        # bugfix_plan_ready도 허용 (Mode F 경로)
-        if not flag("bugfix_plan_ready"):
+        # light_plan_ready도 허용 (Light Plan 경로)
+        if not flag("light_plan_ready"):
             deny(f"❌ engineer 전 Plan Validation PASS 필요. {get_state_dir()}/{PREFIX}_plan_validation_passed 없음.")
 
     # 3b. 하네스 내부 에이전트는 harness/executor.sh 경유 필수
