@@ -32,7 +32,7 @@
 | S9 | impl 충돌 감지 (파일 겹침 사전 경고) | S | ⬜ 대기 |
 | **S45** | **JSONL 로그 보강 — agent_stats/decision/phase/context/config/rollback/commit 이벤트** | S | ✅ 완료 |
 | **S46** | **/harness-review 스킬 — JSONL 파서 + 8개 WASTE 패턴 진단** | S | ✅ 완료 |
-| **S47** | **HARNESS_DONE 후 자동 /harness-review 트리거 (정책 10)** | S | ✅ 완료 |
+| **S47** | **HARNESS_DONE 후 자동 /harness-review 트리거 (정책 17)** | S | ✅ 완료 |
 | **S48** | **QA 에이전트 스코프 강화 — 인프라 탐색·Agent·Bash 금지 + agent_active 플래그 세팅** | S | ✅ 완료 |
 | **S16** | **~~Router spawn 안전화~~** → Popen 제거, Rate Limiter(5/60s) 유지 | S | ✅ 리팩 |
 | **S17** | **~~Gorchera 패턴~~** → JSON Lease 제거, pre-evaluator 유지 | S | ✅ 리팩 |
@@ -65,7 +65,7 @@
 | **S55** | **settings.json 5개 훅 등록 + file-ownership-gate를 agent-boundary에 통합** | S | ✅ 완료 |
 | **S56** | **하드코딩 경로 제거 + session-start timeout + HARNESS_RESULT 초기화** | S | ✅ 완료 |
 | **S57** | **훅 간섭 테스트 (dry-run + 실제 시나리오)** | S | ✅ 완료 |
-| **S58** | **append_failure race condition + grep -F + 변수 인용 + 정책 13 추가** | S | ✅ 완료 |
+| **S58** | **append_failure race condition + grep -F + 변수 인용 + 정책 19 추가** | S | ✅ 완료 |
 | **S59** | **_agent_call stdin pipe 전환 (MEDIUM)** | S | ⬜ 보류 |
 | **S60** | **에이전트 명세 정교화 4건 — test-engineer/qa/engineer/security-reviewer** | S | ✅ 완료 |
 | **S61** | **문서 보완 — README/post-commit-scan 문서화/harness-memory 시드/CLAUDE-base 예시** | S | ✅ 완료 |
@@ -76,7 +76,7 @@
 | **S63** | **utils.sh 공용 함수 추출 — parse_marker()/run_plan_validation() + 코드 품질 정비** | S | 🔧 진행 |
 | **S64** | **(구) impl-process.sh fast 모드 정정 → impl_fast.sh로 분리** (S72로 대체됨) | S | ✅ 완료 |
 | **S72** | **커밋 전략 개편 — engineer 즉시 커밋 + pr-reviewer 전 depth 적용 + 머지 조건 통일** | S | ✅ 완료 |
-| **S65** | **(구) impl-process.sh SPEC_GAP 핸들링 → impl_{std,deep}.sh로 분리됨 — spec_gap_count 동결/에스컬레이션 (정책 15)** | S | 🔧 진행 |
+| **S65** | **(구) impl-process.sh SPEC_GAP 핸들링 → impl_{std,deep}.sh로 분리됨 — spec_gap_count 동결/에스컬레이션 (정책 9)** | S | 🔧 진행 |
 | **S66** | **bugfix.sh 라우팅 정비 — backlog/KNOWN_ISSUE 경로 + qa 마일스톤 규칙 정정** | S | 🔧 진행 |
 | **S67** | **plan.sh 흐름 완성 — validator DV + Task Decompose/Module Plan + Plan Validation** | S | 🔧 진행 |
 | **S68** | **design.sh 흐름 완성 — post-PICK DESIGN_HANDOFF + IMPL_CHK + FLAG 생성** | S | 🔧 진행 |

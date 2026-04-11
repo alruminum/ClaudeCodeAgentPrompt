@@ -52,7 +52,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 |---|---|---|
 | `harness_common.py` | (모듈) | `get_prefix()`, `deny()`, `flag_path()` 공유 유틸 (S54) |
 | `harness-router.py` | UserPromptSubmit (global) | fast_classify(regex) → extract_intent(Haiku LLM) → 워크플로우 상태/Adaptive Interview 주입 |
-| ~~`harness-stop-gate.sh`~~ | ~~Stop (global)~~ | ~~S33~~ **폐기** — 정책 11(포어그라운드 강제)으로 Stop 트리거 자체 미발생. 파일 삭제됨 |
+| ~~`harness-stop-gate.sh`~~ | ~~Stop (global)~~ | ~~S33~~ **폐기** — 정책 7(포어그라운드 강제)으로 Stop 트리거 자체 미발생. 파일 삭제됨 |
 | `harness-session-start.py` | SessionStart (global) | `/tmp/{prefix}_*` 플래그 전체 초기화 (timeout=5 추가: S56) |
 | `orch-rules-first.py` | PreToolUse(Edit/Write) (global) | `orchestration-rules.md` 선행 수정 물리적 강제 |
 | `agent-boundary.py` | PreToolUse(Edit/Write/Read) (global) | 에이전트별 경로 제한 + 메인 Claude file-ownership 차단 통합 (S55) |
@@ -152,7 +152,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S40 | rollback_attempt | `harness/impl_helpers.sh` `rollback_attempt()` — 실패 시 `git stash push --include-untracked`. 5곳 실패 분기 적용 | 2026-04-07 |
 | S45 | JSONL 로그 보강 | `harness/utils.sh` agent_stats(tools/files_read) + `harness/impl_{fast,std,deep}.sh` decision/phase/context/config/rollback/commit 이벤트. prompt_chars 추적 | 2026-04-07 |
 | S46 | /harness-review 스킬 | `scripts/harness-review.py` JSONL 파서 + 8개 WASTE 패턴 진단. `commands/harness-review.md` 스킬. old/new 로그 포맷 호환 | 2026-04-07 |
-| S47 | HARNESS_DONE 후 자동 리뷰 | `orchestration-rules.md` 정책 10 — HARNESS_DONE/ESCALATE/KNOWN_ISSUE 수신 후 /harness-review 자동 실행 | 2026-04-07 |
+| S47 | HARNESS_DONE 후 자동 리뷰 | `orchestration/policies.md` 정책 17 — HARNESS_DONE/ESCALATE/KNOWN_ISSUE 수신 후 /harness-review 자동 실행 | 2026-04-07 |
 | S48 | QA 에이전트 스코프 강화 | `harness/utils.sh` `_agent_call()`에 `{prefix}_{agent}_active` 플래그 세팅/해제 → `agent-boundary.py` 물리적 차단 활성화. `qa.md` Agent/Bash 도구 제거 + 인프라 접근 금지 명시 | 2026-04-07 |
 | S49 | 루프 D 라우팅 단순화 | 6타입→3타입(FUNCTIONAL_BUG/SPEC_ISSUE/DESIGN_ISSUE), 심각도 제거, QA 이슈 등록 전 경로 의무화, backlog 분기 제거 | 2026-04-07 |
 | S50 | harness-review 흐름 진단 | ABNORMAL_END/EARLY_EXIT/MISSING_PHASE/ROUTING_MISMATCH 4패턴 + 모드별 예상 순서 + QA 타입 추출 + 중단 원인 힌트 | 2026-04-07 |
@@ -164,7 +164,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | S63 | utils.sh 공용 함수 추출 | `parse_marker()`, `run_plan_validation()`, `run_design_validation()` 추출. `kill_check()` `[` → `[[` 정비. impl.sh/bugfix.sh 중복 Plan Validation 코드 제거 | 2026-04-09 |
 | S64 | (구) impl-process.sh fast 모드 정정 → impl_fast.sh로 분리됨 | validator_b_passed 조건부 설정. S72로 fast 경로 재설계됨 | 2026-04-09 |
 | S72 | 커밋 전략 개편 | engineer 직후 즉시 커밋(feature branch). pr-reviewer를 fast/std/deep 전체 적용. 머지 조건=pr_reviewer_lgtm 전 depth 통일. security-reviewer는 deep only 유지. pr-reviewer model opus→sonnet | 2026-04-09 |
-| S65 | (구) impl-process.sh SPEC_GAP 핸들링 → impl_{std,deep}.sh로 분리됨 | `SPEC_GAP_FOUND` → architect SPEC_GAP → 3-way 분기 (RESOLVED/PP_ESCALATION/TECH_CONSTRAINT). `spec_gap_count` 동결 카운터 (max 2, 정책 15) | 2026-04-09 |
+| S65 | (구) impl-process.sh SPEC_GAP 핸들링 → impl_{std,deep}.sh로 분리됨 | `SPEC_GAP_FOUND` → architect SPEC_GAP → 3-way 분기 (RESOLVED/PP_ESCALATION/TECH_CONSTRAINT). `spec_gap_count` 동결 카운터 (max 2, 정책 9) | 2026-04-09 |
 | S66 | bugfix.sh 라우팅 정비 | `backlog` → 이슈 생성 후 대기. `KNOWN_ISSUE` → 즉시 에스컬레이션. `DESIGN_ISSUE` → 디자인 루프 전환. qa 마일스톤 규칙 정정 (Bugs only). `grep -q '...\|...'` → `grep -qE`/`-qF` | 2026-04-09 |
 | S67 | plan.sh 흐름 완성 | 2단계(pp→architect) → 6단계(pp→architect SD→validator DV→architect MP→validator PV→PLAN_VALIDATION_PASS). `run_design_validation()` 공용 함수 활용 | 2026-04-09 |
 | S68 | design.sh 흐름 완성 | ITERATE feedback 전달. ESCALATE 분기 추가. DESIGN_LOOP_ESCALATE 마커. `parse_marker()` 활용 | 2026-04-09 |

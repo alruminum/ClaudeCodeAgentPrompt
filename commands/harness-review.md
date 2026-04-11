@@ -66,7 +66,7 @@ fi
 
 ## 자동 실행 조건
 
-orchestration-rules.md 정책 10에 따라, 아래 마커 수신 후 메인 Claude가 자동 실행:
+orchestration/policies.md 정책 17에 따라, 아래 마커 수신 후 메인 Claude가 자동 실행:
 - `HARNESS_DONE`
 - `IMPLEMENTATION_ESCALATE`
 - `HARNESS_CRASH`
