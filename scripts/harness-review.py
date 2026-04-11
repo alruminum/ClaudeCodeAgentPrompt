@@ -48,6 +48,7 @@ EXPECTED_SEQUENCE = {
     "impl": {
         "plan_only": ["architect", "validator"],
         "fast": ["engineer"],
+        "simple": ["engineer", "pr-reviewer"],
         "std":  ["engineer", "test-engineer", "validator"],
         "deep": ["engineer", "test-engineer", "validator", "pr-reviewer", "security-reviewer"],
     },
@@ -74,6 +75,19 @@ def parse_jsonl(filepath):
     return events
 
 
+def _reviewed_marker(jsonl_path):
+    """JSONL 파일에 대응하는 .reviewed 마커 경로."""
+    return jsonl_path.replace(".jsonl", ".reviewed")
+
+
+def _is_reviewed(jsonl_path):
+    return os.path.exists(_reviewed_marker(jsonl_path))
+
+
+def _mark_reviewed(jsonl_path):
+    open(_reviewed_marker(jsonl_path), "w").close()
+
+
 def find_latest_logs(prefix, count=1):
     d = os.path.join(LOG_DIR, prefix)
     if os.path.isdir(d):
@@ -86,6 +100,15 @@ def find_latest_logs(prefix, count=1):
                          key=os.path.getmtime, reverse=True)
         return matches[:count]
     return []
+
+
+def find_unreviewed_logs(prefix):
+    """prefix 디렉토리에서 .reviewed 마커가 없는 로그를 시간순(오래된 것 먼저) 반환."""
+    d = os.path.join(LOG_DIR, prefix)
+    if not os.path.isdir(d):
+        return []
+    files = sorted(glob.glob(os.path.join(d, "run_*.jsonl")), key=os.path.getmtime)
+    return [f for f in files if not _is_reviewed(f)]
 
 
 # ── 타임라인 추출 ────────────────────────────────────────────────────
@@ -1164,7 +1187,14 @@ def main():
     if args.file:
         files = [args.file]
     elif args.prefix:
-        files = find_latest_logs(args.prefix, args.last)
+        if args.last > 1:
+            # --last N 명시: 최근 N개 분석 (리뷰 여부 무관)
+            files = find_latest_logs(args.prefix, args.last)
+        else:
+            # --prefix만: 미리뷰 로그 전부 → 없으면 최신 1개
+            files = find_unreviewed_logs(args.prefix)
+            if not files:
+                files = find_latest_logs(args.prefix, 1)
         if not files:
             print(f"[ERROR] {args.prefix} prefix 로그 없음: {LOG_DIR}/{args.prefix}/")
             sys.exit(1)
@@ -1172,6 +1202,7 @@ def main():
     for filepath in files:
         report = analyze_file(filepath, session_jsonl=session_jsonl)
         print(report)
+        _mark_reviewed(filepath)
         if len(files) > 1:
             print("\n" + "=" * 60 + "\n")
 

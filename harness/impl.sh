@@ -195,12 +195,15 @@ issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
   echo "[HARNESS] Plan Validation"
   if run_plan_validation "$IMPL_FILE" "$ISSUE_NUM" "$PREFIX" 1; then
     echo "$IMPL_FILE" > "${STATE_DIR}/${PREFIX}_impl_path"
-    export HARNESS_RESULT="PLAN_VALIDATION_PASS"
     echo "PLAN_VALIDATION_PASS"
     echo "impl: $IMPL_FILE"
     echo "issue: #$ISSUE_NUM"
-    echo "필요 조치: 계획 확인 후 mode:impl 로 재호출"
-    exit 0
+    # validation PASS → engineer 루프로 직접 진입 (재호출 불필요)
+    [[ "$DEPTH" == "auto" ]] && DEPTH=$(detect_depth "$IMPL_FILE")
+    echo "[HARNESS] depth: $DEPTH"
+    local sub_script="${IMPL_SCRIPT_DIR}/impl_${DEPTH}.sh"
+    bash "$sub_script" --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --branch-type "$BRANCH_TYPE"
+    return
   fi
 
   export HARNESS_RESULT="PLAN_VALIDATION_ESCALATE"

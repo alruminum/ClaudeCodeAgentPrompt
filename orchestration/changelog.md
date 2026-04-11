@@ -7,3 +7,5 @@
 | 2026-04-11 | 카탈로그 + 분산 상세 재구성 | 428줄 단일 파일 → 카탈로그 ~70줄 + 상세 6개 파일. 진입 장벽 감소 |
 | 2026-04-11 | 정책 번호 재정렬 (1~21) | 추가 순서로 꼬인 번호(9a→9→10→12→14→11→15…)를 논리적 그룹별 순차로 정리 |
 | 2026-04-11 | `parse_marker()` BSD grep 버그픽스 — `grep -oEm1` → `grep -oEm1 -e` | macOS BSD grep이 `---MARKER:...` 패턴을 long option으로 오인 → 1차 마커 검출 실패 → 2차 fallback에서 본문 속 "FAIL" 단어 오탐. `-e` 플래그로 패턴 명시 |
+| 2026-04-11 | `impl.sh` PLAN_VALIDATION_PASS 후 직접 dispatch | 기존: exit 0 → 플래그 재진입 → engineer. 플래그 영속성 버그로 재진입 실패 반복. 변경: validation PASS → engineer 루프 직접 진입 (재호출 불필요) |
+| 2026-04-11 | `harness-review.py` EXPECTED_SEQUENCE에 `simple` 키 추가 | depth=simple에서 test-engineer/validator 스킵은 정상인데 MISSING_PHASE로 오탐 |

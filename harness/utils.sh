@@ -67,6 +67,12 @@ write_run_end() {
   # ── 타이밍 요약 출력 (C2) ──
   _print_timing_summary "$RUN_LOG" "$total_elapsed"
 
+  # ── 정책 17 리마인더: 메인 Claude에게 /harness-review 자동 실행 강제 ──
+  echo ""
+  echo "[HARNESS] 정책 17: /harness-review 자동 실행 필수 — 결과: ${result}"
+  echo "[HARNESS] Bash stdout을 원문 그대로 유저에게 출력할 것 (재가공 금지)"
+  echo ""
+
   # 완료 후 자동 리뷰 트리거 (백그라운드 — 하네스 종료를 블로킹하지 않음)
   # review-agent.sh 내부에서 harness-review.py도 실행 → _review.txt + review-result.json 모두 생성
   local review_agent="${HOME}/.claude/harness/review-agent.sh"
