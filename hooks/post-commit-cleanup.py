@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
 import re
-from harness_common import get_prefix, get_state_dir
+from harness_common import get_prefix, get_state_dir, FLAGS
 
 PREFIX = get_prefix()
 
@@ -33,7 +33,7 @@ def main():
         sys.exit(0)
 
     # commit 성공 → 1회성 플래그 삭제
-    for name in ["pr_reviewer_lgtm", "test_engineer_passed"]:
+    for name in [FLAGS.PR_REVIEWER_LGTM, FLAGS.TEST_ENGINEER_PASSED]:
         p = os.path.join(get_state_dir(), f"{PREFIX}_{name}")
         if os.path.exists(p):
             try:

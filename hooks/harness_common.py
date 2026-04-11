@@ -1,11 +1,43 @@
 """
 harness_common.py — 훅 공유 유틸리티
-PREFIX 결정, deny 헬퍼 등 훅 간 공통 로직.
+PREFIX 결정, deny 헬퍼, 플래그 상수, 마커 파싱 등 훅 간 공통 로직.
 """
 import json
 import os
 import re
 import sys
+
+
+# ── 마커 포맷 (Single Source of Truth) ──
+# 에이전트 출력 마커: ---MARKER:<NAME>---
+MARKER_RE = re.compile(r'---MARKER:([A-Z_]+)---')
+
+
+def parse_marker_text(text, allowed=None):
+    """텍스트에서 구조화된 마커를 추출.
+    allowed: 허용 마커 집합 (None이면 모든 마커 허용).
+    반환: 첫 번째 매칭 마커 또는 None.
+    """
+    for m in MARKER_RE.finditer(text):
+        name = m.group(1)
+        if allowed is None or name in allowed:
+            return name
+    return None
+
+
+# ── 플래그 이름 상수 ──
+class FLAGS:
+    HARNESS_ACTIVE = "harness_active"
+    HARNESS_KILL = "harness_kill"
+    PLAN_VALIDATION_PASSED = "plan_validation_passed"
+    TEST_ENGINEER_PASSED = "test_engineer_passed"
+    VALIDATOR_B_PASSED = "validator_b_passed"
+    PR_REVIEWER_LGTM = "pr_reviewer_lgtm"
+    SECURITY_REVIEW_PASSED = "security_review_passed"
+    BUGFIX_VALIDATION_PASSED = "bugfix_validation_passed"
+    LIGHT_PLAN_READY = "light_plan_ready"
+    DESIGNER_RAN = "designer_ran"
+    DESIGN_CRITIC_PASSED = "design_critic_passed"
 
 
 def get_prefix():

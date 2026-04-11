@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import subprocess
-from harness_common import get_prefix, get_state_dir, deny
+from harness_common import get_prefix, get_state_dir, deny, FLAGS
 
 PREFIX = get_prefix()
 
@@ -105,8 +105,8 @@ def main():
         sys.exit(0)
 
     # src 변경이 있으면 LGTM 필요
-    if not os.path.exists(f"{get_state_dir()}/{PREFIX}_pr_reviewer_lgtm"):
-        deny(f"❌ git commit 전 pr-reviewer LGTM 필요. {get_state_dir()}/{PREFIX}_pr_reviewer_lgtm 없음.")
+    if not os.path.exists(f"{get_state_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM}"):
+        deny(f"❌ git commit 전 pr-reviewer LGTM 필요. {get_state_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.")
 
     sys.exit(0)
 

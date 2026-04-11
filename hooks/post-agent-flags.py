@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import time
-from harness_common import get_prefix, flag_path
+from harness_common import get_prefix, flag_path, parse_marker_text, FLAGS
 
 PREFIX = get_prefix()
 DOC_NAME = os.environ.get("HARNESS_DOC_NAME", "domain-logic")
@@ -59,46 +59,54 @@ def main():
     if not agent:
         sys.exit(0)
 
+    # 구조화된 마커 파싱: ---MARKER:X--- 우선, 레거시 폴백
+    def has_marker(name):
+        """구조화된 마커 ---MARKER:X--- 를 우선 탐색, 없으면 레거시 워드 매칭."""
+        if f"---MARKER:{name}---" in resp:
+            return True
+        # 레거시 폴백: 단어 경계 매칭
+        return bool(re.search(rf'\b{name}\b', resp))
+
     # ── validator PASS → 플래그 생성 ──
-    if agent == "validator" and "PASS" in resp:
+    if agent == "validator" and has_marker("PASS"):
         if re.search(r"Mode C|Plan Validation", prompt, re.IGNORECASE):
-            touch("plan_validation_passed")
+            touch(FLAGS.PLAN_VALIDATION_PASSED)
         if re.search(r"Mode B", prompt, re.IGNORECASE):
-            touch("validator_b_passed")
+            touch(FLAGS.VALIDATOR_B_PASSED)
         # Mode D (Bugfix Validation) BUGFIX_PASS
-        if "BUGFIX_PASS" in resp:
-            touch("bugfix_validation_passed")
+        if has_marker("BUGFIX_PASS"):
+            touch(FLAGS.BUGFIX_VALIDATION_PASSED)
 
     # ── test-engineer TESTS_PASS → 플래그 생성 ──
-    if agent == "test-engineer" and "TESTS_PASS" in resp:
-        touch("test_engineer_passed")
+    if agent == "test-engineer" and has_marker("TESTS_PASS"):
+        touch(FLAGS.TEST_ENGINEER_PASSED)
 
     # ── pr-reviewer LGTM → 플래그 생성 ──
-    if agent == "pr-reviewer" and "LGTM" in resp and "CHANGES_REQUESTED" not in resp:
-        touch("pr_reviewer_lgtm")
+    if agent == "pr-reviewer" and has_marker("LGTM") and not has_marker("CHANGES_REQUESTED"):
+        touch(FLAGS.PR_REVIEWER_LGTM)
 
     # ── security-reviewer SECURE → 플래그 생성 ──
-    if agent == "security-reviewer" and "SECURE" in resp and "VULNERABILITIES_FOUND" not in resp:
-        touch("security_review_passed")
+    if agent == "security-reviewer" and has_marker("SECURE") and not has_marker("VULNERABILITIES_FOUND"):
+        touch(FLAGS.SECURITY_REVIEW_PASSED)
 
     # ── architect Mode B 완료 → 전체 플래그 초기화 ──
     if agent == "architect" and re.search(r"Mode B", prompt, re.IGNORECASE):
-        for f in ["plan_validation_passed", "validator_b_passed", "test_engineer_passed",
-                   "pr_reviewer_lgtm", "security_review_passed", "designer_ran", "design_critic_passed"]:
+        for f in [FLAGS.PLAN_VALIDATION_PASSED, FLAGS.VALIDATOR_B_PASSED, FLAGS.TEST_ENGINEER_PASSED,
+                   FLAGS.PR_REVIEWER_LGTM, FLAGS.SECURITY_REVIEW_PASSED, FLAGS.DESIGNER_RAN, FLAGS.DESIGN_CRITIC_PASSED]:
             remove(f)
 
     # ── architect Light Plan → LIGHT_PLAN_READY 플래그 ──
-    if agent == "architect" and "LIGHT_PLAN_READY" in resp:
-        touch("light_plan_ready")
+    if agent == "architect" and has_marker("LIGHT_PLAN_READY"):
+        touch(FLAGS.LIGHT_PLAN_READY)
 
     # ── engineer 완료 → 검증 플래그 삭제 (재검증 강제) ──
     if agent == "engineer":
-        for f in ["test_engineer_passed", "pr_reviewer_lgtm", "security_review_passed", "validator_b_passed"]:
+        for f in [FLAGS.TEST_ENGINEER_PASSED, FLAGS.PR_REVIEWER_LGTM, FLAGS.SECURITY_REVIEW_PASSED, FLAGS.VALIDATOR_B_PASSED]:
             remove(f)
 
     # ── harness-executor 완료 → harness_active 삭제 ──
     if agent == "harness-executor":
-        remove("harness_active")
+        remove(FLAGS.HARNESS_ACTIVE)
 
     # ── 에이전트 완료 → {agent}_active 삭제 (agent-boundary.py 연동) ──
     remove(f"{agent}_active")
@@ -132,13 +140,13 @@ def main():
 
     # ── designer 완료 → designer_ran + 이전 플래그 초기화 ──
     if agent == "designer":
-        touch("designer_ran")
-        remove("design_critic_passed")
-        remove("plan_validation_passed")
+        touch(FLAGS.DESIGNER_RAN)
+        remove(FLAGS.DESIGN_CRITIC_PASSED)
+        remove(FLAGS.PLAN_VALIDATION_PASSED)
 
     # ── design-critic PICK → 플래그 생성 ──
-    if agent == "design-critic" and "PICK" in resp and "ITERATE" not in resp and "ESCALATE" not in resp:
-        touch("design_critic_passed")
+    if agent == "design-critic" and has_marker("PICK") and not has_marker("ITERATE") and not has_marker("ESCALATE"):
+        touch(FLAGS.DESIGN_CRITIC_PASSED)
 
     # ── designer 결과에 PRD 대조 없으면 경고 ──
     if agent == "designer" and not re.search(r"PRD|prd\.md|기획자|product.planner", resp, re.IGNORECASE):

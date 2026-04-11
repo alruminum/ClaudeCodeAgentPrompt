@@ -51,42 +51,42 @@ teardown() {
   [[ $status -eq 0 ]]
 }
 
-# === parse_marker: BUGFIX markers ===
+# === parse_marker: BUGFIX markers (structured format) ===
 
-@test "parse_marker detects BUGFIX_PASS" {
-  echo "validation: BUGFIX_PASS" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured BUGFIX_PASS" {
+  printf '%s\n' "validation: ---MARKER:BUGFIX_PASS---" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "BUGFIX_PASS|BUGFIX_FAIL|PASS|FAIL")
   [[ "$result" == "BUGFIX_PASS" ]]
 }
 
-@test "parse_marker detects BUGFIX_FAIL" {
-  echo "BUGFIX_FAIL: regression found" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured BUGFIX_FAIL" {
+  printf '%s\n' "---MARKER:BUGFIX_FAIL--- regression found" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "BUGFIX_PASS|BUGFIX_FAIL|PASS|FAIL")
   [[ "$result" == "BUGFIX_FAIL" ]]
 }
 
-@test "parse_marker detects SECURE" {
-  echo "security review: SECURE" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured SECURE" {
+  printf '%s\n' "security review: ---MARKER:SECURE---" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "SECURE|VULNERABILITIES_FOUND")
   [[ "$result" == "SECURE" ]]
 }
 
-@test "parse_marker detects VULNERABILITIES_FOUND" {
-  echo "HIGH risk! VULNERABILITIES_FOUND" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured VULNERABILITIES_FOUND" {
+  printf '%s\n' "HIGH risk! ---MARKER:VULNERABILITIES_FOUND---" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "SECURE|VULNERABILITIES_FOUND")
   [[ "$result" == "VULNERABILITIES_FOUND" ]]
 }
 
-# === design PICK/ITERATE/ESCALATE markers ===
+# === design PICK/ITERATE/ESCALATE markers (structured) ===
 
-@test "parse_marker detects PICK" {
-  echo "PICK variant A" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured PICK" {
+  printf '%s\n' "---MARKER:PICK--- variant A" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "PICK|ITERATE|ESCALATE")
   [[ "$result" == "PICK" ]]
 }
 
-@test "parse_marker detects ITERATE" {
-  echo "ITERATE with feedback" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured ITERATE" {
+  printf '%s\n' "---MARKER:ITERATE--- with feedback" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "PICK|ITERATE|ESCALATE")
   [[ "$result" == "ITERATE" ]]
 }

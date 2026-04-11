@@ -14,7 +14,7 @@ import urllib.request
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness_common import get_state_dir
+from harness_common import get_state_dir, FLAGS
 
 LOG_FILE = "/tmp/harness-router.log"
 
@@ -307,7 +307,7 @@ def _main_inner():
         sys.exit(0)
 
     # Kill Switch 체크
-    if os.path.exists(f"{get_state_dir()}/{prefix}_harness_kill"):
+    if os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.HARNESS_KILL}"):
         log(prefix, "KILL_SWITCH — pass-through")
         sys.exit(0)
 
@@ -327,13 +327,13 @@ def _main_inner():
         sys.exit(0)
 
     # mtime 기반 스태일 designer_ran 감지
-    dr_path = f"{get_state_dir()}/{prefix}_designer_ran"
-    dc_path = f"{get_state_dir()}/{prefix}_design_critic_passed"
+    dr_path = f"{get_state_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"
+    dc_path = f"{get_state_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"
     if os.path.exists(dr_path) and not os.path.exists(dc_path):
         age_min = (time.time() - os.path.getmtime(dr_path)) / 60
         if age_min > 30:
             os.remove(dr_path)
-            log(prefix, f"AUTO_CLEAR stale designer_ran (age={age_min:.0f}min)")
+            log(prefix, f"AUTO_CLEAR stale {FLAGS.DESIGNER_RAN} (age={age_min:.0f}min)")
 
     # executor 경로 감지 (프로젝트 → 글로벌 폴백)
     local_executor = os.path.join(os.getcwd(), ".claude", "harness/executor.sh")
@@ -342,13 +342,13 @@ def _main_inner():
 
     # 현재 플래그 상태
     flags = {
-        "harness_active":         os.path.exists(f"{get_state_dir()}/{prefix}_harness_active"),
-        "plan_validation_passed": os.path.exists(f"{get_state_dir()}/{prefix}_plan_validation_passed"),
-        "designer_ran":           os.path.exists(f"{get_state_dir()}/{prefix}_designer_ran"),
-        "design_critic_passed":   os.path.exists(f"{get_state_dir()}/{prefix}_design_critic_passed"),
-        "test_engineer_passed":   os.path.exists(f"{get_state_dir()}/{prefix}_test_engineer_passed"),
-        "validator_b_passed":     os.path.exists(f"{get_state_dir()}/{prefix}_validator_b_passed"),
-        "pr_reviewer_lgtm":       os.path.exists(f"{get_state_dir()}/{prefix}_pr_reviewer_lgtm"),
+        FLAGS.HARNESS_ACTIVE:         os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}"),
+        FLAGS.PLAN_VALIDATION_PASSED: os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.PLAN_VALIDATION_PASSED}"),
+        FLAGS.DESIGNER_RAN:           os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"),
+        FLAGS.DESIGN_CRITIC_PASSED:   os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"),
+        FLAGS.TEST_ENGINEER_PASSED:   os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.TEST_ENGINEER_PASSED}"),
+        FLAGS.VALIDATOR_B_PASSED:     os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.VALIDATOR_B_PASSED}"),
+        FLAGS.PR_REVIEWER_LGTM:       os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.PR_REVIEWER_LGTM}"),
     }
     any_active = any(flags.values())
 
@@ -473,8 +473,8 @@ def _main_inner():
         stored_issue = open(issue_file).read().strip() if os.path.exists(issue_file) else None
         if current_issue and stored_issue != current_issue:
             all_flag_keys = [
-                "plan_validation_passed", "designer_ran", "design_critic_passed",
-                "test_engineer_passed", "validator_b_passed", "pr_reviewer_lgtm"
+                FLAGS.PLAN_VALIDATION_PASSED, FLAGS.DESIGNER_RAN, FLAGS.DESIGN_CRITIC_PASSED,
+                FLAGS.TEST_ENGINEER_PASSED, FLAGS.VALIDATOR_B_PASSED, FLAGS.PR_REVIEWER_LGTM
             ]
             cleared = []
             for f in all_flag_keys:
@@ -522,15 +522,15 @@ def _main_inner():
                 f"⚠️ executor.sh impl 직접 호출 차단됨 — 반드시 bugfix 서브커맨드 사용\n"
             )
             log(prefix, f"INJECT(impl→bugfix_override) prompt={prompt[:60]!r}")
-        elif flags["harness_active"]:
+        elif flags[FLAGS.HARNESS_ACTIVE]:
             ctx = (
-                f"⚠️ [HARNESS] harness_active 플래그가 설정되어 있습니다.\n"
+                f"⚠️ [HARNESS] {FLAGS.HARNESS_ACTIVE} 플래그가 설정되어 있습니다.\n"
                 f"이전 실행이 아직 진행 중이거나 비정상 종료된 것일 수 있습니다.\n"
-                f"중복 실행 전 확인하세요: ls {get_state_dir()}/{prefix}_harness_active\n\n"
+                f"중복 실행 전 확인하세요: ls {get_state_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}\n\n"
                 f"[현재 플래그]\n{flag_lines}"
             )
             log(prefix, f"INJECT(impl/harness_active_warn) prompt={prompt[:60]!r}")
-        elif flags["plan_validation_passed"]:
+        elif flags[FLAGS.PLAN_VALIDATION_PASSED]:
             impl_path_file = f"{get_state_dir()}/{prefix}_impl_path"
             impl_path = open(impl_path_file).read().strip() if os.path.exists(impl_path_file) else "[IMPL_PATH]"
             issue_ref = current_issue or "N"

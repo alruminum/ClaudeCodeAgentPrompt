@@ -81,12 +81,24 @@ kill_check() {
 }
 
 # ── 에이전트 출력에서 마커 파싱 ───────────────────────────────────────
+# 포맷: ---MARKER:<NAME>--- (구조화된 마커)
 # 사용법: parse_marker <out_file> <marker_list>
 #   marker_list: "PASS|FAIL" 또는 "LGTM|CHANGES_REQUESTED" 등
 # 반환: 매칭된 마커 (없으면 "UNKNOWN")
 parse_marker() {
   local out_file="$1" marker_list="$2"
   local result=""
+  # 1차: 구조화된 마커 ---MARKER:X--- 에서 추출
+  result=$(grep -oEm1 '---MARKER:([A-Z_]+)---' "$out_file" 2>/dev/null \
+           | sed 's/---MARKER://;s/---//' ) || result=""
+  # 허용 마커 필터링
+  if [[ -n "$result" ]]; then
+    if echo "$result" | grep -qE "^(${marker_list})$"; then
+      echo "$result"
+      return
+    fi
+  fi
+  # 2차 폴백: 레거시 워드 바운더리 매칭 (하위 호환)
   result=$(grep -oEm1 "\\b(${marker_list})\\b" "$out_file" 2>/dev/null) || result=""
   if [[ -z "$result" ]]; then
     echo "UNKNOWN"

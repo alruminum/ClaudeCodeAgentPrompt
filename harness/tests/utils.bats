@@ -12,28 +12,28 @@ teardown() {
   common_teardown
 }
 
-# === parse_marker ===
+# === parse_marker (구조화된 마커: ---MARKER:X---) ===
 
-@test "parse_marker detects PASS" {
-  echo "result: PASS — all items OK" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured PASS" {
+  printf '%s\n' "result: ---MARKER:PASS--- all items OK" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "PASS|FAIL")
   [[ "$result" == "PASS" ]]
 }
 
-@test "parse_marker detects FAIL" {
-  echo "validation FAIL: 3 items missing" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured FAIL" {
+  printf '%s\n' "validation ---MARKER:FAIL--- : 3 items missing" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "PASS|FAIL")
   [[ "$result" == "FAIL" ]]
 }
 
-@test "parse_marker detects LGTM" {
-  echo "code review done. LGTM" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured LGTM" {
+  printf '%s\n' "code review done. ---MARKER:LGTM---" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "LGTM|CHANGES_REQUESTED")
   [[ "$result" == "LGTM" ]]
 }
 
-@test "parse_marker detects CHANGES_REQUESTED" {
-  echo "MUST FIX 3 items. CHANGES_REQUESTED" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured CHANGES_REQUESTED" {
+  printf '%s\n' "MUST FIX 3 items. ---MARKER:CHANGES_REQUESTED---" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "LGTM|CHANGES_REQUESTED")
   [[ "$result" == "CHANGES_REQUESTED" ]]
 }
@@ -55,25 +55,39 @@ teardown() {
   [[ "$result" == "UNKNOWN" ]]
 }
 
-@test "parse_marker returns first match only" {
-  printf "PASS\nFAIL\n" > "$TEST_TMP/multi.txt"
+@test "parse_marker returns first structured match only" {
+  printf '%s\n%s\n' "---MARKER:PASS---" "---MARKER:FAIL---" > "$TEST_TMP/multi.txt"
   result=$(parse_marker "$TEST_TMP/multi.txt" "PASS|FAIL")
   [[ "$result" == "PASS" ]]
 }
 
-@test "parse_marker detects SPEC_MISSING" {
-  echo "validator: SPEC_MISSING — no impl file" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured SPEC_MISSING" {
+  printf '%s\n' "validator: ---MARKER:SPEC_MISSING--- no impl file" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "PASS|FAIL|SPEC_MISSING")
   [[ "$result" == "SPEC_MISSING" ]]
 }
 
-@test "parse_marker detects SPEC_GAP_RESOLVED" {
-  echo "architect: SPEC_GAP_RESOLVED — impl updated" > "$TEST_TMP/out.txt"
+@test "parse_marker detects structured SPEC_GAP_RESOLVED" {
+  printf '%s\n' "architect: ---MARKER:SPEC_GAP_RESOLVED--- impl updated" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "SPEC_GAP_RESOLVED|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
   [[ "$result" == "SPEC_GAP_RESOLVED" ]]
 }
 
-@test "parse_marker rejects partial word PASSING != PASS" {
+@test "parse_marker structured format prevents COMPASS false positive" {
+  echo "Using COMPASS navigation and PASSING tests" > "$TEST_TMP/out.txt"
+  result=$(parse_marker "$TEST_TMP/out.txt" "PASS|FAIL")
+  [[ "$result" == "UNKNOWN" ]]
+}
+
+# === parse_marker legacy fallback (하위 호환) ===
+
+@test "parse_marker legacy fallback detects bare PASS" {
+  echo "result: PASS — all items OK" > "$TEST_TMP/out.txt"
+  result=$(parse_marker "$TEST_TMP/out.txt" "PASS|FAIL")
+  [[ "$result" == "PASS" ]]
+}
+
+@test "parse_marker legacy rejects partial word PASSING != PASS" {
   echo "PASSING all checks" > "$TEST_TMP/out.txt"
   result=$(parse_marker "$TEST_TMP/out.txt" "PASS|FAIL")
   [[ "$result" == "UNKNOWN" ]]

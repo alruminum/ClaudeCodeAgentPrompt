@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
-from harness_common import get_prefix, deny, flag_exists
+from harness_common import get_prefix, deny, flag_exists, FLAGS
 
 PREFIX = get_prefix()
 
@@ -23,7 +23,7 @@ def main():
     except Exception:
         pass
 
-    if not flag_exists(PREFIX, "harness_active"):
+    if not flag_exists(PREFIX, FLAGS.HARNESS_ACTIVE):
         deny(
             f"❌ 메인 Claude의 create_issue 직접 호출 금지 (orchestration/policies.md 정책 3).\n"
             f"이슈 생성은 하네스 내부에서 처리됩니다.\n"

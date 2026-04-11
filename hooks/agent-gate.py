@@ -13,7 +13,7 @@ import json
 import re
 import subprocess
 from datetime import datetime
-from harness_common import get_prefix, get_state_dir, deny, flag_exists
+from harness_common import get_prefix, get_state_dir, deny, flag_exists, FLAGS
 
 PREFIX = get_prefix()
 
@@ -48,26 +48,26 @@ def main():
             deny("❌ architect 호출 시 Mode A/B/C/D/E/F를 프롬프트에 명시하세요.")
 
     # 3. engineer 전 Plan Validation PASS 필요
-    if agent == "engineer" and not flag("plan_validation_passed"):
+    if agent == "engineer" and not flag(FLAGS.PLAN_VALIDATION_PASSED):
         # light_plan_ready도 허용 (Light Plan 경로)
-        if not flag("light_plan_ready"):
-            deny(f"❌ engineer 전 Plan Validation PASS 필요. {get_state_dir()}/{PREFIX}_plan_validation_passed 없음.")
+        if not flag(FLAGS.LIGHT_PLAN_READY):
+            deny(f"❌ engineer 전 Plan Validation PASS 필요. {get_state_dir()}/{PREFIX}_{FLAGS.PLAN_VALIDATION_PASSED} 없음.")
 
     # 3b. 하네스 내부 에이전트는 harness/executor.sh 경유 필수
     # (qa는 하네스 진입 전 분류 역할 — HARNESS_ONLY에서 제외)
     HARNESS_ONLY_AGENTS = ("engineer", "architect")
-    if agent in HARNESS_ONLY_AGENTS and not flag("harness_active"):
+    if agent in HARNESS_ONLY_AGENTS and not flag(FLAGS.HARNESS_ACTIVE):
         cmds = {
             "engineer": "bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N>",
             "qa":       "bash ~/.claude/harness/executor.sh bugfix --bug '<설명>' [--issue <N>]",
             "architect": "bash ~/.claude/harness/executor.sh bugfix|impl|plan ...",
         }
         deny(f"❌ {agent}는 harness/executor.sh를 통해서만 호출 가능. "
-             f"{get_state_dir()}/{PREFIX}_harness_active 없음. "
+             f"{get_state_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
              f"직접 호출 금지 → {cmds.get(agent, 'executor.sh')}")
 
     # 3c. engineer는 feature branch에서만 실행 (main 직접 작업 방지)
-    if agent == "engineer" and flag("harness_active"):
+    if agent == "engineer" and flag(FLAGS.HARNESS_ACTIVE):
         try:
             branch_result = subprocess.run(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -82,18 +82,18 @@ def main():
             pass  # git 실패 시 차단 안 함 (safety net)
 
     # 4. designer 실행 후 design-critic PICK 전까지 engineer 차단
-    if agent == "engineer" and flag("designer_ran") and not flag("design_critic_passed"):
+    if agent == "engineer" and flag(FLAGS.DESIGNER_RAN) and not flag(FLAGS.DESIGN_CRITIC_PASSED):
         deny("❌ designer 실행 후 engineer 바로 불가. "
              "올바른 순서: design-critic PICK → 유저 승인 → architect impl 계획 → validator Mode A PASS → engineer")
 
     # 5. validator Mode B 전 test-engineer PASS 필요
     if agent == "validator" and re.search(r"Mode B", prompt, re.IGNORECASE):
-        if not flag("test_engineer_passed"):
-            deny(f"❌ validator Mode B 전 test-engineer PASS 필요. {get_state_dir()}/{PREFIX}_test_engineer_passed 없음.")
+        if not flag(FLAGS.TEST_ENGINEER_PASSED):
+            deny(f"❌ validator Mode B 전 test-engineer PASS 필요. {get_state_dir()}/{PREFIX}_{FLAGS.TEST_ENGINEER_PASSED} 없음.")
 
     # 6. pr-reviewer 전 validator Mode B PASS 필요
-    if agent == "pr-reviewer" and not flag("validator_b_passed"):
-        deny(f"❌ pr-reviewer 전 validator Mode B PASS 필요. {get_state_dir()}/{PREFIX}_validator_b_passed 없음.")
+    if agent == "pr-reviewer" and not flag(FLAGS.VALIDATOR_B_PASSED):
+        deny(f"❌ pr-reviewer 전 validator Mode B PASS 필요. {get_state_dir()}/{PREFIX}_{FLAGS.VALIDATOR_B_PASSED} 없음.")
 
     # 7. 백그라운드 에이전트 금지
     if bg:
@@ -101,7 +101,7 @@ def main():
              "포그라운드에서만 실행해야 중단 가능.")
 
     # 8. 에이전트 호출 로그
-    caller = "harness-executor" if flag("harness_active") else "main-claude"
+    caller = "harness-executor" if flag(FLAGS.HARNESS_ACTIVE) else "main-claude"
     ts = datetime.now().strftime("%H:%M:%S")
     snippet = prompt[:80].replace("\n", " ")
     try:
