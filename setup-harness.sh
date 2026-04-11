@@ -182,8 +182,10 @@ if [ -n "$REPO" ]; then
   done
 fi
 
-# ── 전역 settings.json에 harness-review-inject.py UserPromptSubmit 훅 등록 ──
-# Phase D Step A: 하네스 완료 후 Haiku 리뷰 결과를 다음 메시지에 주입하는 훅
+# ── 전역 settings.json 훅 관리 ──────────────────────────────────────
+# _meta: "harness" 태그가 붙은 훅만 프레임워크가 관리.
+# _meta가 없거나 "user"인 훅은 사용자 훅으로 보존.
+# 새 프레임워크 훅 추가 시 이 스크립트에서 _meta: harness로 등록.
 GLOBAL_SETTINGS="${HOME}/.claude/settings.json"
 INJECT_HOOK_MARKER="harness-review-inject.py"
 
@@ -215,8 +217,9 @@ if already:
     print("ℹ️  harness-review-inject.py 이미 등록됨", flush=True)
     sys.exit(0)
 
-# 새 블록 추가
+# 새 블록 추가 (_meta: harness 태그 포함)
 ups.append({
+    "_meta": "harness",
     "hooks": [
         {
             "type": "command",
@@ -229,7 +232,7 @@ ups.append({
 with open(settings_path, "w") as f:
     json.dump(cfg, f, indent=2, ensure_ascii=False)
 
-print("✅ 전역 settings.json에 harness-review-inject.py UserPromptSubmit 훅 등록 완료", flush=True)
+print("✅ 전역 settings.json에 harness-review-inject.py 훅 등록 완료 (_meta: harness)", flush=True)
 INJECT_PYEOF
   fi
 else
