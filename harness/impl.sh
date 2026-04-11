@@ -86,6 +86,19 @@ issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
         "/tmp/${PREFIX}_arch_out.txt"
     fi
 
+    # architect 결과 마커 확인 (BUGFIX_PLAN_READY 또는 READY_FOR_IMPL)
+    local arch_marker
+    arch_marker=$(parse_marker "/tmp/${PREFIX}_arch_out.txt" "BUGFIX_PLAN_READY|READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+    if [[ "$arch_marker" == "PRODUCT_PLANNER_ESCALATION_NEEDED" ]]; then
+      export HARNESS_RESULT="PRODUCT_PLANNER_ESCALATION_NEEDED"
+      echo "PRODUCT_PLANNER_ESCALATION_NEEDED"
+      exit 1
+    fi
+    if [[ "$arch_marker" == "TECH_CONSTRAINT_CONFLICT" ]]; then
+      export HARNESS_RESULT="TECH_CONSTRAINT_CONFLICT"
+      echo "TECH_CONSTRAINT_CONFLICT"
+      exit 1
+    fi
     IMPL_FILE=$(grep -oEm1 'docs/[^ ]+\.md' "/tmp/${PREFIX}_arch_out.txt") || IMPL_FILE=""
     echo "[HARNESS] impl: $IMPL_FILE"
   fi

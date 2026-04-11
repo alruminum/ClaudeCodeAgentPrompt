@@ -65,7 +65,6 @@
     ],
     "defaultMode": "acceptEdits"
   },
-  "model": "sonnet",
   "hooks": {
     "UserPromptSubmit": [
       {

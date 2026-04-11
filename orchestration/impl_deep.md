@@ -19,15 +19,15 @@ impl_std와 동일한 흐름에서 pr-reviewer LGTM 이후 security-reviewer가 
 
 ```mermaid
 flowchart TD
-    RFI{"READY_FOR_IMPL\n(BROWSER:DOM 태그 또는 보안 게이트)"}
+    RFI{"READY_FOR_IMPL\n(frontmatter depth: deep)"}
 
     subgraph ATTEMPT_LOOP["attempt loop (MAX 3회)"]
         ENG["engineer\n@MODE:ENGINEER:IMPL"]
         SPEC_CHK{{"SPEC_GAP_FOUND?"}}
         ARC_SG["architect\n@MODE:ARCHITECT:SPEC_GAP"]
         COMMIT_EARLY["git commit (feature branch)"]
-        TE["test-engineer\n@MODE:TEST_ENGINEER:TEST"]
-        VITEST["vitest run"]
+        TE["test-engineer\n@MODE:TEST_ENGINEER:TEST\n(내부: TEST_CODE_BUG/FLAKY\nmax 2회 자체 수정)"]
+        VITEST["vitest run\n(ground truth)"]
         VAL_CV["validator\n@MODE:VALIDATOR:CODE_VALIDATION"]
         PR_REV["pr-reviewer\n@MODE:PR_REVIEWER:REVIEW"]
         PR_RESULT{{"LGTM / CHANGES_REQUESTED"}}
@@ -55,9 +55,7 @@ flowchart TD
 
     SPEC_CHK -->|NO| COMMIT_EARLY
     COMMIT_EARLY --> TE
-    TE --> TF_CHK{{"TESTS_FAIL 분류"}}
-    TF_CHK -->|TESTS_PASS| VITEST
-    TF_CHK -->|IMPLEMENTATION_BUG| FAIL_ROUTE
+    TE --> VITEST
     VITEST -->|실패| FAIL_ROUTE
     VITEST -->|통과| VAL_CV
     VAL_CV --> VAL_RESULT{{"PASS / FAIL"}}
@@ -86,6 +84,7 @@ flowchart TD
 
 | fail_type | 컨텍스트 (engineer에게 전달) | 지시 |
 |---|---|---|
+| `autocheck_fail` | automated_checks 실패 내용 | "사전 검사 실패. 위 문제를 해결한 뒤 다시 구현하라." |
 | `test_fail` | vitest 출력 전체 + 실패 테스트 파일 소스 | "테스트 실패. 구현 코드를 수정. 테스트 자체 수정 금지." |
 | `validator_fail` | validator 리포트 + impl 파일 | "스펙 불일치. impl의 해당 항목 재확인 후 누락 구현." |
 | `pr_fail` | MUST FIX 항목 목록 | "코드 품질 이슈. MUST FIX 항목만 수정. 기능 변경 금지." |

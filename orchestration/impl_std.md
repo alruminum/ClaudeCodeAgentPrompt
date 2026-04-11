@@ -7,7 +7,7 @@
 
 ## 특징
 
-- **LLM 호출**: 3회 (engineer + test-engineer + validator + pr-reviewer)
+- **LLM 호출**: 4회 (engineer + test-engineer + validator + pr-reviewer)
 - **테스트**: test-engineer + vitest run 포함
 - **보안**: security-reviewer 없음 (deep에서만)
 - **머지 조건**: `pr_reviewer_lgtm`
@@ -26,10 +26,7 @@ flowchart TD
         ARC_SG["architect\n@MODE:ARCHITECT:SPEC_GAP"]
         COMMIT_EARLY["git commit (feature branch)"]
 
-        TE["test-engineer\n@MODE:TEST_ENGINEER:TEST"]
-        TF_CHK{{"TESTS_FAIL 분류"}}
-        TE_SELF["test-engineer 자체 수정\n(max 2회)"]
-        TE_LIMIT{{"TE_SELF > 2?"}}
+        TE["test-engineer\n@MODE:TEST_ENGINEER:TEST\n(내부: TEST_CODE_BUG/FLAKY\nmax 2회 자체 수정)"]
 
         VITEST["vitest run\n(ground truth)"]
         VAL_CV["validator\n@MODE:VALIDATOR:CODE_VALIDATION"]
@@ -56,16 +53,7 @@ flowchart TD
 
     SPEC_CHK -->|NO| COMMIT_EARLY
     COMMIT_EARLY --> TE
-    TE --> TF_CHK
-    TF_CHK -->|IMPLEMENTATION_BUG| FAIL_ROUTE
-    TF_CHK -->|"TEST_CODE_BUG\nFLAKY"| TE_SELF
-    TE_SELF --> TE_LIMIT
-    TE_LIMIT -->|NO| TE
-    TE_LIMIT -->|"YES (FLAKY)"| RECLASS["재분류: IMPLEMENTATION_BUG"]
-    TE_LIMIT -->|"YES (TEST_CODE_BUG)"| FAIL_ROUTE
-    RECLASS --> FAIL_ROUTE
-
-    TF_CHK -->|TESTS_PASS| VITEST
+    TE --> VITEST
     VITEST -->|실패| FAIL_ROUTE
     VITEST -->|통과| VAL_CV
     VAL_CV --> VAL_RESULT{{"PASS / FAIL / SPEC_MISSING"}}
@@ -91,6 +79,7 @@ flowchart TD
 
 | fail_type | 컨텍스트 (engineer에게 전달) | 지시 |
 |---|---|---|
+| `autocheck_fail` | automated_checks 실패 내용 | "사전 검사 실패. 위 문제를 해결한 뒤 다시 구현하라." |
 | `test_fail` | vitest 출력 전체 + 실패 테스트 파일 소스 | "테스트 실패. 구현 코드를 수정. 테스트 자체 수정 금지." |
 | `validator_fail` | validator 리포트 + impl 파일 | "스펙 불일치. impl의 해당 항목 재확인 후 누락 구현." |
 | `pr_fail` | MUST FIX 항목 목록 | "코드 품질 이슈. MUST FIX 항목만 수정. 기능 변경 금지." |

@@ -129,7 +129,7 @@ $(explore_instruction "$LOOP_OUT_DIR")"
   # ── 워커 1: engineer ─────────────────────────────────────────────
   log_phase "engineer"
   echo "[HARNESS] engineer (attempt $((attempt+1))/$MAX)"
-  hlog "engineer 시작 (depth=std, timeout=900s)"
+  hlog "engineer 시작 (depth=deep, timeout=900s)"
   kill_check
   AGENT_EXIT=0
   _agent_call "engineer" 900 \
@@ -244,7 +244,7 @@ $spec_gap_context
     git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' | tr '\n' ' ' || echo "")
   log_phase "test-engineer"
   echo "[HARNESS] test-engineer (attempt $((attempt+1))/$MAX)"
-  hlog "test-engineer 시작 (depth=std, timeout=600s)"
+  hlog "test-engineer 시작 (depth=deep, timeout=600s)"
   kill_check
   AGENT_EXIT=0
   if [[ $attempt -gt 0 ]]; then
@@ -303,7 +303,7 @@ issue: #$ISSUE_NUM"
   # ── 워커 3: validator ─────────────────────────────────────────
   log_phase "validator"
   echo "[HARNESS] validator (attempt $((attempt+1))/$MAX)"
-  hlog "validator 시작 (depth=std, timeout=300s)"
+  hlog "validator 시작 (depth=deep, timeout=300s)"
   kill_check
   val_context=$(build_validator_context "$IMPL_FILE")
   AGENT_EXIT=0
@@ -358,7 +358,7 @@ SPEC_MISSING 복구. impl: $IMPL_FILE issue: #$ISSUE_NUM" \
   # ── 워커 4: pr-reviewer ───────────────────────────────────────
   log_phase "pr-reviewer"
   echo "[HARNESS] pr-reviewer (attempt $((attempt+1))/$MAX)"
-  hlog "pr-reviewer 시작 (depth=std, timeout=240s)"
+  hlog "pr-reviewer 시작 (depth=deep, timeout=240s)"
   kill_check
   diff_out=$(git diff HEAD~1 2>&1 | head -300 || git diff HEAD 2>&1 | head -300)
   AGENT_EXIT=0

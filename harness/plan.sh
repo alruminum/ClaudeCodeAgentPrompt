@@ -23,7 +23,8 @@ ${CONTEXT}"
   # ── product-planner ──
   echo "[HARNESS] product-planner 기획"
   _agent_call "product-planner" 300 \
-    "context: $CONTEXT issue: #$ISSUE_NUM" \
+    "@MODE:PLANNER:PRODUCT_PLAN
+context: $CONTEXT issue: #$ISSUE_NUM" \
     "/tmp/${PREFIX}_pp_out.txt"
   local pp_out
   pp_out=$(cat "/tmp/${PREFIX}_pp_out.txt")

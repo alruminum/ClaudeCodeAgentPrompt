@@ -83,6 +83,7 @@ SPEC_GAP_FOUND 발생 시 architect는 갭을 해결하면서 depth를 재판정
 
 | fail_type | 컨텍스트 (engineer에게 전달) | 지시 |
 |---|---|---|
+| `autocheck_fail` | automated_checks 실패 내용 | "사전 검사 실패. 위 문제를 해결한 뒤 다시 구현하라." |
 | `pr_fail` | MUST FIX 항목 목록 | "코드 품질 이슈. MUST FIX 항목만 수정. 기능 변경 금지." |
 
 ---

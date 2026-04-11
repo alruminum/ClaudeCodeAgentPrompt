@@ -1,6 +1,6 @@
 #!/bin/bash
 # ~/.claude/harness/utils.sh
-# 하네스 공용 유틸 — harness/executor.sh + harness/impl_{fast,std,deep}.sh에서 source
+# 하네스 공용 유틸 — harness/executor.sh + harness/impl_{simple,std,deep}.sh에서 source
 
 HARNESS_LOG_DIR="${HOME}/.claude/harness-logs"
 RUN_LOG=""          # rotate_harness_logs() 호출 후 설정
@@ -154,7 +154,10 @@ run_design_validation() {
 design_doc: $design_doc issue: #$issue_num" \
     "$val_out_file"
   local val_result
-  val_result=$(parse_marker "$val_out_file" "PASS|FAIL")
+  val_result=$(parse_marker "$val_out_file" "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL|PASS|FAIL")
+  # DESIGN_REVIEW_PASS → PASS 정규화
+  [[ "$val_result" == "DESIGN_REVIEW_PASS" ]] && val_result="PASS"
+  [[ "$val_result" == "DESIGN_REVIEW_FAIL" ]] && val_result="FAIL"
   echo "[HARNESS] Design Validation 결과: $val_result"
 
   if [[ "$val_result" == "PASS" ]]; then
@@ -178,7 +181,9 @@ design_doc: $design_doc issue: #$issue_num" \
       "@MODE:VALIDATOR:DESIGN_VALIDATION
 design_doc: $design_doc issue: #$issue_num" \
       "$val_out_file2"
-    val_result=$(parse_marker "$val_out_file2" "PASS|FAIL")
+    val_result=$(parse_marker "$val_out_file2" "DESIGN_REVIEW_PASS|DESIGN_REVIEW_FAIL|PASS|FAIL")
+    [[ "$val_result" == "DESIGN_REVIEW_PASS" ]] && val_result="PASS"
+    [[ "$val_result" == "DESIGN_REVIEW_FAIL" ]] && val_result="FAIL"
     echo "[HARNESS] Design Validation 재검증 결과: $val_result"
 
     if [[ "$val_result" == "PASS" ]]; then
