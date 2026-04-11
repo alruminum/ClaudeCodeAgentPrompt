@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # hooks/harness-review-inject.py
-# UserPromptSubmit 훅: 미처리 리뷰 결과를 다음 사용자 메시지에 주입 (Phase D Step A)
+# UserPromptSubmit 훅: 미처리 리뷰 결과를 다음 사용자 메시지에 주입
 #
 # 트리거: UserPromptSubmit (global)
-# 동작: STATE_DIR/*_review-result.json 감지 → 프롬프트에 리뷰 결과 주입
+# 동작: STATE_DIR/*_review-result.json 감지 → 프롬프트에 리뷰 리포트 원문 주입
 # 안전장치:
 # - HARNESS_INTERNAL=1이면 스킵 (하네스 내부 호출 중 재트리거 방지)
-# - parse_error 결과는 조용히 제거 (사용자에게 노이즈 방지)
 # - 주입 후 파일 제거 (재트리거 방지)
 
 import json
@@ -59,46 +58,48 @@ def main():
         print(json.dumps({"continue": True}))
         return
 
-    issues = review.get("issues", [])
-    high_issues = [i for i in issues if i.get("confidence") == "HIGH"]
-    medium_issues = [i for i in issues if i.get("confidence") == "MEDIUM"]
-    promote_suggestions = review.get("promote_suggestions", [])
+    # 리포트 원문이 있으면 그대로 주입
+    report = review.get("report", "")
+    if not report:
+        # 이전 포맷 호환 (issues 기반)
+        issues = review.get("issues", [])
+        high_issues = [i for i in issues if i.get("confidence") == "HIGH"]
+        medium_issues = [i for i in issues if i.get("confidence") == "MEDIUM"]
+        if not high_issues and not medium_issues:
+            try:
+                os.remove(review_file)
+            except Exception:
+                pass
+            print(json.dumps({"continue": True}))
+            return
 
-    if not high_issues and not medium_issues and not promote_suggestions:
-        try:
-            os.remove(review_file)
-        except Exception:
-            pass
-        print(json.dumps({"continue": True}))
-        return
+        report = "## 하네스 리뷰 결과 (이전 실행)\n\n"
+        stats = review.get("stats", {})
+        report += f"통계: {json.dumps(stats, ensure_ascii=False)}\n\n"
+        if high_issues:
+            report += "### 즉시 수정 권장 (HIGH)\n"
+            for issue in high_issues:
+                report += f"- [{issue.get('type', '')}]\n"
+                report += f"  원인: {issue.get('evidence', '')}\n"
+                report += f"  개선방향: {issue.get('suggested_change', '')}\n"
+                report += f"  수정 대상: {issue.get('target_file', '')} (위험도: {issue.get('risk', '?')})\n\n"
+        if medium_issues:
+            report += "### 검토 제안 (MEDIUM)\n"
+            for issue in medium_issues:
+                report += f"- [{issue.get('type', '')}]\n"
+                report += f"  원인: {issue.get('evidence', '')}\n"
+                report += f"  개선방향: {issue.get('suggested_change', '')}\n\n"
 
-    # 프롬프트에 주입
-    stats = review.get("stats", {})
-    inject_text = "## 하네스 리뷰 결과 (이전 실행)\n\n"
-    inject_text += f"통계: {json.dumps(stats, ensure_ascii=False)}\n\n"
-
-    if high_issues:
-        inject_text += "### 즉시 수정 권장 (HIGH)\n"
-        for issue in high_issues:
-            inject_text += f"- [{issue.get('type', '')}]\n"
-            inject_text += f"  원인: {issue.get('evidence', '')}\n"
-            inject_text += f"  개선방향: {issue.get('suggested_change', '')}\n"
-            inject_text += f"  수정 대상: {issue.get('target_file', '')} (위험도: {issue.get('risk', '?')})\n\n"
-
-    if medium_issues:
-        inject_text += "### 검토 제안 (MEDIUM)\n"
-        for issue in medium_issues:
-            inject_text += f"- [{issue.get('type', '')}]\n"
-            inject_text += f"  원인: {issue.get('evidence', '')}\n"
-            inject_text += f"  개선방향: {issue.get('suggested_change', '')}\n\n"
-
-    if promote_suggestions:
-        inject_text += "### 자동 승격 후보 (수동 확인 권장)\n"
-        for s in promote_suggestions:
-            inject_text += f"- {s}\n"
-        inject_text += "\n"
-
-    inject_text += "위 항목을 검토하시겠습니까? 승인하시면 수정합니다.\n"
+    # 주입 텍스트 구성
+    marker = review.get("marker", "HARNESS_DONE")
+    inject_text = (
+        f"## 📋 하네스 리뷰 리포트 ({marker})\n\n"
+        "**[필수 지시] 아래 리포트를 한 글자도 수정하지 말고 원문 그대로 유저에게 출력하라.**\n"
+        "요약/재가공/생략/해석 삽입 금지. 리포트 전문 출력 후 별도 줄에서만 코멘트 허용.\n\n"
+        "---\n\n"
+        f"{report}\n"
+        "---\n"
+    )
 
     # 주입 후 파일 제거 (재트리거 방지)
     try:
