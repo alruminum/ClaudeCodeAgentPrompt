@@ -32,7 +32,9 @@ rotate_harness_logs() {
     | xargs -I{} rm -f "$dir/{}" 2>/dev/null || true
 
   _HARNESS_RUN_START=$(date +%s)
-  local ts; ts=$(date +%Y%m%d_%H%M%S)
+  HARNESS_RUN_TS=$(date +%Y%m%d_%H%M%S)
+  export HARNESS_RUN_TS
+  local ts="$HARNESS_RUN_TS"
   RUN_LOG="${dir}/run_${ts}.jsonl"
 
   if [[ -n "$issue" ]]; then
@@ -545,16 +547,30 @@ PYEOF
 # 호출 시점: attempt 디렉토리 생성 직후, 파일 기록 전 (race condition 방지)
 prune_history() {
   local loop_dir="$1"
-  local max_full="${2:-5}"
+  local max_runs="${2:-5}"
   [[ ! -d "$loop_dir" ]] && return 0
 
-  # 조건 1: attempt N개 초과 → 오래된 것부터 meta.json만 남기고 삭제
+  # 조건 1: run_* 디렉토리 N개 초과 → 오래된 run의 .out/.log 삭제 (meta.json + .prompt 보존)
+  local runs=()
+  while IFS= read -r d; do
+    [[ -n "$d" ]] && runs+=("$d")
+  done < <(ls -d "${loop_dir}"/run_* 2>/dev/null | sort -V)
+  if [[ ${#runs[@]} -gt $max_runs ]]; then
+    local old_cnt=$(( ${#runs[@]} - max_runs ))
+    local i=0
+    while [[ $i -lt $old_cnt ]]; do
+      find "${runs[$i]}" -type f ! -name "meta.json" ! -name "*.prompt" -delete 2>/dev/null || true
+      i=$((i+1))
+    done
+  fi
+
+  # 레거시 호환: run_* 없이 attempt-* 직접 있는 경우 (마이그레이션 전 데이터)
   local attempts=()
   while IFS= read -r d; do
     [[ -n "$d" ]] && attempts+=("$d")
   done < <(ls -d "${loop_dir}"/attempt-* 2>/dev/null | sort -V)
-  if [[ ${#attempts[@]} -gt $max_full ]]; then
-    local old_cnt=$(( ${#attempts[@]} - max_full ))
+  if [[ ${#attempts[@]} -gt $max_runs ]]; then
+    local old_cnt=$(( ${#attempts[@]} - max_runs ))
     local i=0
     while [[ $i -lt $old_cnt ]]; do
       find "${attempts[$i]}" -type f ! -name "meta.json" -delete 2>/dev/null || true
@@ -562,7 +578,7 @@ prune_history() {
     done
   fi
 
-  # 조건 3: design round 3개 초과 → 오래된 round의 screenshots/ + 로그 삭제 (meta.json + critic.log 보존)
+  # design round 3개 초과 → 오래된 round의 screenshots/ + 로그 삭제 (meta.json + critic.log 보존)
   local rounds=()
   while IFS= read -r d; do
     [[ -n "$d" ]] && rounds+=("$d")
@@ -577,7 +593,7 @@ prune_history() {
     done
   fi
 
-  # 조건 2: 단일 로그 > 50KB → 마지막 500줄만 유지
+  # 단일 로그 > 50KB → 마지막 500줄만 유지
   while IFS= read -r logf; do
     [[ -z "$logf" ]] && continue
     local tmp; tmp=$(mktemp)
@@ -779,6 +795,12 @@ _agent_call() {
   echo "0" > "$cost_file"
   echo "{}" > "$stats_file"
   : > "$out_file"  # 파이프라인 실패 시에도 파일 존재 보장
+
+  # ── 히스토리: 인풋 프롬프트 원문 보존 ──
+  if [[ -n "${HARNESS_HIST_DIR:-}" && -d "${HARNESS_HIST_DIR}" ]]; then
+    printf '%s' "$prompt" > "${HARNESS_HIST_DIR}/${agent}.prompt"
+  fi
+
   local _iso_start; _iso_start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d,"start_ts":"%s","prompt_chars":%d}\n' \
     "$agent" "$t_start" "$_iso_start" "${#prompt}" >> "$RUN_LOG"
@@ -931,6 +953,12 @@ try:
 except Exception:
     pass
 ' "$stats_file" "$agent" >> "$RUN_LOG" 2>/dev/null
+  fi
+
+  # ── 히스토리: 아웃풋 원문 + stats 보존 ──
+  if [[ -n "${HARNESS_HIST_DIR:-}" && -d "${HARNESS_HIST_DIR}" ]]; then
+    cp "$out_file" "${HARNESS_HIST_DIR}/${agent}.out" 2>/dev/null || true
+    cp "$stats_file" "${HARNESS_HIST_DIR}/${agent}.stats.json" 2>/dev/null || true
   fi
 
   # 에이전트 active 플래그 해제

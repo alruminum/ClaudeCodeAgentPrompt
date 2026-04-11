@@ -12,6 +12,13 @@
 
 run_plan() {
   rotate_harness_logs "$PREFIX" "plan" "$ISSUE_NUM"
+
+  # ── 히스토리: 런 단위 디렉토리 생성 ──
+  local _hist_dir="${STATE_DIR}/${PREFIX}_history"
+  local _plan_run_dir="${_hist_dir}/plan/run_${HARNESS_RUN_TS:-$(date +%Y%m%d_%H%M%S)}"
+  mkdir -p "$_plan_run_dir"
+  export HARNESS_HIST_DIR="$_plan_run_dir"
+
   # 루프 타입별 컨텍스트 prepend
   local _lc
   _lc=$(build_loop_context "plan" 2>/dev/null || true)

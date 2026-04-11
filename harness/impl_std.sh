@@ -71,7 +71,7 @@ fail_type=""
 hlog "=== 하네스 루프 시작 (depth=std, max_retries=$MAX) ==="
 
 HIST_DIR="${STATE_DIR}/${PREFIX}_history"
-LOOP_OUT_DIR="${HIST_DIR}/impl"
+LOOP_OUT_DIR="${HIST_DIR}/impl/run_${HARNESS_RUN_TS:-$(date +%Y%m%d_%H%M%S)}"
 mkdir -p "$LOOP_OUT_DIR"
 
 [[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"std","max_retries":%d,"constraints_chars":%d}\n' \
@@ -83,6 +83,7 @@ while [[ $attempt -lt $MAX ]]; do
 
   attempt_dir="${LOOP_OUT_DIR}/attempt-${attempt}"
   mkdir -p "$attempt_dir"
+  export HARNESS_HIST_DIR="$attempt_dir"
   prune_history "$LOOP_OUT_DIR"
 
   context=$(build_smart_context "$IMPL_FILE" 0)

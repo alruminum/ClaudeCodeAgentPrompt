@@ -90,6 +90,12 @@ run_impl() {
   # run_bugfix → run_impl 이중 로테이션 방지: RUN_LOG 이미 설정돼있으면 스킵
   [[ -z "$RUN_LOG" ]] && rotate_harness_logs "$PREFIX" "impl" "$ISSUE_NUM"
 
+  # ── 히스토리: 런 단위 디렉토리 생성 (architect 출력 보존용) ──
+  local _hist_dir="${STATE_DIR}/${PREFIX}_history"
+  local _impl_run_dir="${_hist_dir}/impl/run_${HARNESS_RUN_TS:-$(date +%Y%m%d_%H%M%S)}"
+  mkdir -p "$_impl_run_dir"
+  export HARNESS_HIST_DIR="$_impl_run_dir"
+
   # impl 파일 없으면 architect 호출 (MODULE_PLAN 또는 LIGHT_PLAN)
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
     # issue labels 또는 이슈 본문으로 LIGHT_PLAN vs MODULE_PLAN 분기
