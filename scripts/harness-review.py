@@ -439,6 +439,89 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
     return patterns
 
 
+def scan_session_log(session_jsonl, run_start_ts=0, run_end_ts=0):
+    """메인 Claude 세션 JSONL에서 게이트 모순 시그널을 추출한다.
+
+    시그널:
+    - FLAG_BYPASS: rm/touch harness-state/ 명령 (메인 Claude가 게이트 수동 우회)
+    - HOOK_BLOCK: hook이 도구 호출 차단 (is_error=true)
+    - CONTRADICTION: HOOK_BLOCK → FLAG_BYPASS → 재시도 시퀀스 (게이트 모순 확정)
+    """
+    if not session_jsonl or not os.path.exists(session_jsonl):
+        return []
+
+    import re
+
+    signals = []
+    events_seq = []  # (event_idx, type, detail) 시퀀스 추적용
+
+    try:
+        with open(session_jsonl) as f:
+            for i, line in enumerate(f):
+                try:
+                    e = json.loads(line)
+                except Exception:
+                    continue
+
+                if e.get("type") == "assistant":
+                    content = e.get("message", {}).get("content", [])
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        # FLAG_BYPASS: Bash로 rm/touch harness-state
+                        if block.get("type") == "tool_use" and block.get("name") == "Bash":
+                            cmd = block.get("input", {}).get("command", "")
+                            if "harness-state" in cmd and re.search(r"\b(rm|touch)\b", cmd):
+                                flags = re.findall(r"harness-state/\S+", cmd)
+                                signals.append({
+                                    "type": "FLAG_BYPASS",
+                                    "severity": "HIGH",
+                                    "detail": f"메인 Claude가 플래그 수동 조작: {cmd[:120]}",
+                                    "flags": [f.split("/")[-1] for f in flags],
+                                    "event_idx": i,
+                                })
+                                events_seq.append((i, "FLAG_BYPASS", cmd[:80]))
+
+                elif e.get("type") == "user":
+                    content = e.get("message", {}).get("content", "")
+                    blocks = content if isinstance(content, list) else [content]
+                    for block in blocks:
+                        if not isinstance(block, dict):
+                            continue
+                        # HOOK_BLOCK: tool_result with is_error + hook
+                        if block.get("type") == "tool_result" and block.get("is_error"):
+                            text = str(block.get("content", ""))
+                            if "hook" in text.lower() and ("denied" in text.lower() or "blocking" in text.lower()):
+                                events_seq.append((i, "HOOK_BLOCK", text[:120]))
+                                signals.append({
+                                    "type": "HOOK_BLOCK",
+                                    "severity": "MEDIUM",
+                                    "detail": f"훅이 도구 호출 차단: {text[:120]}",
+                                    "event_idx": i,
+                                })
+    except Exception:
+        return []
+
+    # CONTRADICTION 감지: HOOK_BLOCK → FLAG_BYPASS 시퀀스 (10 이벤트 이내)
+    for j in range(len(events_seq)):
+        if events_seq[j][1] == "HOOK_BLOCK":
+            for k in range(j + 1, min(j + 5, len(events_seq))):
+                if events_seq[k][1] == "FLAG_BYPASS":
+                    signals.append({
+                        "type": "GATE_CONTRADICTION",
+                        "severity": "HIGH",
+                        "detail": (
+                            f"게이트 모순: 훅 차단 → 플래그 수동 우회\n"
+                            f"  차단: {events_seq[j][2]}\n"
+                            f"  우회: {events_seq[k][2]}"
+                        ),
+                        "event_idx": events_seq[j][0],
+                    })
+                    break
+
+    return signals
+
+
 def detect_waste_with_context(patterns, run_info, config, events):
     """실행 컨텍스트 기반 추가 낭비 패턴을 탐지한다."""
     depth = config.get("depth", "") if config else ""
@@ -733,7 +816,7 @@ def fmt_time(ts):
 
 def generate_report(filepath, run_info, config, timeline, agent_stats,
                     stream_tools, stream_files, waste, decisions, phases, contexts,
-                    flow_issues=None, events=None):
+                    flow_issues=None, events=None, session_signals=None):
     lines = []
     basename = os.path.basename(filepath)
 
@@ -873,12 +956,38 @@ def generate_report(filepath, run_info, config, timeline, agent_stats,
         lines.append("## 흐름 정상")
         lines.append("")
 
+    # 세션 로그 모순 (메인 Claude 행동 분석)
+    if session_signals:
+        contradictions = [s for s in session_signals if s["type"] == "GATE_CONTRADICTION"]
+        bypasses = [s for s in session_signals if s["type"] == "FLAG_BYPASS"]
+        blocks = [s for s in session_signals if s["type"] == "HOOK_BLOCK"]
+
+        lines.append("## 세션 로그 모순 (메인 Claude)")
+        lines.append(f"플래그 수동 우회: {len(bypasses)}건 | 훅 차단: {len(blocks)}건 | 게이트 모순: {len(contradictions)}건")
+        lines.append("")
+
+        if contradictions:
+            lines.append("### 게이트 모순 (HOOK_BLOCK → FLAG_BYPASS)")
+            for c in contradictions:
+                lines.append(f"- {c['detail']}")
+            lines.append("")
+
+        if bypasses:
+            lines.append("### 플래그 수동 우회")
+            for b in bypasses:
+                flags = ", ".join(b.get("flags", []))
+                lines.append(f"- `{flags}` — {b['detail'][:100]}")
+            lines.append("")
+    else:
+        lines.append("## 세션 로그 모순 없음")
+        lines.append("")
+
     return "\n".join(lines)
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────
 
-def analyze_file(filepath):
+def analyze_file(filepath, session_jsonl=None):
     events = parse_jsonl(filepath)
     if not events:
         return f"[ERROR] 빈 로그: {filepath}"
@@ -901,10 +1010,17 @@ def analyze_file(filepath):
     waste = detect_waste_with_context(waste, run_info, config, events)
     flow_issues = detect_flow_issues(run_info, timeline, events)
 
+    # 세션 로그 모순 스캔
+    session_signals = []
+    if session_jsonl:
+        run_start_ts = run_info.get("start_ts", 0)
+        run_end_ts = run_info.get("end_ts", 0)
+        session_signals = scan_session_log(session_jsonl, run_start_ts, run_end_ts)
+
     return generate_report(
         filepath, run_info, config, timeline, agent_stats_data,
         stream_tools, stream_files, waste, decisions, phases_data, contexts,
-        flow_issues=flow_issues, events=events,
+        flow_issues=flow_issues, events=events, session_signals=session_signals,
     )
 
 
@@ -1009,7 +1125,17 @@ def main():
     parser.add_argument("--prefix", "-p", help="프로젝트 prefix (최신 로그 자동 탐색)")
     parser.add_argument("--last", "-n", type=int, default=1, help="최근 N개 로그 분석")
     parser.add_argument("--list", action="store_true", help="최신 5개 목록만 출력하고 종료")
+    parser.add_argument("--session-jsonl", help="메인 Claude 세션 JSONL (게이트 모순 감지)")
     args = parser.parse_args()
+
+    # 트리거 파일에서 session_jsonl 자동 읽기
+    session_jsonl = args.session_jsonl
+    if not session_jsonl and os.path.exists("/tmp/harness_review_trigger.json"):
+        try:
+            trigger = json.load(open("/tmp/harness_review_trigger.json"))
+            session_jsonl = trigger.get("session_jsonl")
+        except Exception:
+            pass
 
     all_recent = sorted(
         glob.glob(os.path.join(LOG_DIR, "*", "run_*.jsonl")),
@@ -1038,7 +1164,7 @@ def main():
             sys.exit(1)
 
     for filepath in files:
-        report = analyze_file(filepath)
+        report = analyze_file(filepath, session_jsonl=session_jsonl)
         print(report)
         if len(files) > 1:
             print("\n" + "=" * 60 + "\n")
