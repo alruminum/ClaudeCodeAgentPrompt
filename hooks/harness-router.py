@@ -512,16 +512,15 @@ def _main_inner():
                 except Exception:
                     pass
 
-        # BUG 감지 시 IMPLEMENTATION 분류여도 bugfix 우선
+        # BUG 감지 시 IMPLEMENTATION 분류여도 QA 우선
         if is_bug:
             ctx = (
                 "🐛 [HARNESS ROUTER] 버그/이슈 감지 — IMPLEMENTATION 분류지만 BUG 키워드 포함\n"
                 "→ QA 에이전트를 반드시 먼저 호출하세요. 자체 분석 금지.\n"
                 "→ 이슈 생성도 QA 담당. 메인 Claude의 gh issue create / gh api .../issues 직접 호출 금지.\n"
-                f"→ 올바른 흐름: bash {executor_path} bugfix --prefix {prefix} → QA가 분析·이슈 생성·라우팅\n"
-                f"⚠️ executor.sh impl 직접 호출 차단됨 — 반드시 bugfix 서브커맨드 사용\n"
+                f"→ QA 완료 후: bash {executor_path} impl --issue <N> --prefix {prefix}\n"
             )
-            log(prefix, f"INJECT(impl→bugfix_override) prompt={prompt[:60]!r}")
+            log(prefix, f"INJECT(impl→bug_override) prompt={prompt[:60]!r}")
         elif flags[FLAGS.HARNESS_ACTIVE]:
             ctx = (
                 f"⚠️ [HARNESS] {FLAGS.HARNESS_ACTIVE} 플래그가 설정되어 있습니다.\n"
@@ -565,13 +564,12 @@ def _main_inner():
         if memory_patterns:
             ctx += "\n\n[HARNESS MEMORY] Known Failure Patterns:\n" + "\n---\n".join(memory_patterns)
     elif is_bug:
-        # BUG 분류 직접 진입 (IMPLEMENTATION 미분류 버그 보고)
+        # BUG 분류 직접 진입
         ctx = (
             "🐛 [HARNESS ROUTER] 버그/이슈 감지\n"
             "→ QA 에이전트를 반드시 먼저 호출하세요. 자체 분석 금지.\n"
             "→ 이슈 생성도 QA 담당. 메인 Claude의 gh issue create / gh api .../issues 직접 호출 금지.\n"
-            f"→ 올바른 흐름: bash {executor_path} bugfix --prefix {prefix} → QA가 분析·이슈 생성·라우팅\n"
-            f"⚠️ executor.sh impl 직접 호출 차단됨 — 반드시 bugfix 서브커맨드 사용\n"
+            f"→ QA 완료 후: bash {executor_path} impl --issue <N> --prefix {prefix}\n"
         )
         log(prefix, f"INJECT(bug) prompt={prompt[:60]!r}")
     else:
@@ -580,15 +578,6 @@ def _main_inner():
             sys.exit(0)
         ctx = "[HARNESS ROUTER] 진행 중인 워크플로우 있음\n" + flag_lines
         log(prefix, f"INJECT(generic/active) prompt={prompt[:60]!r}")
-
-    # is_bug 물리 강제용 플래그 기록 — commit-gate.py가 executor.sh impl 차단에 사용
-    # (BUG 라우팅 메시지는 위 각 분기에서 ctx에 통합)
-    if is_bug:
-        try:
-            open(f"{get_state_dir()}/{prefix}_is_bug", "w").close()
-        except Exception:
-            pass
-        log(prefix, f"is_bug flag set prompt={prompt[:60]!r}")
 
     _output = json.dumps({"hookSpecificOutput": {"additionalContext": ctx}})
     log(prefix, f"STDOUT len={len(_output)}")

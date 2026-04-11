@@ -37,29 +37,10 @@ def main():
         deny(
             "❌ gh issue create 직접 호출 금지.\n"
             "버그 이슈는 QA 에이전트가 생성한다.\n"
-            f"올바른 흐름: bash [executor.sh] bugfix --prefix {PREFIX} → QA가 분석·이슈 생성·라우팅"
+            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성 → executor.sh impl --issue <N> --prefix {PREFIX}"
         )
 
-    # ── Gate 2: BUG 컨텍스트에서 executor.sh impl 직접 호출 차단 ───────
-    # is_bug 플래그는 harness-router.py가 버그 감지 시 설정.
-    # executor.sh bugfix 호출 시 클리어됨.
-    _is_bug_flag = f"{get_state_dir()}/{PREFIX}_is_bug"
-    _IS_EXECUTOR_IMPL = re.search(r"executor\.sh\s+impl\b", cmd)
-    _IS_EXECUTOR_BUGFIX = re.search(r"executor\.sh\s+bugfix\b", cmd)
-
-    if _IS_EXECUTOR_BUGFIX and os.path.exists(_is_bug_flag):
-        # 올바른 경로 — bugfix 호출, 플래그 클리어
-        try:
-            os.remove(_is_bug_flag)
-        except OSError:
-            pass
-
-    if _IS_EXECUTOR_IMPL and os.path.exists(_is_bug_flag) and os.environ.get("HARNESS_INTERNAL") != "1":
-        deny(
-            "❌ BUG 컨텍스트에서 executor.sh impl 직접 호출 금지.\n"
-            "버그는 반드시 bugfix 루프를 거쳐야 한다 (QA → 4-way 분기).\n"
-            f"올바른 명령: bash [executor.sh] bugfix --prefix {PREFIX}"
-        )
+    # ── Gate 2: (removed in v6 — bugfix 모드 제거에 따라 is_bug 게이트 삭제)
 
     # ── Gate 3: 인터뷰 진행 중 executor.sh 호출 차단 ───────────────────
     # harness-router.py가 AMBIGUOUS 분류 시 interview_state.json을 생성.

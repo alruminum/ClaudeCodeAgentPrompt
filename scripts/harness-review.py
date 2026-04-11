@@ -441,18 +441,47 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
 
 def detect_waste_with_context(patterns, run_info, config, events):
     """실행 컨텍스트 기반 추가 낭비 패턴을 탐지한다."""
-    # WASTE_DEPTH_MISS: bugfix에서 FUNCTIONAL_BUG인데 depth=fast 미적용
-    if run_info.get("mode") == "bugfix":
-        qa_type = _extract_qa_type(events)
-        depth = config.get("depth", "") if config else ""
-        if qa_type == "FUNCTIONAL_BUG" and depth != "fast":
+    depth = config.get("depth", "") if config else ""
+    mode = run_info.get("mode", "")
+
+    # WASTE_DEPTH_MISS: LIGHT_PLAN 경로(버그픽스)인데 depth=std/deep
+    if mode == "impl" and depth in ("std", "deep"):
+        is_light_plan = any(
+            "LIGHT_PLAN" in str(e.get("marker", "")) or "LIGHT_PLAN" in str(e.get("event", ""))
+            for e in events
+        )
+        if is_light_plan:
             patterns.append({
                 "type": "WASTE_DEPTH_MISS",
                 "severity": "HIGH",
                 "agent": "harness",
-                "detail": f"FUNCTIONAL_BUG인데 depth={depth or '(미적용)'} — simple 경로 미사용",
-                "fix": "architect LIGHT_PLAN에서 depth: simple 선언 확인",
+                "detail": f"LIGHT_PLAN(버그픽스) 경로인데 depth={depth} — simple이었으면 test-engineer+validator+pr-reviewer 스킵 가능",
+                "fix": "impl.sh LIGHT_PLAN 프롬프트의 depth 가이드 확인, architect가 simple 선택하도록 유도",
             })
+
+    # WASTE_BOUNDARY_BLOCK: agent-boundary deny로 인한 attempt 낭비
+    for e in events:
+        if e.get("event") == "agent_boundary_deny":
+            patterns.append({
+                "type": "WASTE_BOUNDARY_BLOCK",
+                "severity": "HIGH",
+                "agent": e.get("agent", "unknown"),
+                "detail": f"{e.get('agent', '?')}가 {e.get('fp', '?')} 접근 차단됨 — ALLOW_MATRIX 패턴 불일치",
+                "fix": f"hooks/agent-boundary.py ALLOW_MATRIX['{e.get('agent', '?')}'] 패턴 확인",
+            })
+
+    # WASTE_REPEATED_SPEC_GAP: 동일 SPEC_GAP 2회 이상
+    decisions = [e for e in events if e.get("event") == "decision"]
+    spec_gaps = [d for d in decisions if d.get("key") == "spec_gap"]
+    if len(spec_gaps) >= 2:
+        patterns.append({
+            "type": "WASTE_REPEATED_SPEC_GAP",
+            "severity": "HIGH",
+            "agent": "architect",
+            "detail": f"SPEC_GAP {len(spec_gaps)}회 발생 — architect SPEC_GAP 해결 반복 실패",
+            "fix": "impl 파일 보강 또는 architect SPEC_GAP 프롬프트 개선",
+        })
+
     return patterns
 
 

@@ -42,7 +42,9 @@ ALLOW_MATRIX = {
         r'(^|/)docs/ui-spec',           # docs/ui-spec*
     ],
     "test-engineer": [
-        r'(^|/)src/__tests__/',         # src/__tests__/** 만
+        r'(^|/)src/__tests__/',             # src/__tests__/** (dedicated test dir)
+        r'(^|/)src/.*\.test\.[jt]sx?$',     # co-located *.test.{js,jsx,ts,tsx}
+        r'(^|/)src/.*\.spec\.[jt]sx?$',     # co-located *.spec.{js,jsx,ts,tsx}
     ],
     "product-planner": [
         r'(^|/)prd\.md$',              # prd.md
@@ -157,7 +159,20 @@ def main():
             # 허용
             sys.exit(0)
 
-    # 매치 안 됨 → deny
+    # 매치 안 됨 → deny (+ structured deny 로그)
+    try:
+        import datetime
+        _deny_log = {
+            "ts": datetime.datetime.now().isoformat(),
+            "event": "agent_boundary_deny",
+            "agent": active_agent,
+            "fp": fp,
+            "allowed": allowed_patterns,
+        }
+        with open(os.path.join(get_state_dir(), "agent_boundary_debug.log"), "a") as _f:
+            _f.write(json.dumps(_deny_log, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
     allowed_desc = ", ".join(allowed_patterns)
     deny(f"❌ [agent-boundary] {active_agent}는 {os.path.basename(fp)} 수정 불가. "
          f"허용 경로: {allowed_desc}")

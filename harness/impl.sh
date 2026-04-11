@@ -64,7 +64,17 @@ run_impl() {
   fi
 
   # UI 키워드 감지 (design 루프 전환 판단)
-  if [[ -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
+  # bug/fix/hotfix 라벨 이슈는 스킵 — 버그픽스도 UI 컴포넌트를 수정하므로 오탐 방지
+  local _skip_design_check=false
+  if [[ -n "$ISSUE_NUM" && "$ISSUE_NUM" != "N" ]]; then
+    local _issue_labels_cache
+    _issue_labels_cache=$(gh issue view "$ISSUE_NUM" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null || echo "")
+    if echo "$_issue_labels_cache" | grep -qiE "bug|fix|hotfix"; then
+      _skip_design_check=true
+    fi
+  fi
+
+  if [[ "$_skip_design_check" == "false" && -n "$IMPL_FILE" && -f "$IMPL_FILE" ]]; then
     local ui_kw
     ui_kw=$(grep -iE "화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이" "$IMPL_FILE" || true)
     if [[ -n "$ui_kw" && ! -f "${STATE_DIR}/${PREFIX}_design_critic_passed" ]]; then
@@ -112,7 +122,13 @@ run_impl() {
     fi
 
     if [[ "$arch_mode" == "LIGHT_PLAN" ]]; then
-      echo "[HARNESS] architect LIGHT_PLAN 작성 (issue #${ISSUE_NUM})"
+      # depth 힌트: bugfix 라벨이면 simple 권장
+      local depth_hint="std"
+      if echo "$issue_labels" | grep -qiE "bug|fix|hotfix"; then
+        depth_hint="simple"
+      fi
+
+      echo "[HARNESS] architect LIGHT_PLAN 작성 (issue #${ISSUE_NUM}, depth_hint=${depth_hint})"
       _agent_call "architect" 900 \
         "@MODE:ARCHITECT:LIGHT_PLAN
 issue #${ISSUE_NUM}
@@ -120,7 +136,13 @@ suspected_files: ${suspected_files}
 labels: ${issue_labels}
 issue_summary:
 ${issue_summary}
-context: ${CONTEXT}" \
+context: ${CONTEXT}
+
+[DEPTH 선택 — frontmatter depth: 필드 필수]
+- simple: 기존 의도된 behavior 복원 (버그픽스), 설정값·스타일 변경. bug/fix 라벨이면 simple 우선 검토.
+- std: 새 behavior/API 추가, 구조적 변경 (새 모듈, 새 상태 머신, 새 DB 테이블 등)
+- deep: 보안·결제·인증
+이슈 라벨: ${issue_labels} → 권장: ${depth_hint}" \
         "${STATE_DIR}/${PREFIX}_arch_out.txt"
     else
       echo "[HARNESS] architect Module Plan 작성"
