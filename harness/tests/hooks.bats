@@ -313,12 +313,15 @@ print("ENGINEER_DOCS_BLOCKED")
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-# agent-gate.py: light_plan_ready 폴백 검증
+# agent-gate.py: 책임 분리 검증 (A1)
+# 훅 = 외부 방어만, 내부 순서 규칙은 impl_*.sh가 담당
 # ═══════════════════════════════════════════════════════════════════════
 
-@test "agent-gate: engineer allows light_plan_ready as alternative to plan_validation_passed" {
-  run grep -A2 'light_plan_ready' "${BATS_TEST_DIRNAME}/../../hooks/agent-gate.py"
-  [[ "$output" == *"light_plan_ready"* ]]
+@test "agent-gate: does not contain internal ordering rules (A1 separation)" {
+  # 내부 순서 규칙(plan_validation, test_engineer 선행 조건 등)은 impl_*.sh에 위임
+  # docstring 제외하고 active code에서만 확인
+  run grep -c 'pr-reviewer.*not flag\|validator.*Mode B.*not flag' "${BATS_TEST_DIRNAME}/../../hooks/agent-gate.py"
+  [[ "$output" == "0" ]]
 }
 
 # ═══════════════════════════════════════════════════════════════════════
