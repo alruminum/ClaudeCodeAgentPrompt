@@ -120,12 +120,14 @@ DESIGN_HANDOFF 후 이슈 본문에 스펙이 업데이트되어 있다.
 
 ### 2. executor.sh impl 호출
 
+DESIGN_HANDOFF 패키지의 `## Issue: #N`에서 이슈 번호를 읽는다.
+
 ```bash
 # PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
 bash ~/.claude/harness/executor.sh impl \
-  --issue <생성된 이슈 번호> \
+  --issue <DESIGN_HANDOFF의 Issue 번호> \
   $PREFIX_FLAG
 ```
 

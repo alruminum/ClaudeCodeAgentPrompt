@@ -66,7 +66,7 @@ description: 버그/이슈를 자연어로 설명하면 명확히 정의한 뒤 
 }
 ```
 
-QA 에이전트가 코드 분석 + GitHub 이슈 생성까지 수행한다.
+QA 에이전트가 코드 분석 + 분류를 수행한다. FUNCTIONAL_BUG일 때만 이슈 생성 (DESIGN_ISSUE는 designer가 담당).
 
 ---
 
@@ -98,7 +98,7 @@ ux 스킬로 전달합니다. 계속 진행할까요?
 ---
 ```
 
-확인 후 ux 스킬을 실행한다. QA가 생성한 이슈 번호를 ux 스킬에 전달해 DESIGN_HANDOFF 후 동일 이슈에 연결한다.
+확인 후 ux 스킬을 실행한다. 이슈는 designer가 Phase 0-0에서 직접 생성한다.
 
 ### SCOPE_ESCALATE / KNOWN_ISSUE → 유저 보고
 

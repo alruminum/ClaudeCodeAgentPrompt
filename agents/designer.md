@@ -233,6 +233,7 @@ MODE: [SCREEN_THREE_WAY | COMPONENT_THREE_WAY]
 ```
 DESIGN_HANDOFF
 
+## Issue: #[Phase 0-0에서 생성한 이슈 번호]
 ## Selected Variant: [A/B/C]: [컨셉명]
 ## Target: [구현 대상 화면/컴포넌트]
 ## Pencil Frame ID: [선택된 프레임 노드 ID]
