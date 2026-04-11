@@ -54,7 +54,8 @@ def main():
             deny(f"❌ engineer 전 Plan Validation PASS 필요. {get_state_dir()}/{PREFIX}_plan_validation_passed 없음.")
 
     # 3b. 하네스 내부 에이전트는 harness/executor.sh 경유 필수
-    HARNESS_ONLY_AGENTS = ("engineer", "qa", "architect")
+    # (qa는 하네스 진입 전 분류 역할 — HARNESS_ONLY에서 제외)
+    HARNESS_ONLY_AGENTS = ("engineer", "architect")
     if agent in HARNESS_ONLY_AGENTS and not flag("harness_active"):
         cmds = {
             "engineer": "bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N>",
