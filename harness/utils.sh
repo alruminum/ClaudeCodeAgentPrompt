@@ -53,7 +53,7 @@ write_run_end() {
   fi
 }
 
-# ── hlog: 공용 로그 함수 (impl_fast/std/deep 외 design/bugfix/plan 루프에서도 사용) ──
+# ── hlog: 공용 로그 함수 (impl_simple/std/deep 외 design/plan 루프에서도 사용) ──
 hlog() {
   local _log="${HLOG:-/tmp/${PREFIX:-mb}-harness-debug.log}"
   echo "[$(date +%H:%M:%S)] $*" | tee -a "$_log"

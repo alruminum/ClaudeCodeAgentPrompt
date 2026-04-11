@@ -1,6 +1,6 @@
 # Deep 구현 루프 (impl_deep)
 
-진입 조건: impl에 `(BROWSER:DOM)` 태그 있을 때, 또는 보안·품질 게이트 필요 시
+진입 조건: impl frontmatter `depth: deep` — behavior 변경 + 보안 민감
 스크립트: `harness/impl_deep.sh`
 
 ---

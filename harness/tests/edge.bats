@@ -91,19 +91,7 @@ teardown() {
   [[ "$result" == "ITERATE" ]]
 }
 
-# === bugfix: DUPLICATE_OF detection ===
-
-@test "bugfix: DUPLICATE_OF updates ISSUE_NUM" {
-  source "${HARNESS_DIR}/bugfix.sh"
-  cat > "$TEST_TMP/qa_dup.txt" <<'EOF'
----QA_SUMMARY---
-TYPE: FUNCTIONAL_BUG
-DUPLICATE_OF: #42
----END_QA_SUMMARY---
-EOF
-  result=$(_parse_qa_summary "$TEST_TMP/qa_dup.txt" "DUPLICATE_OF")
-  [[ "$result" == "#42" ]]
-}
+# === bugfix: DUPLICATE_OF — REMOVED (v6): bugfix.sh 삭제됨 ===
 
 # === impl: depth auto-detection from impl file ===
 
@@ -129,7 +117,10 @@ exit 0' > "$mock_script"
     PROCESS_SCRIPT="'"$mock_script"'"
     detect_depth() {
       local impl="$1"
-      if grep -q "(BROWSER:DOM)" "$impl" 2>/dev/null; then echo "deep"; else echo "std"; fi
+      if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
+      local depth_val
+      depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+      case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
     }
     run_impl
   '
@@ -148,38 +139,33 @@ exit 0' > "$mock_script"
   }
   echo "modified" > "${GIT_WORK_TREE}/init.txt"
   git -C "${GIT_WORK_TREE}" add init.txt
-  run harness_commit_and_merge "feat/999" "999" "fast" "$PREFIX"
+  run harness_commit_and_merge "feat/999" "999" "simple" "$PREFIX"
   [[ $status -eq 1 ]]
   [[ "$output" == *"MERGE_CONFLICT_ESCALATE"* ]]
 }
 
-# === regression: fast mode HAS pr-reviewer (since commit-strategy refactor) ===
+# === regression: simple mode HAS pr-reviewer ===
 
-@test "regression: fast mode calls pr-reviewer" {
-  # After commit-strategy refactor, pr-reviewer runs on fast/std/deep
+@test "regression: simple mode calls pr-reviewer" {
+  # pr-reviewer runs on simple/std/deep
   run bash -c '
-    grep -c "pr-reviewer" "'"${HARNESS_DIR}/impl_std.sh"'"
+    grep -c "pr-reviewer" "'"${HARNESS_DIR}/impl_simple.sh"'"
   '
-  # Must appear in the file (covers fast path)
   [[ "$output" -ge 1 ]]
 }
 
-@test "regression: fast mode uses git diff HEAD~1 for pr-reviewer diff" {
-  # After early commit, diff must reference HEAD~1 (not HEAD)
+@test "regression: simple mode uses git diff HEAD~1 for pr-reviewer diff" {
   run bash -c '
-    sed -n "/fast: pr-reviewer/,/fast: merge/p" "'"${HARNESS_DIR}/impl_fast.sh"'" \
-      | grep "diff HEAD~1"
+    grep "diff HEAD~1" "'"${HARNESS_DIR}/impl_simple.sh"'"
   '
   [[ "$output" == *"HEAD~1"* ]]
 }
 
-# === regression: pr_reviewer_lgtm set after fast pr-reviewer ===
+# === regression: pr_reviewer_lgtm set after simple pr-reviewer ===
 
-@test "regression: fast path touches pr_reviewer_lgtm after pr-reviewer" {
+@test "regression: simple path touches pr_reviewer_lgtm after pr-reviewer" {
   run bash -c '
-    # The fast section should touch pr_reviewer_lgtm
-    sed -n "/HARNESS.fast. pr-reviewer/,/HARNESS.fast. merge/p" "'"${HARNESS_DIR}/impl_fast.sh"'" \
-      | grep "pr_reviewer_lgtm"
+    grep "pr_reviewer_lgtm" "'"${HARNESS_DIR}/impl_simple.sh"'"
   '
   [[ "$output" == *"pr_reviewer_lgtm"* ]]
 }

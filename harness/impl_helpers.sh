@@ -1,9 +1,9 @@
 #!/bin/bash
 # ~/.claude/harness/impl_helpers.sh
-# impl_fast/std/deep.sh 공유 헬퍼 함수 모음
+# impl_simple/std/deep.sh 공유 헬퍼 함수 모음
 # 기능 변경 없이 순수 추출됨
 #
-# 이 파일은 단독 실행 불가. impl_fast/std/deep.sh에서 source로 사용:
+# 이 파일은 단독 실행 불가. impl_simple/std/deep.sh에서 source로 사용:
 #   source "${HOME}/.claude/harness/impl_helpers.sh"
 #
 # 전제 조건: 호출 스크립트에서 아래 변수가 설정돼 있어야 함:

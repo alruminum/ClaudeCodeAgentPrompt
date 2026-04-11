@@ -24,24 +24,24 @@ BYPASS_TTL = 300  # 5분 내 재시도만 허용
 DRIFT_MAP = {
     'orchestration-rules.md': [
         'harness/executor.sh',
-        'harness/impl.sh', 'harness/impl_fast.sh', 'harness/impl_std.sh',
+        'harness/impl.sh', 'harness/impl_simple.sh', 'harness/impl_std.sh',
         'harness/impl_deep.sh', 'harness/impl_helpers.sh',
-        'harness/bugfix.sh', 'harness/plan.sh', 'harness/utils.sh',
+        'harness/plan.sh', 'harness/utils.sh',
     ],
-    'agents/qa.md': ['harness/bugfix.sh'],
-    'agents/architect.md': ['harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh'],
+    'agents/qa.md': ['commands/qa.md'],
+    'agents/architect.md': ['harness/impl.sh', 'harness/plan.sh'],
     'agents/validator.md': [
-        'harness/impl_fast.sh', 'harness/impl_std.sh', 'harness/impl_deep.sh',
-        'harness/impl.sh', 'harness/bugfix.sh', 'harness/plan.sh',
+        'harness/impl_simple.sh', 'harness/impl_std.sh', 'harness/impl_deep.sh',
+        'harness/impl.sh', 'harness/plan.sh',
     ],
-    'agents/engineer.md': ['harness/impl_std.sh', 'harness/impl_deep.sh', 'harness/impl_helpers.sh', 'harness/bugfix.sh'],
+    'agents/engineer.md': ['harness/impl_std.sh', 'harness/impl_deep.sh', 'harness/impl_helpers.sh'],
     'agents/test-engineer.md': ['harness/impl_std.sh', 'harness/impl_deep.sh'],
     # designer/design-critic는 하네스 루프 밖 (v4). ux 스킬이 직접 호출.
     # harness/design.sh는 DEPRECATED — 드리프트 체크 대상에서 제외.
     'agents/designer.md': ['commands/ux.md'],
     'agents/design-critic.md': ['orchestration/design.md'],
     'agents/product-planner.md': ['harness/plan.sh'],
-    'agents/pr-reviewer.md': ['harness/impl_fast.sh', 'harness/impl_std.sh', 'harness/impl_deep.sh'],
+    'agents/pr-reviewer.md': ['harness/impl_simple.sh', 'harness/impl_std.sh', 'harness/impl_deep.sh'],
     'agents/security-reviewer.md': ['harness/impl_deep.sh'],
 }
 

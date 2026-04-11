@@ -12,85 +12,9 @@ teardown() {
   common_teardown
 }
 
-# === bugfix routing ===
-
-@test "bugfix: KNOWN_ISSUE -> immediate escalation (exit 1)" {
-  source "${HARNESS_DIR}/bugfix.sh"
-  echo "KNOWN_ISSUE — cannot determine root cause" > "/tmp/${PREFIX}_qa_out.txt"
-  run bash -c '
-    source "'"${HARNESS_DIR}/utils.sh"'"
-    source "'"${HARNESS_DIR}/bugfix.sh"'"
-    PREFIX="'"$PREFIX"'"; ISSUE_NUM="999"
-    _bugfix_route 2>/dev/null
-  '
-  [[ "$output" == *"KNOWN_ISSUE"* ]]
-  [[ $status -eq 1 ]]
-}
-
-@test "bugfix: SCOPE_ESCALATE -> new feature (exit 1)" {
-  source "${HARNESS_DIR}/bugfix.sh"
-  echo "SCOPE_ESCALATE: no related modules" > "/tmp/${PREFIX}_qa_out.txt"
-  run bash -c '
-    source "'"${HARNESS_DIR}/utils.sh"'"
-    source "'"${HARNESS_DIR}/bugfix.sh"'"
-    PREFIX="'"$PREFIX"'"; ISSUE_NUM="999"
-    _bugfix_route 2>/dev/null
-  '
-  [[ "$output" == *"SCOPE_ESCALATE"* ]]
-  [[ $status -eq 1 ]]
-}
-
-@test "bugfix: DESIGN_ISSUE -> design loop handoff (exit 0)" {
-  echo "DESIGN_ISSUE" > "/tmp/${PREFIX}_qa_out.txt"
-  run bash -c '
-    source "'"${HARNESS_DIR}/utils.sh"'"
-    source "'"${HARNESS_DIR}/bugfix.sh"'"
-    PREFIX="'"$PREFIX"'"; ISSUE_NUM="999"
-    _bugfix_route 2>/dev/null
-  '
-  [[ "$output" == *"DESIGN_ISSUE"* ]]
-  [[ $status -eq 0 ]]
-}
-
-@test "bugfix: SPEC_ISSUE MODULE_PLAN call has no bugfix prefix" {
-  run grep -A3 'MODULE_PLAN' "${HARNESS_DIR}/bugfix.sh"
-  [[ "$output" != *"버그픽스"* ]]
-  [[ $status -eq 0 ]]
-}
-
-@test "bugfix: SPEC_ISSUE MODULE_PLAN call passes mode=spec_issue" {
-  run grep -A5 'MODULE_PLAN' "${HARNESS_DIR}/bugfix.sh"
-  [[ "$output" == *"spec_issue"* ]]
-  [[ $status -eq 0 ]]
-}
-
-@test "bugfix: SEVERITY HIGH forces depth=std" {
-  source "${HARNESS_DIR}/bugfix.sh"
-  cat > "/tmp/${PREFIX}_qa_out.txt" <<'EOF'
----QA_SUMMARY---
-TYPE: FUNCTIONAL_BUG
-SEVERITY: HIGH
-AFFECTED_FILES: 1
-ROUTING: engineer_direct
----END_QA_SUMMARY---
-EOF
-  result=$(detect_bugfix_depth "/tmp/${PREFIX}_qa_out.txt")
-  [[ "$result" == "std" ]]
-}
-
-@test "bugfix: FUNCTIONAL_BUG + low affected -> fast" {
-  source "${HARNESS_DIR}/bugfix.sh"
-  cat > "/tmp/${PREFIX}_qa_out.txt" <<'EOF'
----QA_SUMMARY---
-TYPE: FUNCTIONAL_BUG
-SEVERITY: LOW
-AFFECTED_FILES: 1
-ROUTING: engineer_direct
----END_QA_SUMMARY---
-EOF
-  result=$(detect_bugfix_depth "/tmp/${PREFIX}_qa_out.txt")
-  [[ "$result" == "fast" ]]
-}
+# === bugfix routing — REMOVED (v6) ===
+# bugfix.sh 삭제됨. QA/DESIGN_HANDOFF는 executor.sh impl --issue <N>으로 통합.
+# 이전 bugfix 테스트는 모두 폐기.
 
 # === design flow ===
 
@@ -266,8 +190,8 @@ EOF
   [[ $status -eq 0 ]]
 }
 
-@test "safety: bugfix MAX_HOTFIX=3" {
-  run grep 'MAX_HOTFIX=3' "${HARNESS_DIR}/bugfix.sh"
+@test "safety: simple MAX=3" {
+  run grep 'MAX=3' "${HARNESS_DIR}/impl_simple.sh"
   [[ $status -eq 0 ]]
 }
 
@@ -288,8 +212,8 @@ EOF
   [[ $status -eq 0 ]]
 }
 
-@test "safety: IMPLEMENTATION_ESCALATE in impl_std and bugfix" {
-  run grep -l 'IMPLEMENTATION_ESCALATE' "${HARNESS_DIR}/impl_std.sh" "${HARNESS_DIR}/bugfix.sh"
+@test "safety: IMPLEMENTATION_ESCALATE in impl_std and impl_simple" {
+  run grep -l 'IMPLEMENTATION_ESCALATE' "${HARNESS_DIR}/impl_std.sh" "${HARNESS_DIR}/impl_simple.sh"
   [[ $(echo "$output" | wc -l) -ge 2 ]]
 }
 

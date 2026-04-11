@@ -171,13 +171,15 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     fi
 
     log_phase "architect-spec-gap"
-    echo "[HARNESS] SPEC_GAP → architect"
+    echo "[HARNESS] SPEC_GAP → architect (depth 재판정 포함)"
     spec_gap_context=$(tail -50 "/tmp/${PREFIX}_eng_out.txt")
     _agent_call "architect" 900 \
       "@MODE:ARCHITECT:SPEC_GAP
 engineer가 SPEC_GAP_FOUND 보고. impl: $IMPL_FILE issue: #$ISSUE_NUM
+현재 depth: std
 engineer 보고:
-$spec_gap_context" \
+$spec_gap_context
+[지시] SPEC_GAP 해결 후 depth 재판정. frontmatter depth: 필드를 재선언하라. 상향만 허용(simple→std→deep)." \
       "/tmp/${PREFIX}_arch_sg_out.txt"
     budget_check "architect" "/tmp/${PREFIX}_arch_sg_out.txt"
 
@@ -185,7 +187,14 @@ $spec_gap_context" \
 
     case "$sg_result" in
       SPEC_GAP_RESOLVED)
-        hlog "SPEC_GAP_RESOLVED → engineer 재시도 (attempt 동결)"
+        # depth 재판정 확인: impl frontmatter에서 새 depth 읽기
+        local new_depth
+        new_depth=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$IMPL_FILE" 2>/dev/null || echo "std")
+        if [[ "$new_depth" == "deep" ]]; then
+          hlog "depth 상향: std → deep. deep 루프로 전환 (attempt=${attempt} 이어가기)"
+          exec bash "${HOME}/.claude/harness/impl_deep.sh" --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --branch-type "$BRANCH_TYPE"
+        fi
+        hlog "SPEC_GAP_RESOLVED → engineer 재시도 (depth=std 유지, attempt 동결)"
         error_trace=""; fail_type=""
         continue
         ;;

@@ -8,8 +8,7 @@
 #     [--choice]  ← design 모드 전용(DEPRECATED): 3 variant + design-critic PASS/REJECT
 #
 # mode 목록:
-#   impl   — harness/impl.sh (계획 + dispatcher) → impl_fast/std/deep.sh (실행)
-#   direct — harness/impl_direct.sh (impl 파일 없이 engineer 직행, qa 스킬 / ux 스킬 경유)
+#   impl   — harness/impl.sh (계획 + dispatcher) → impl_simple/std/deep.sh (실행)
 #   plan   — harness/plan.sh (product-planner → architect → validator)
 #
 # ⚠️  design 모드: DEPRECATED (v4)
@@ -17,9 +16,9 @@
 #   'executor.sh design' 은 레거시 호환용으로만 유지.
 #   신규 UX 요청은 ux 스킬 → designer 에이전트 직접 호출 사용.
 #
-# ⚠️  bugfix 모드: DEPRECATED (v5)
-#   버그 보고는 qa 스킬이 QA 에이전트를 직접 호출해 분류 후 executor.sh direct로 라우팅.
-#   'executor.sh bugfix' 는 레거시 호환용으로만 유지.
+# ⚠️  bugfix/direct 모드: REMOVED (v6)
+#   버그 보고는 qa 스킬이 QA 에이전트를 직접 호출해 분류 후 executor.sh impl --issue <N>으로 라우팅.
+#   impl.sh가 issue labels로 BUGFIX_PLAN vs MODULE_PLAN을 분기한다.
 
 set -euo pipefail
 
@@ -32,8 +31,6 @@ command -v timeout &>/dev/null || timeout() {
 source "${HOME}/.claude/harness/utils.sh"
 source "${HOME}/.claude/harness/impl.sh"
 source "${HOME}/.claude/harness/design.sh"
-source "${HOME}/.claude/harness/impl_direct.sh"
-source "${HOME}/.claude/harness/bugfix.sh"
 source "${HOME}/.claude/harness/plan.sh"
 
 export HARNESS_RESULT="unknown"
@@ -103,14 +100,13 @@ detect_depth() {
   if [[ -z "$impl" || ! -f "$impl" ]]; then
     echo "std"; return
   fi
-  if grep -q "(BROWSER:DOM)" "$impl" 2>/dev/null; then
-    echo "deep"
-  elif grep -q "(MANUAL)" "$impl" 2>/dev/null && \
-       ! grep -qE "\(TEST\)|\(BROWSER:DOM\)" "$impl" 2>/dev/null; then
-    echo "fast"
-  else
-    echo "std"
-  fi
+  # frontmatter depth: 필드 읽기 (YAML frontmatter --- ... --- 블록 내)
+  local depth_val
+  depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+  case "$depth_val" in
+    simple|std|deep) echo "$depth_val" ;;
+    *) echo "std" ;;  # frontmatter 없거나 유효하지 않으면 기본 std
+  esac
 }
 
 # ── impl 서브 스크립트 기본 경로 (impl.sh dispatcher가 참조) ──
@@ -121,12 +117,14 @@ IMPL_SCRIPT_DIR="${HOME}/.claude/harness"
 # ══════════════════════════════════════════════════════════════════════
 case "$MODE" in
   impl)    run_impl ;;
-  direct)  run_direct ;;
   design)  run_design ;;
+  direct)
+    echo "[HARNESS] ⚠️  direct 모드는 제거됐습니다. executor.sh impl --issue <N>을 사용하세요."
+    export HARNESS_RESULT="HARNESS_CRASH"; exit 1
+    ;;
   bugfix)
-    echo "[HARNESS] ⚠️  bugfix 모드는 deprecated입니다. qa 스킬을 사용하세요."
-    echo "[HARNESS] 하위 호환성을 위해 실행합니다."
-    run_bugfix
+    echo "[HARNESS] ⚠️  bugfix 모드는 제거됐습니다. qa 스킬 → executor.sh impl --issue <N>을 사용하세요."
+    export HARNESS_RESULT="HARNESS_CRASH"; exit 1
     ;;
   plan)    run_plan ;;
   *)       export HARNESS_RESULT="HARNESS_CRASH"; echo "[HARNESS] 알 수 없는 mode: $MODE"; exit 1 ;;

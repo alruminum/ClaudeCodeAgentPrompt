@@ -66,8 +66,8 @@ model: sonnet
 
 | qa 분류 | 경로 | 다음 행동 |
 |---|---|---|
-| FUNCTIONAL_BUG | → executor.sh direct | engineer 직행 (SPEC_GAP 발생 시 루프 내 architect inline 처리) |
-| DESIGN_ISSUE | → ux 스킬 | designer → DESIGN_HANDOFF → executor.sh direct |
+| FUNCTIONAL_BUG | → executor.sh impl --issue <N> | architect BUGFIX_PLAN → depth별 루프 (SPEC_GAP 발생 시 루프 내 architect inline 처리) |
+| DESIGN_ISSUE | → ux 스킬 | designer → DESIGN_HANDOFF → executor.sh impl --issue <N> |
 | SCOPE_ESCALATE | → 유저 보고 | product-planner 라우팅 |
 | KNOWN_ISSUE | → 유저 보고 | 추가 정보 수집 후 재분석 |
 

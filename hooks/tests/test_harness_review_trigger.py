@@ -47,7 +47,7 @@ def test_harness_done_creates_trigger(tmp_path):
     jsonl = logs_dir / "run_test.jsonl"
     jsonl.write_text('{"event":"run_end"}\n')
 
-    result = run_hook("HARNESS_DONE (engineer_direct, depth=fast)")
+    result = run_hook("HARNESS_DONE (engineer, depth=simple)")
     assert result.returncode == 0
     assert TRIGGER.exists(), "트리거 파일이 생성되어야 함"
 
@@ -81,7 +81,7 @@ def test_no_duplicate_trigger():
     TRIGGER.write_text(json.dumps(original))
     mtime_before = TRIGGER.stat().st_mtime
 
-    result = run_hook("HARNESS_DONE (engineer_direct)")
+    result = run_hook("HARNESS_DONE (engineer, depth=simple)")
     assert result.returncode == 0
 
     # 파일이 그대로여야 함 (덮어쓰지 않음)

@@ -29,15 +29,16 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 |---|---|---|
 | `harness/utils.sh` | 공용 유틸: `_agent_call()`, `kill_check()`, `parse_marker()`, `run_plan_validation()`, `run_design_validation()`, `create_feature_branch()`, `merge_to_main()`, `generate_commit_msg()`, `rotate_harness_logs()`, `write_run_end()`, `build_loop_context()` (Phase C), `explore_instruction()`, `prune_history()` | 모든 harness 스크립트에서 source |
 | `harness/review-agent.sh` | Phase D Step A: 하네스 완료 후 Haiku 로그 분석 → `/tmp/{prefix}_review-result.json` 생성 (JSON 검증 포함) | `write_run_end()` 백그라운드 트리거 |
-| `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,bugfix,plan}.sh |
-| `harness/impl.sh` | impl 모드: 재진입 감지 → architect → `run_plan_validation()` → engineer 루프 | harness/impl_{fast,std,deep}.sh |
-| `harness/impl_fast.sh` | fast depth 루프 (engineer → pr-reviewer → merge, LLM 2회) | /tmp/{p}_* 플래그들 |
+| `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,plan}.sh |
+| `harness/impl.sh` | impl 모드: 재진입 감지 → architect (MODULE_PLAN/BUGFIX_PLAN) → `run_plan_validation()` → depth별 루프 | harness/impl_{simple,std,deep}.sh |
+| `harness/impl_simple.sh` | simple depth 루프 (engineer → pr-reviewer → merge, LLM 2회, behavior 불변) | /tmp/{p}_* 플래그들 |
 | `harness/impl_std.sh` | std depth 루프 (engineer → test → vitest → validator → pr-reviewer → merge, LLM 3회) | /tmp/{p}_* 플래그들 |
 | `harness/impl_deep.sh` | deep depth 루프 (impl_std + security-reviewer, LLM 5회) | /tmp/{p}_* 플래그들 |
-| `harness/impl_direct.sh` | direct 루프 (impl 파일 없이 이슈 컨텍스트 기반 직행) | /tmp/{p}_* 플래그들 |
-| `harness/impl_helpers.sh` | impl 루프 공유 헬퍼 (constraints 로드, budget_check, hlog 등) | impl_{fast,std,deep}.sh에서 source |
+| `harness/impl_helpers.sh` | impl 루프 공유 헬퍼 (constraints 로드, budget_check, hlog 등) | impl_{simple,std,deep}.sh에서 source |
 | `harness/design.sh` | ⚠️ DEPRECATED (v4). designer는 ux 스킬에서 Agent 도구로 직접 호출. 레거시 코드 보존용. 신규 UX 요청은 ux 스킬 → designer 에이전트 직접 호출 사용. | 레거시 |
-| `harness/bugfix.sh` | bugfix 모드: qa → 5-way 분기 (engineer_direct/architect_full/design/backlog/KNOWN_ISSUE) + `run_plan_validation()` 활용 | 에이전트들 |
+| ~~`harness/bugfix.sh`~~ | **REMOVED (v6)**: QA/DESIGN_HANDOFF는 executor.sh impl --issue <N>으로 통합 | - |
+| ~~`harness/impl_fast.sh`~~ | **REMOVED (v6)**: impl_simple.sh로 대체 | - |
+| ~~`harness/impl_direct.sh`~~ | **REMOVED (v6)**: impl 루프로 통합 | - |
 | `harness/plan.sh` | plan 모드: product-planner → architect SD → `run_design_validation()` → architect MP → `run_plan_validation()` → PLAN_VALIDATION_PASS | 에이전트들 |
 | `setup-harness.sh` | 프로젝트별 훅 설치 → `.claude/settings.json` + `harness.config.json` | - |
 | `setup-agents.sh` | 프로젝트별 에이전트 파일 초기화 (9개) + GitHub milestone/label 생성 | - |

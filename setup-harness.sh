@@ -20,7 +20,7 @@
 #
 # prefix 결정: 각 훅이 harness_common.get_prefix()로 harness.config.json → dirname → "proj" 폴백
 #
-# 주의: harness-*.sh (executor, impl, impl_fast, impl_std, impl_deep, design, bugfix, plan, utils)는 글로벌(~/.claude/) 전용.
+# 주의: harness-*.sh (executor, impl, impl_simple, impl_std, impl_deep, design, plan, utils)는 글로벌(~/.claude/) 전용.
 #       프로젝트에 복사하지 않으며, 기존 낡은 복사본은 자동 삭제.
 
 set -e
@@ -248,7 +248,7 @@ if [ -d ".git/hooks" ]; then
     cat >> "$PRECOMMIT_HOOK" <<HOOKEOF
 
 ${RULE_AUDIT_MARKER}
-_harness_changed=\$(git diff --cached --name-only 2>/dev/null | grep -E "(impl_fast\.sh|impl_std\.sh|impl_deep\.sh|impl_direct\.sh|impl_helpers\.sh|impl\.sh|bugfix\.sh|utils\.sh|orchestration-rules\.md|RULE_INDEX\.md)" || true)
+_harness_changed=\$(git diff --cached --name-only 2>/dev/null | grep -E "(impl_simple\.sh|impl_std\.sh|impl_deep\.sh|impl_helpers\.sh|impl\.sh|utils\.sh|orchestration-rules\.md|RULE_INDEX\.md)" || true)
 if [ -n "\$_harness_changed" ]; then
   echo "[pre-commit] harness 파일 변경 감지 — rule-audit.bats 실행 중..."
   if command -v bats &>/dev/null && [ -f "${GLOBAL_HARNESS_DIR}/tests/rule-audit.bats" ]; then

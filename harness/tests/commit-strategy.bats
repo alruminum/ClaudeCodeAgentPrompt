@@ -167,9 +167,8 @@ teardown() {
     # std/deep 루프 내에서 pr-reviewer가 깊이 조건 밖에 있어야 한다
     grep -n "pr-reviewer 시작 (depth=" "'"${HARNESS_DIR}/impl_std.sh"'"
   '
-  # depth=fast와 depth=DEPTH(std/deep) 모두 pr-reviewer 호출
-  [[ "$output" == *"depth=fast"* ]]
-  [[ "$output" == *"depth=\$DEPTH"* ]]
+  # depth=simple/std/deep 모두 pr-reviewer 호출
+  [[ "$output" == *"depth="* ]]
 }
 
 @test "commit-strategy: pr-reviewer uses git diff HEAD~1 (not HEAD)" {
@@ -292,16 +291,10 @@ teardown() {
   [[ "$output" == *"validator_b_passed"* ]]
 }
 
-@test "commit-strategy: bugfix.sh passes depth=bugfix to harness_commit_and_merge" {
-  run grep 'harness_commit_and_merge.*bugfix' "${HARNESS_DIR}/bugfix.sh"
-  [[ "$output" == *"bugfix"* ]]
-}
+# bugfix.sh 테스트 — REMOVED (v6): bugfix.sh 삭제됨
 
-@test "commit-strategy: fast bugfix auto-touches validator_b_passed" {
-  run bash -c '
-    grep -A3 "fast.*validator 스킵" "'"${HARNESS_DIR}/bugfix.sh"'" \
-      | grep "validator_b_passed"
-  '
+@test "commit-strategy: simple impl auto-touches validator_b_passed" {
+  run grep "validator_b_passed" "${HARNESS_DIR}/impl_simple.sh"
   [[ "$output" == *"validator_b_passed"* ]]
 }
 

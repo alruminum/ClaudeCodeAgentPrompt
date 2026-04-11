@@ -234,30 +234,4 @@ exit 0' > "$mock_script"
   [[ $status -eq 0 ]]
 }
 
-# === QA_SUMMARY parsing (bugfix helpers) ===
-
-@test "bugfix: _parse_qa_summary extracts footer fields" {
-  source "${HARNESS_DIR}/bugfix.sh"
-  cat > "$TEST_TMP/qa.txt" <<'EOF'
-analysis results here...
-
----QA_SUMMARY---
-TYPE: FUNCTIONAL_BUG
-SEVERITY: HIGH
-AFFECTED_FILES: 3
-ROUTING: engineer_direct
-DUPLICATE_OF: N
----END_QA_SUMMARY---
-EOF
-  [[ "$(_parse_qa_summary "$TEST_TMP/qa.txt" "TYPE")" == "FUNCTIONAL_BUG" ]]
-  [[ "$(_parse_qa_summary "$TEST_TMP/qa.txt" "SEVERITY")" == "HIGH" ]]
-  [[ "$(_parse_qa_summary "$TEST_TMP/qa.txt" "AFFECTED_FILES")" == "3" ]]
-  [[ "$(_parse_qa_summary "$TEST_TMP/qa.txt" "ROUTING")" == "engineer_direct" ]]
-}
-
-@test "bugfix: _parse_qa_summary returns empty for missing field" {
-  source "${HARNESS_DIR}/bugfix.sh"
-  echo "no footer here" > "$TEST_TMP/qa.txt"
-  result=$(_parse_qa_summary "$TEST_TMP/qa.txt" "TYPE")
-  [[ -z "$result" ]]
-}
+# === QA_SUMMARY parsing — REMOVED (v6): bugfix.sh 삭제됨 ===

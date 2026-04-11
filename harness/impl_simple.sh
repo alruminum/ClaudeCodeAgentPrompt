@@ -1,10 +1,11 @@
 #!/bin/bash
-# ~/.claude/harness/impl_deep.sh
-# deep depth 구현 루프: engineer → test-engineer → vitest → validator → pr-reviewer → security-reviewer → merge
-# 상세: orchestration/impl_deep.md
+# ~/.claude/harness/impl_simple.sh
+# simple depth 구현 루프: engineer → pr-reviewer → merge (LLM 2회)
+# behavior 불변 변경 전용 (이름·텍스트·스타일·설정값·번역)
+# 상세: orchestration/impl_simple.md
 #
 # 호출 형식 (impl.sh dispatcher에서 호출):
-#   bash ~/.claude/harness/impl_deep.sh \
+#   bash ~/.claude/harness/impl_simple.sh \
 #     --impl <impl_file_path> \
 #     --issue <issue_number> \
 #     [--prefix <prefix>] \
@@ -34,10 +35,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-DEPTH="deep"
+DEPTH="simple"
 
 if [[ -z "$IMPL_FILE" || -z "$ISSUE_NUM" ]]; then
-  echo "사용법: bash harness/impl_deep.sh --impl <path> --issue <N> [--prefix <prefix>]"
+  echo "사용법: bash harness/impl_simple.sh --impl <path> --issue <N> [--prefix <prefix>]"
   exit 1
 fi
 
@@ -64,19 +65,17 @@ hlog "feature branch: $FEATURE_BRANCH"
 
 attempt=0
 spec_gap_count=0
-spec_gap_context=""
-sg_result=""
 MAX=3
 MAX_SPEC_GAP=2
 error_trace=""
 fail_type=""
-hlog "=== 하네스 루프 시작 (depth=deep, max_retries=$MAX) ==="
+hlog "=== 하네스 루프 시작 (depth=simple, max_retries=$MAX) ==="
 
 HIST_DIR="/tmp/${PREFIX}_history"
 LOOP_OUT_DIR="${HIST_DIR}/impl"
 mkdir -p "$LOOP_OUT_DIR"
 
-[[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"deep","max_retries":%d,"constraints_chars":%d}\n' \
+[[ -n "$RUN_LOG" ]] && printf '{"event":"config","impl_file":"%s","issue":"%s","depth":"simple","max_retries":%d,"constraints_chars":%d}\n' \
   "$IMPL_FILE" "$ISSUE_NUM" "$MAX" "${#CONSTRAINTS}" >> "$RUN_LOG"
 
 while [[ $attempt -lt $MAX ]]; do
@@ -89,31 +88,16 @@ while [[ $attempt -lt $MAX ]]; do
 
   context=$(build_smart_context "$IMPL_FILE" 0)
   if [[ $attempt -eq 0 ]]; then
-    task="impl 파일의 구현 명세 전체 이행"
+    task="impl 파일의 구현 명��� 전체 이행"
   else
     prev_dir="${LOOP_OUT_DIR}/attempt-$((attempt-1))"
     wt_prefix="[주의] 이전 attempt의 변경이 working tree에 남아있음. 추가 수정으로 해결하라 (stash/reset 금지).
 "
     case "$fail_type" in
-      autocheck_fail)
-        task="[사전 검사 실패] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/autocheck.log")
-위 문제를 해결한 뒤 다시 구현하라."
-        ;;
-      test_fail)
-        task="[테스트 실패] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/test-results.log")
-구현 코드를 수정하라. 테스트 코드 자체는 수정 금지."
-        ;;
-      validator_fail)
-        task="[스펙 불일치] 시도 ${attempt}회.
-$(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/validator.log")
-impl 파일의 해당 항목을 다시 확인하고 누락된 부분을 구현하라."
-        ;;
       pr_fail)
         task="[코드 품질] 시도 ${attempt}회.
 $(explore_instruction "$LOOP_OUT_DIR" "${prev_dir}/pr.log")
-MUST FIX 항목만 수정하라. 기능 변경 금지."
+MUST FIX 항목만 수정���라. 기능 변경 금지."
         ;;
       *)
         task="[재시도] 시도 ${attempt}회.
@@ -129,7 +113,7 @@ $(explore_instruction "$LOOP_OUT_DIR")"
   # ── 워커 1: engineer ─────────────────────────────────────────────
   log_phase "engineer"
   echo "[HARNESS] engineer (attempt $((attempt+1))/$MAX)"
-  hlog "engineer 시작 (depth=std, timeout=900s)"
+  hlog "engineer 시작 (depth=simple, timeout=900s)"
   kill_check
   AGENT_EXIT=0
   _agent_call "engineer" 900 \
@@ -156,14 +140,14 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     continue
   fi
 
-  # ── SPEC_GAP 감지 ──────────────────────────────────────────────
+  # ── SPEC_GAP 감지 + depth 재판정 ────────────────────────────────
   if grep -q "SPEC_GAP_FOUND" "/tmp/${PREFIX}_eng_out.txt" 2>/dev/null; then
     spec_gap_count=$((spec_gap_count + 1))
     hlog "SPEC_GAP_FOUND (spec_gap_count=${spec_gap_count}/${MAX_SPEC_GAP})"
     log_decision "spec_gap" "$spec_gap_count" "SPEC_GAP_FOUND in engineer output"
 
     if [[ $spec_gap_count -gt $MAX_SPEC_GAP ]]; then
-      hlog "SPEC_GAP 동결 초과 → IMPLEMENTATION_ESCALATE"
+      hlog "SPEC_GAP 동결 ���과 → IMPLEMENTATION_ESCALATE"
       export HARNESS_RESULT="IMPLEMENTATION_ESCALATE"
       echo "IMPLEMENTATION_ESCALATE (spec_gap_count ${spec_gap_count} > ${MAX_SPEC_GAP})"
       echo "branch: ${FEATURE_BRANCH:-unknown}"
@@ -176,10 +160,10 @@ $CONSTRAINTS" "/tmp/${PREFIX}_eng_out.txt" || AGENT_EXIT=$?
     _agent_call "architect" 900 \
       "@MODE:ARCHITECT:SPEC_GAP
 engineer가 SPEC_GAP_FOUND 보고. impl: $IMPL_FILE issue: #$ISSUE_NUM
-현재 depth: deep (최고 depth — 하향 없음)
+현재 depth: simple
 engineer 보고:
 $spec_gap_context
-[지시] SPEC_GAP 해결. depth는 이미 deep이므로 재판정 불필요." \
+[지시] SPEC_GAP 해결 후 depth 재판정. frontmatter depth: 필드를 재선언하��. 상향만 허���(simple→std→deep)." \
       "/tmp/${PREFIX}_arch_sg_out.txt"
     budget_check "architect" "/tmp/${PREFIX}_arch_sg_out.txt"
 
@@ -187,7 +171,15 @@ $spec_gap_context
 
     case "$sg_result" in
       SPEC_GAP_RESOLVED)
-        hlog "SPEC_GAP_RESOLVED → engineer 재시도 (depth=deep 유지, attempt 동결)"
+        # depth 재판정 확인: impl frontmatter에서 새 depth 읽기
+        new_depth=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$IMPL_FILE" 2>/dev/null || echo "simple")
+        if [[ "$new_depth" != "simple" && ("$new_depth" == "std" || "$new_depth" == "deep") ]]; then
+          hlog "depth 상향: simple → ${new_depth}. 새 depth 루프로 전환 (attempt=${attempt} 이어가기)"
+          local sub_script="${HOME}/.claude/harness/impl_${new_depth}.sh"
+          exec bash "$sub_script" --impl "$IMPL_FILE" --issue "$ISSUE_NUM" --prefix "$PREFIX" --branch-type "$BRANCH_TYPE"
+          # exec로 프로세스 교��되므로 이후 코드 실행 안 됨
+        fi
+        hlog "SPEC_GAP_RESOLVED → engineer 재시도 (depth=simple 유지, attempt 동결)"
         error_trace=""; fail_type=""
         continue
         ;;
@@ -204,7 +196,7 @@ $spec_gap_context
         exit 1
         ;;
       *)
-        hlog "architect SPEC_GAP 결과 불명확: $sg_result → engineer 재시도"
+        hlog "architect SPEC_GAP 결�� 불명확: $sg_result → engineer 재시도"
         error_trace=""; fail_type=""
         continue
         ;;
@@ -239,126 +231,10 @@ $spec_gap_context
     hlog "early commit: $early_commit (attempt=$((attempt+1)))"
   fi
 
-  # ── 워커 2: test-engineer ──────────────────────────────────────
-  changed_files=$(git diff HEAD~1 --name-only 2>/dev/null | tr '\n' ' ' || \
-    git status --short | grep -E "^ M|^M |^A " | awk '{print $2}' | tr '\n' ' ' || echo "")
-  log_phase "test-engineer"
-  echo "[HARNESS] test-engineer (attempt $((attempt+1))/$MAX)"
-  hlog "test-engineer 시작 (depth=std, timeout=600s)"
-  kill_check
-  AGENT_EXIT=0
-  if [[ $attempt -gt 0 ]]; then
-    te_prompt="[RETRY 모드] 이전 attempt에서 테스트 파일이 이미 작성됨. 새 테스트 파일 작성 불필요.
-impl: $IMPL_FILE
-수정된 파일: $changed_files
-issue: #$ISSUE_NUM
-
-[지시] npx vitest run만 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
-  else
-    te_prompt="@MODE:TEST_ENGINEER:TEST
-@PARAMS: { \"impl_path\": \"$IMPL_FILE\", \"src_files\": \"$changed_files\" }
-
-[지시] 위 src_files 목록이 이번 구현에서 변경된 파일 전체다. 추가 탐색 없이 이 파일들만 테스트하라.
-issue: #$ISSUE_NUM"
-  fi
-  _agent_call "test-engineer" 600 "$te_prompt" "/tmp/${PREFIX}_te_out.txt" || AGENT_EXIT=$?
-  hlog "test-engineer 종료 (exit=${AGENT_EXIT})"
-  if [[ $AGENT_EXIT -eq 124 ]]; then hlog "test-engineer timeout"; fi
-  budget_check "test-engineer" "/tmp/${PREFIX}_te_out.txt"
-
-  if ! check_agent_output "test-engineer" "/tmp/${PREFIX}_te_out.txt"; then
-    fail_type="test_fail"
-    error_trace="test-engineer agent produced no output (exit=${AGENT_EXIT})"
-    append_failure "$fail_type" "$error_trace"
-    rollback_attempt $attempt
-    attempt=$((attempt+1))
-    continue
-  fi
-
-  # ── vitest run (ground truth) ─────────────────────────────────
-  echo "[HARNESS] vitest 실행 (attempt $((attempt+1))/$MAX)"
-  hlog "vitest 시작"
-  kill_check
-  set +e
-  npx vitest run > "/tmp/${PREFIX}_test_out.txt" 2>&1
-  test_exit=$?
-  set -e
-  hlog "vitest 종료 (exit=$test_exit)"
-  if [[ $test_exit -ne 0 ]]; then
-    echo "[HARNESS] TESTS_FAIL"
-    error_trace=$(cat "/tmp/${PREFIX}_test_out.txt")
-    fail_type="test_fail"
-    log_decision "fail_type" "$fail_type" "vitest exit=$test_exit"
-    append_failure "test_fail" "$error_trace"
-    cp "/tmp/${PREFIX}_test_out.txt" "${attempt_dir}/test-results.log" 2>/dev/null || true
-    cp "/tmp/${PREFIX}_te_out.txt" "${attempt_dir}/test-engineer.log" 2>/dev/null || true
-    _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "test_fail" "${attempt_dir}/test-results.log 의 실패 케이스 확인"
-    rollback_attempt $attempt
-    attempt=$((attempt+1))
-    continue
-  fi
-  touch "/tmp/${PREFIX}_test_engineer_passed"
-  echo "[HARNESS] TESTS_PASS"
-
-  # ── 워커 3: validator ─────────────────────────────────────────
-  log_phase "validator"
-  echo "[HARNESS] validator (attempt $((attempt+1))/$MAX)"
-  hlog "validator 시작 (depth=std, timeout=300s)"
-  kill_check
-  val_context=$(build_validator_context "$IMPL_FILE")
-  AGENT_EXIT=0
-  _agent_call "validator" 300 \
-    "@MODE:VALIDATOR:CODE_VALIDATION
-impl: $IMPL_FILE
-context:
-$val_context" \
-    "/tmp/${PREFIX}_val_out.txt" || AGENT_EXIT=$?
-  hlog "validator 종료 (exit=${AGENT_EXIT})"
-  if [[ $AGENT_EXIT -eq 124 ]]; then hlog "validator timeout"; fi
-  budget_check "validator" "/tmp/${PREFIX}_val_out.txt"
-  cp "/tmp/${PREFIX}_val_out.txt" "${attempt_dir}/validator.log" 2>/dev/null || true
-
-  if ! check_agent_output "validator" "/tmp/${PREFIX}_val_out.txt"; then
-    fail_type="validator_fail"
-    error_trace="validator agent produced no output (exit=${AGENT_EXIT})"
-    append_failure "$fail_type" "$error_trace"
-    rollback_attempt $attempt
-    attempt=$((attempt+1))
-    continue
-  fi
-
-  val_result=$(parse_marker "/tmp/${PREFIX}_val_out.txt" "PASS|FAIL|SPEC_MISSING")
-  echo "[HARNESS] validator 결과: $val_result"
-
-  if [[ "$val_result" == "SPEC_MISSING" ]]; then
-    hlog "SPEC_MISSING → architect MODULE_PLAN 복구"
-    _agent_call "architect" 900 \
-      "@MODE:ARCHITECT:MODULE_PLAN
-SPEC_MISSING 복구. impl: $IMPL_FILE issue: #$ISSUE_NUM" \
-      "/tmp/${PREFIX}_arch_sm_out.txt"
-    budget_check "architect" "/tmp/${PREFIX}_arch_sm_out.txt"
-    fail_type="validator_fail"
-    error_trace="SPEC_MISSING: impl 파일 복구 후 재시도"
-    rollback_attempt $attempt
-    attempt=$((attempt+1))
-    continue
-  fi
-
-  if [[ "$val_result" != "PASS" ]]; then
-    fail_type="validator_fail"
-    log_decision "fail_type" "$fail_type" "validator result=$val_result"
-    append_failure "validator_fail" "validator FAIL (see ${attempt_dir}/validator.log)"
-    _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "validator_fail" "${attempt_dir}/validator.log 의 FAIL 항목 확인"
-    rollback_attempt $attempt
-    attempt=$((attempt+1))
-    continue
-  fi
-  touch "/tmp/${PREFIX}_validator_b_passed"
-
-  # ── 워커 4: pr-reviewer ───────────────────────────────────────
+  # ── 워커 2: pr-reviewer (simple: test-engineer·validator 스킵) ─
   log_phase "pr-reviewer"
   echo "[HARNESS] pr-reviewer (attempt $((attempt+1))/$MAX)"
-  hlog "pr-reviewer 시작 (depth=std, timeout=240s)"
+  hlog "pr-reviewer 시작 (depth=simple, timeout=240s)"
   kill_check
   diff_out=$(git diff HEAD~1 2>&1 | head -300 || git diff HEAD 2>&1 | head -300)
   AGENT_EXIT=0
@@ -395,57 +271,15 @@ $diff_out" "/tmp/${PREFIX}_pr_out.txt" || AGENT_EXIT=$?
   touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
   echo "[HARNESS] LGTM"
 
-  # ── 워커 5: security-reviewer (deep only) ─────────────────────
-  log_phase "security-reviewer"
-  echo "[HARNESS] security-reviewer (attempt $((attempt+1))/$MAX)"
-  hlog "security-reviewer 시작 (deep only, timeout=180s)"
-  kill_check
-  changed_src=$(git diff HEAD~1 --name-only 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -10 | tr '\n' ' ' || true)
-  AGENT_EXIT=0
-  _agent_call "security-reviewer" 180 \
-    "보안 리뷰 대상 파일:
-$changed_src
-
-변경 diff:
-$(git diff HEAD~1 2>&1 | head -500 || git diff HEAD 2>&1 | head -500)" "/tmp/${PREFIX}_sec_out.txt" || AGENT_EXIT=$?
-  hlog "security-reviewer 종료 (exit=${AGENT_EXIT})"
-  if [[ $AGENT_EXIT -eq 124 ]]; then hlog "security-reviewer timeout"; fi
-  budget_check "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"
-  cp "/tmp/${PREFIX}_sec_out.txt" "${attempt_dir}/security.log" 2>/dev/null || true
-
-  if ! check_agent_output "security-reviewer" "/tmp/${PREFIX}_sec_out.txt"; then
-    fail_type="security_fail"
-    error_trace="security-reviewer agent produced no output (exit=${AGENT_EXIT})"
-    append_failure "$fail_type" "$error_trace"
-    rollback_attempt $attempt
-    attempt=$((attempt+1))
-    continue
-  fi
-
-  sec_result=$(parse_marker "/tmp/${PREFIX}_sec_out.txt" "SECURE|VULNERABILITIES_FOUND")
-  echo "[HARNESS] security-reviewer 결과: $sec_result"
-  if [[ "$sec_result" != "SECURE" ]]; then
-    fail_type="security_fail"
-    log_decision "fail_type" "$fail_type" "security result=$sec_result"
-    append_failure "security_fail" "security VULNERABILITIES_FOUND (see ${attempt_dir}/security.log)"
-    _save_impl_meta "$attempt_dir" "$attempt" "FAIL" "security_fail" "${attempt_dir}/security.log 의 HIGH/MEDIUM 취약점 수정"
-    rollback_attempt $attempt
-    attempt=$((attempt+1))
-    continue
-  fi
+  # simple: test-engineer, validator, security-reviewer 스킵
+  touch "/tmp/${PREFIX}_test_engineer_passed"
+  touch "/tmp/${PREFIX}_validator_b_passed"
   touch "/tmp/${PREFIX}_security_review_passed"
-  echo "[HARNESS] SECURE"
+  hlog "test-engineer, validator, security-reviewer 스킵 (depth=simple)"
 
   # ── merge to main ───────────────────────────────────────────────
-  if collect_changed_files > /dev/null 2>&1; then
-    collect_changed_files | while IFS= read -r _cf; do
-      [[ -n "$_cf" ]] && git add -- "$_cf"
-    done
-    git commit -m "$(generate_commit_msg) [test-files]"
-    hlog "test 파일 추가 커밋 완료"
-  fi
   impl_commit=$(git rev-parse --short HEAD)
-  if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "deep" "$PREFIX"; then
+  if ! merge_to_main "$FEATURE_BRANCH" "$ISSUE_NUM" "simple" "$PREFIX"; then
     export HARNESS_RESULT="MERGE_CONFLICT_ESCALATE"
     echo "MERGE_CONFLICT_ESCALATE"
     echo "branch: $FEATURE_BRANCH"

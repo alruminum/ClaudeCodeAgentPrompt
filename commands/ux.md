@@ -121,13 +121,13 @@ DESIGN_HANDOFF 패키지를 기반으로 GitHub 이슈를 생성한다:
 
 > QA 경로에서 넘어온 경우 이미 이슈가 존재하므로 생성 스킵, 기존 이슈에 DESIGN_HANDOFF 내용을 코멘트로 추가한다.
 
-### 2. executor.sh direct 호출
+### 2. executor.sh impl 호출
 
 ```bash
 # PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
-bash ~/.claude/harness/executor.sh direct \
+bash ~/.claude/harness/executor.sh impl \
   --issue <생성된 이슈 번호> \
   $PREFIX_FLAG
 ```

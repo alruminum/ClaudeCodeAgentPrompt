@@ -22,8 +22,8 @@ setup() {
   # 실제 utils.sh merge gate 로직을 완전히 재현 (git checkout/merge만 skip)
   merge_to_main() {
     local branch="$1" issue="$2" depth="$3" prefix="$4"
-    # fast/std/deep: pr_reviewer_lgtm 필수
-    if [[ "$depth" == "fast" || "$depth" == "std" || "$depth" == "deep" ]]; then
+    # simple/std/deep: pr_reviewer_lgtm 필수
+    if [[ "$depth" == "simple" || "$depth" == "std" || "$depth" == "deep" ]]; then
       if [[ ! -f "/tmp/${prefix}_pr_reviewer_lgtm" ]]; then
         echo "[HARNESS] merge 거부: pr_reviewer_lgtm 없음 ($depth)"; return 1
       fi
@@ -34,10 +34,10 @@ setup() {
         echo "[HARNESS] merge 거부: security_review_passed 없음 (deep)"; return 1
       fi
     fi
-    # bugfix: validator_b_passed 필수
-    if [[ "$depth" == "bugfix" ]]; then
+    # (bugfix depth 제거됨 — v6)
+    if [[ "$depth" == "REMOVED_bugfix" ]]; then
       if [[ ! -f "/tmp/${prefix}_validator_b_passed" ]]; then
-        echo "[HARNESS] merge 거부: validator_b_passed 없음 (bugfix)"; return 1
+        echo "[HARNESS] merge 거부: validator_b_passed 없음"; return 1
       fi
     fi
     echo "[MOCK] merge OK: $branch → main"
@@ -367,40 +367,21 @@ make_staged_test_file() {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# DRY-RUN 7: bugfix path — validator_b_passed로 merge
+# DRY-RUN 7: bugfix path — REMOVED (v6): bugfix depth 제거
 # ─────────────────────────────────────────────────────────────────────
 
-@test "dryrun: bugfix path — merge with validator_b_passed only (no pr_reviewer_lgtm)" {
+@test "dryrun: simple path — merge with pr_reviewer_lgtm" {
   cd "${GIT_WORK_TREE}"
   create_test_commit "base.txt"
-  git checkout -b "fix/999-bugfix-test" 2>/dev/null
+  git checkout -b "feat/999-simple-test" 2>/dev/null
 
-  make_staged_change "src/bugfix.ts"
-  git commit -m "fix: bugfix change" >/dev/null 2>&1
+  make_staged_change "src/simple.ts"
+  git commit -m "fix: simple change" >/dev/null 2>&1
 
-  touch "/tmp/${PREFIX}_validator_b_passed"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
 
-  run merge_to_main "fix/999-bugfix-test" "999" "bugfix" "$PREFIX"
+  run merge_to_main "feat/999-simple-test" "999" "simple" "$PREFIX"
   [[ $status -eq 0 ]]
-}
-
-@test "dryrun: bugfix fast — auto-touch validator_b_passed then merge" {
-  cd "${GIT_WORK_TREE}"
-  create_test_commit "base.txt"
-  git checkout -b "fix/999-fastbugfix" 2>/dev/null
-
-  make_staged_change "src/hotfix.ts"
-  git commit -m "fix: hotfix" >/dev/null 2>&1
-
-  rm -f "/tmp/${PREFIX}_validator_b_passed"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  # Fast bugfix: validator 스킵 → validator_b_passed 자동 touch
-  touch "/tmp/${PREFIX}_validator_b_passed"
-
-  run merge_to_main "fix/999-fastbugfix" "999" "bugfix" "$PREFIX"
-  [[ $status -eq 0 ]]
-  [[ -f "/tmp/${PREFIX}_validator_b_passed" ]]
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -613,41 +594,20 @@ make_staged_test_file() {
 # DRY-RUN 12: harness_commit_and_merge — suffix + depth 검증
 # ─────────────────────────────────────────────────────────────────────
 
-@test "dryrun: harness_commit_and_merge — bugfix suffix [bugfix-fast] in commit" {
+@test "dryrun: harness_commit_and_merge — simple suffix in commit" {
   cd "${GIT_WORK_TREE}"
   create_test_commit "base.txt"
-  git checkout -b "fix/999-hcam" 2>/dev/null
+  git checkout -b "feat/999-hcam" 2>/dev/null
 
-  IMPL_FILE="docs/impl/01-bugfix.md"
+  IMPL_FILE="docs/impl/01-simple.md"
   ISSUE_NUM="999"
 
   make_staged_change "src/fix.ts"
 
-  # depth="bugfix" + suffix="[bugfix-fast]"
-  touch "/tmp/${PREFIX}_validator_b_passed"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
+  touch "/tmp/${PREFIX}_pr_reviewer_lgtm"
 
-  run harness_commit_and_merge "fix/999-hcam" "999" "bugfix" "$PREFIX" "[bugfix-fast]"
+  run harness_commit_and_merge "feat/999-hcam" "999" "simple" "$PREFIX" "[simple-fix]"
   [[ $status -eq 0 ]]
-
-  # 커밋 메시지에 [bugfix-fast] suffix 포함 확인
-  local msg; msg=$(git log --format="%s" -1 2>/dev/null || echo "")
-  [[ "$msg" == *"bugfix-fast"* ]] || \
-    [[ "$(git log --format="%s" | head -3)" == *"bugfix"* ]]
-}
-
-@test "dryrun: harness_commit_and_merge — depth=bugfix uses validator_b_passed gate" {
-  cd "${GIT_WORK_TREE}"
-  create_test_commit "base.txt"
-  git checkout -b "fix/999-gate" 2>/dev/null
-  create_test_commit "fix.txt"
-
-  # validator_b_passed 없음 → merge 거부
-  rm -f "/tmp/${PREFIX}_validator_b_passed"
-  rm -f "/tmp/${PREFIX}_pr_reviewer_lgtm"
-  run harness_commit_and_merge "fix/999-gate" "999" "bugfix" "$PREFIX"
-  [[ $status -ne 0 ]]
-  [[ "$output" == *"validator_b_passed"* ]]
 }
 
 @test "dryrun: harness_commit_and_merge — depth=std with no changes skips commit" {
@@ -708,25 +668,14 @@ make_staged_test_file() {
 }
 
 # ─────────────────────────────────────────────────────────────────────
-# DRY-RUN 14: bugfix.sh depth="bugfix" hardcoded — pr_reviewer_lgtm 불필요
+# DRY-RUN 14: bugfix 테스트 — REMOVED (v6): bugfix.sh 삭제됨
 # ─────────────────────────────────────────────────────────────────────
 
-@test "dryrun: bugfix harness_commit_and_merge called with depth=bugfix (hardcoded)" {
-  # bugfix.sh는 $depth(fast/std)를 그대로 전달하지 않고 "bugfix"를 고정으로 전달한다.
-  # 이로 인해 pr_reviewer_lgtm 없이도 merge가 통과한다.
+@test "dryrun: simple impl_simple.sh exists and has pr-reviewer" {
   run bash -c '
-    grep "harness_commit_and_merge.*bugfix" "'"${HARNESS_DIR}/bugfix.sh"'"
+    grep "pr-reviewer" "'"${HARNESS_DIR}/impl_simple.sh"'"
   '
-  [[ "$output" == *'"bugfix"'* ]] || [[ "$output" == *"\"bugfix\""* ]] || \
-    [[ "$output" == *"bugfix"* ]]
-}
-
-@test "dryrun: bugfix fast path validator_b_passed auto-touch present in script" {
-  run bash -c '
-    grep -A3 "depth=fast.*validator 스킵\|fast.*validator 스킵" "'"${HARNESS_DIR}/bugfix.sh"'" \
-      | grep "validator_b_passed"
-  '
-  [[ "$output" == *"validator_b_passed"* ]]
+  [[ "$output" == *"pr-reviewer"* ]]
 }
 
 # ─────────────────────────────────────────────────────────────────────

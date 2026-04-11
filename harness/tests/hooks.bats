@@ -34,9 +34,9 @@ patterns = [
 test_files = [
     ".claude/harness/executor.sh",
     ".claude/harness/impl.sh",
+    ".claude/harness/impl_simple.sh",
     ".claude/harness/impl_std.sh",
     ".claude/harness/design.sh",
-    ".claude/harness/bugfix.sh",
     ".claude/harness/plan.sh",
     ".claude/harness/utils.sh",
     "setup-harness.sh",
@@ -110,7 +110,6 @@ old_names = [
     "harness-impl-plan.sh",
     "harness-impl_std.sh",
     "harness-design.sh",
-    "harness-bugfix.sh",
     "harness-plan.sh",
 ]
 for f in old_names:
@@ -142,9 +141,9 @@ drift_map = eval(m.group(1))
 orch_scripts = drift_map.get("orchestration-rules.md", [])
 required = [
     "harness/executor.sh",
+    "harness/impl_simple.sh",
     "harness/impl_std.sh",
     "harness/impl.sh",
-    "harness/bugfix.sh",
     "harness/design.sh",
     "harness/plan.sh",
     "harness/utils.sh",

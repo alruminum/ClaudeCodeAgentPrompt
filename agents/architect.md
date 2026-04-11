@@ -75,23 +75,23 @@ model: sonnet
 
 @MODE:ARCHITECT:MODULE_PLAN
 @PARAMS: { "design_doc": "SYSTEM_DESIGN_READY 문서 경로 (mode=new_impl 필수, mode=spec_issue 생략 가능)", "module": "대상 모듈명/에픽 경로", "mode": "new_impl | spec_issue — 생략 시 new_impl" }
-@OUTPUT: { "marker": "READY_FOR_IMPL", "impl_path": "생성된 impl 계획 파일 경로" }
+@OUTPUT: { "marker": "READY_FOR_IMPL", "impl_path": "생성된 impl 계획 파일 경로", "depth": "frontmatter depth: simple|std|deep 선언 필수" }
 
 @MODE:ARCHITECT:SPEC_GAP
-@PARAMS: { "gap_list": "SPEC_GAP_FOUND 갭 목록", "impl_path": "해당 impl 파일 경로" }
-@OUTPUT: { "marker": "SPEC_GAP_RESOLVED / PRODUCT_PLANNER_ESCALATION_NEEDED / TECH_CONSTRAINT_CONFLICT", "impl_path?": "보강된 impl 파일 경로 (RESOLVED 시)" }
+@PARAMS: { "gap_list": "SPEC_GAP_FOUND 갭 목록", "impl_path": "해당 impl 파일 경로", "current_depth": "현재 depth (simple|std|deep)" }
+@OUTPUT: { "marker": "SPEC_GAP_RESOLVED / PRODUCT_PLANNER_ESCALATION_NEEDED / TECH_CONSTRAINT_CONFLICT", "impl_path?": "보강된 impl 파일 경로 (RESOLVED 시)", "depth?": "재판정된 depth (상향만 허용: simple→std→deep)" }
 
 @MODE:ARCHITECT:TASK_DECOMPOSE
 @PARAMS: { "stories_doc": "Epic stories.md 경로", "design_doc": "설계 문서 경로" }
-@OUTPUT: { "marker": "READY_FOR_IMPL", "impl_paths": ["생성된 impl 파일 경로 목록"] }
+@OUTPUT: { "marker": "READY_FOR_IMPL", "impl_paths": ["생성된 impl 파일 경로 목록"], "depth": "각 impl frontmatter에 depth 선언 필수" }
 
 @MODE:ARCHITECT:TECH_EPIC
 @PARAMS: { "goal": "개선 목표 설명", "scope": "영향 범위" }
 @OUTPUT: { "marker": "SYSTEM_DESIGN_READY", "stories_doc": "생성된 stories.md 경로", "updated_files": ["backlog.md", "CLAUDE.md"] }
 
 @MODE:ARCHITECT:BUGFIX_PLAN
-@PARAMS: { "qa_report": "QA 리포트 내용", "issue": "GitHub 이슈 번호" }
-@OUTPUT: { "marker": "BUGFIX_PLAN_READY", "impl_path": "docs/bugfix/#N-slug.md" }
+@PARAMS: { "suspected_files": "issue 키워드 grep 상위 10개 파일 경로", "issue_summary": "GitHub 이슈 제목+본문", "labels": "GitHub 이슈 라벨 목록", "issue": "GitHub 이슈 번호" }
+@OUTPUT: { "marker": "BUGFIX_PLAN_READY", "impl_path": "docs/bugfix/#N-slug.md", "depth": "frontmatter depth: simple|std|deep 선언 필수" }
 ```
 
 모드 미지정 시 입력 내용으로 판단한다.

@@ -450,8 +450,8 @@ def detect_waste_with_context(patterns, run_info, config, events):
                 "type": "WASTE_DEPTH_MISS",
                 "severity": "HIGH",
                 "agent": "harness",
-                "detail": f"FUNCTIONAL_BUG인데 depth={depth or '(미적용)'} — fast 경로 미사용",
-                "fix": "harness/bugfix.sh 분리 후 QA 기반 depth 자동 감지 적용",
+                "detail": f"FUNCTIONAL_BUG인데 depth={depth or '(미적용)'} — simple 경로 미사용",
+                "fix": "architect BUGFIX_PLAN에서 depth: simple 선언 확인",
             })
     return patterns
 
@@ -526,8 +526,8 @@ def detect_flow_issues(run_info, timeline, events):
         qa_type = _extract_qa_type(events)
         next_agent = agents_ran[1] if len(agents_ran) > 1 else None
         expected_next = {
-            "FUNCTIONAL_BUG": "engineer",   # bugfix.sh: FUNCTIONAL_BUG → functional_bug 라우팅
-            "SPEC_ISSUE": "architect",       # Mode B
+            "FUNCTIONAL_BUG": "architect",   # v6: QA → impl 루프 (architect BUGFIX_PLAN → depth별 라우팅)
+            "SPEC_ISSUE": "architect",       # 동일
             "DESIGN_ISSUE": "designer",
         }
         if qa_type and next_agent:

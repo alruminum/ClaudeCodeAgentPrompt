@@ -1,6 +1,6 @@
 # Standard 구현 루프 (impl_std)
 
-진입 조건: 일반 구현 (기본값) — `(MANUAL)` 또는 `(BROWSER:DOM)` 태그 없을 때
+진입 조건: impl frontmatter `depth: std` — behavior 변경 (기본값)
 스크립트: `harness/impl_std.sh`
 
 ---
@@ -48,7 +48,9 @@ flowchart TD
     SPEC_CHK -->|YES| ARC_SG
     ARC_SG --> SG_RESULT{{"SPEC_GAP_RESOLVED?"}}
     SG_RESULT -->|YES| SG_LIMIT{{"spec_gap_count > 2?"}}
-    SG_LIMIT -->|NO| ENG
+    SG_LIMIT -->|NO| DEPTH_CHK{{"depth 상향?"}}
+    DEPTH_CHK -->|"YES: deep"| DEPTH_SWITCH["deep 루프로 전환\n(attempt 이어가기)"]
+    DEPTH_CHK -->|"NO: std 유지"| ENG
     SG_LIMIT -->|YES| IMPL_ESC_SG["IMPLEMENTATION_ESCALATE\n(SPEC_GAP 초과)"]:::escalation
     SG_RESULT -->|PP_ESCALATION| PP_ESC["product-planner 에스컬레이션"]:::escalation
 

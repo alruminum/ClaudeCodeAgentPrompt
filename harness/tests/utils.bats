@@ -115,41 +115,44 @@ teardown() {
 
 # === detect_depth ===
 
-@test "detect_depth: TEST tag -> std" {
+@test "detect_depth: frontmatter depth: std -> std" {
   detect_depth() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
-    if grep -q "(BROWSER:DOM)" "$impl" 2>/dev/null; then echo "deep"
-    elif grep -q "(MANUAL)" "$impl" 2>/dev/null && ! grep -qE "\(TEST\)|\(BROWSER:DOM\)" "$impl" 2>/dev/null; then echo "fast"
-    else echo "std"; fi
+    local depth_val
+    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
-  local impl=$(create_mock_impl "(TEST)")
+  local impl="$TEST_TMP/impl_std.md"
+  printf '---\ndepth: std\nissue: 1\n---\n# Test\n- item (TEST)\n' > "$impl"
   result=$(detect_depth "$impl")
   [[ "$result" == "std" ]]
 }
 
-@test "detect_depth: MANUAL only -> fast" {
+@test "detect_depth: frontmatter depth: simple -> simple" {
   detect_depth() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
-    if grep -q "(BROWSER:DOM)" "$impl" 2>/dev/null; then echo "deep"
-    elif grep -q "(MANUAL)" "$impl" 2>/dev/null && ! grep -qE "\(TEST\)|\(BROWSER:DOM\)" "$impl" 2>/dev/null; then echo "fast"
-    else echo "std"; fi
+    local depth_val
+    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
-  local impl=$(create_mock_impl "(MANUAL)")
+  local impl="$TEST_TMP/impl_simple.md"
+  printf '---\ndepth: simple\nissue: 1\nreason: text change\n---\n# Test\n' > "$impl"
   result=$(detect_depth "$impl")
-  [[ "$result" == "fast" ]]
+  [[ "$result" == "simple" ]]
 }
 
-@test "detect_depth: BROWSER:DOM -> deep" {
+@test "detect_depth: frontmatter depth: deep -> deep" {
   detect_depth() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
-    if grep -q "(BROWSER:DOM)" "$impl" 2>/dev/null; then echo "deep"
-    elif grep -q "(MANUAL)" "$impl" 2>/dev/null && ! grep -qE "\(TEST\)|\(BROWSER:DOM\)" "$impl" 2>/dev/null; then echo "fast"
-    else echo "std"; fi
+    local depth_val
+    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
-  local impl=$(create_mock_impl "(BROWSER:DOM)")
+  local impl="$TEST_TMP/impl_deep.md"
+  printf '---\ndepth: deep\nissue: 1\n---\n# Test\n- item (BROWSER:DOM)\n' > "$impl"
   result=$(detect_depth "$impl")
   [[ "$result" == "deep" ]]
 }
@@ -158,11 +161,25 @@ teardown() {
   detect_depth() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
-    if grep -q "(BROWSER:DOM)" "$impl" 2>/dev/null; then echo "deep"
-    elif grep -q "(MANUAL)" "$impl" 2>/dev/null && ! grep -qE "\(TEST\)|\(BROWSER:DOM\)" "$impl" 2>/dev/null; then echo "fast"
-    else echo "std"; fi
+    local depth_val
+    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
   result=$(detect_depth "/nonexistent/path.md")
+  [[ "$result" == "std" ]]
+}
+
+@test "detect_depth: no frontmatter -> std" {
+  detect_depth() {
+    local impl="$1"
+    if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
+    local depth_val
+    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
+  }
+  local impl="$TEST_TMP/impl_nofm.md"
+  printf '# Test\n- item (TEST)\n' > "$impl"
+  result=$(detect_depth "$impl")
   [[ "$result" == "std" ]]
 }
 

@@ -74,13 +74,13 @@ QA 에이전트가 코드 분석 + GitHub 이슈 생성까지 수행한다.
 
 QA 에이전트 출력의 `---QA_SUMMARY---` 블록을 읽어 라우팅한다.
 
-### FUNCTIONAL_BUG → executor.sh direct
+### FUNCTIONAL_BUG → executor.sh impl
 
 ```bash
 # PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
-bash ~/.claude/harness/executor.sh direct \
+bash ~/.claude/harness/executor.sh impl \
   --issue <QA가 생성한 이슈 번호> \
   $PREFIX_FLAG
 ```

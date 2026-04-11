@@ -222,34 +222,5 @@ teardown() {
   [[ $status -eq 0 ]]
 }
 
-# === cross-script: bugfix_full chains to bugfix_direct ===
-
-@test "bugfix_full: architect + PV PASS -> chains to engineer direct" {
-  run bash -c '
-    source "'"${HARNESS_DIR}/utils.sh"'"
-    source "'"${HARNESS_DIR}/bugfix.sh"'"
-    PREFIX="'"$PREFIX"'"; ISSUE_NUM="999"; DEPTH="fast"
-    IMPL_FILE=""; CONSTRAINTS=""; RUN_LOG=""
-    mkdir -p "'"${GIT_WORK_TREE}"'/docs/impl"
-    echo "# bugfix impl" > "'"${GIT_WORK_TREE}"'/docs/impl/01-bugfix.md"
-    cd "'"${GIT_WORK_TREE}"'"
-    _agent_call() {
-      local agent="$1" out="$4"
-      echo "0" > "${out%.txt}_cost.txt"
-      case "$agent" in
-        architect) echo "docs/impl/01-bugfix.md" > "$out" ;;
-        validator) echo "PASS" > "$out" ;;
-        engineer) echo "fix applied" > "$out" ;;
-      esac
-    }
-    create_feature_branch() { echo "fix/999"; }
-    merge_to_main() { return 0; }
-    harness_commit_and_merge() { return 0; }
-    npx() { return 0; }
-    rotate_harness_logs() { true; }
-    echo "FUNCTIONAL_BUG analysis" > "/tmp/'"$PREFIX"'_qa_out.txt"
-    _architect_route "/tmp/'"$PREFIX"'_qa_out.txt"
-  '
-  [[ "$output" == *"Plan Validation PASS"* ]]
-  [[ "$output" == *"engineer"* ]]
-}
+# === cross-script: bugfix_full — REMOVED (v6): bugfix.sh 삭제됨 ===
+# QA → executor.sh impl --issue <N>으로 통합. 별도 bugfix 테스트 불필요.
