@@ -704,9 +704,16 @@ else:
 ' 2>/dev/null || echo "proj")
   touch "/tmp/${_prefix_for_flag}_${agent}_active"
 
-  # 공통 스코프 제한 — 하네스 인프라 탐색 방지
+  # 공통 프리앰블 주입 — preamble.md + 스코프 제한
+  local _preamble_file="${HOME}/.claude/agents/preamble.md"
+  local _preamble=""
+  if [[ -f "$_preamble_file" ]]; then
+    _preamble=$(cat "$_preamble_file")
+  fi
   local _scope_prefix="[SCOPE] 프로젝트 소스(src/, docs/, 루트 설정)만 분석 대상. .claude/, hooks/, harness-*.sh, orchestration-rules.md 등 하네스 인프라 파일은 읽지도 수정하지도 마라."
-  prompt="${_scope_prefix}
+  prompt="${_preamble}
+
+${_scope_prefix}
 ${prompt}"
 
   # 입력 미리보기 (SCOPE 접두어 제외, 3줄, 160자 캡)
