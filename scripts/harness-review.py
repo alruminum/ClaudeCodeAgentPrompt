@@ -76,10 +76,16 @@ def parse_jsonl(filepath):
 
 def find_latest_logs(prefix, count=1):
     d = os.path.join(LOG_DIR, prefix)
-    if not os.path.isdir(d):
-        return []
-    files = sorted(glob.glob(os.path.join(d, "run_*.jsonl")), key=os.path.getmtime, reverse=True)
-    return files[:count]
+    if os.path.isdir(d):
+        files = sorted(glob.glob(os.path.join(d, "run_*.jsonl")), key=os.path.getmtime, reverse=True)
+        return files[:count]
+    # prefix가 run_ 패턴이면 전체 하위 디렉토리에서 JSONL 파일명 검색
+    if prefix.startswith("run_"):
+        stem = prefix.replace(".jsonl", "")
+        matches = sorted(glob.glob(os.path.join(LOG_DIR, "*", f"{stem}.jsonl")),
+                         key=os.path.getmtime, reverse=True)
+        return matches[:count]
+    return []
 
 
 # ── 타임라인 추출 ────────────────────────────────────────────────────

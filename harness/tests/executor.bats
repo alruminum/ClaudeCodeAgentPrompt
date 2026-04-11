@@ -64,10 +64,10 @@ except: pass
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
     local depth_val
-    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
     case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
-  printf '---\ndepth: deep\nissue: 1\n---\n- A (TEST)\n- B (BROWSER:DOM)\n' > "$TEST_TMP/mixed.md"
+  printf '%s\n' '---' 'depth: deep' 'issue: 1' '---' '- A (TEST)' '- B (BROWSER:DOM)' > "$TEST_TMP/mixed.md"
   result=$(detect_depth "$TEST_TMP/mixed.md")
   [[ "$result" == "deep" ]]
 }
@@ -78,10 +78,10 @@ except: pass
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
     local depth_val
-    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
     case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
-  printf '---\ndepth: simple\nissue: 1\nreason: text only\n---\n- A (MANUAL)\n' > "$TEST_TMP/mixed2.md"
+  printf '%s\n' '---' 'depth: simple' 'issue: 1' 'reason: text only' '---' '- A (MANUAL)' > "$TEST_TMP/mixed2.md"
   result=$(detect_depth "$TEST_TMP/mixed2.md")
   [[ "$result" == "simple" ]]
 }

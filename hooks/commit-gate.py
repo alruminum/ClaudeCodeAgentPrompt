@@ -13,9 +13,28 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import subprocess
-from harness_common import get_prefix, get_state_dir, deny, FLAGS
+import glob
+import time
+from harness_common import get_prefix, get_state_dir, deny, FLAGS, ISSUE_CREATORS
 
 PREFIX = get_prefix()
+
+
+def _is_issue_creator_active():
+    """ISSUE_CREATORS 에이전트 중 하나라도 활성 상태인지 확인."""
+    state_dir = get_state_dir()
+    now = time.time()
+    for agent in ISSUE_CREATORS:
+        flag_file = os.path.join(state_dir, f"{PREFIX}_{agent}_active")
+        if os.path.exists(flag_file):
+            return True
+        for f in glob.glob(os.path.join(state_dir, f"*_{agent}_active")):
+            try:
+                if now - os.path.getmtime(f) < 900:
+                    return True
+            except Exception:
+                pass
+    return False
 
 
 def main():
@@ -27,16 +46,16 @@ def main():
     cmd = d.get("tool_input", {}).get("command", "")
 
     # ── Gate 1: gh issue create 직접 호출 차단 ────────────────────────
-    # QA 에이전트만 이슈를 생성할 수 있다. 메인 Claude 직접 생성 금지.
+    # QA/designer 에이전트만 이슈를 생성할 수 있다. 메인 Claude 직접 생성 금지.
     _IS_GH_ISSUE_CREATE = (
         re.search(r"gh\s+issue\s+create", cmd)
         or re.search(r"gh\s+api\s+.*issues.*--method\s+POST", cmd)
         or re.search(r"gh\s+api\s+.*issues.*-X\s+POST", cmd)
     )
-    if _IS_GH_ISSUE_CREATE and os.environ.get("HARNESS_INTERNAL") != "1":
+    if _IS_GH_ISSUE_CREATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active():
         deny(
             "❌ gh issue create 직접 호출 금지.\n"
-            "버그 이슈는 QA 에이전트가 생성한다.\n"
+            "버그 이슈는 QA 에이전트가, 디자인 이슈는 designer 에이전트가 생성한다.\n"
             f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성 → executor.sh impl --issue <N> --prefix {PREFIX}"
         )
 

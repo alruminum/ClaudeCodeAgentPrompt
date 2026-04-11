@@ -14,34 +14,62 @@ MARKERS = ("HARNESS_DONE", "IMPLEMENTATION_ESCALATE", "HARNESS_CRASH", "KNOWN_IS
 REVIEW_SCRIPT = os.path.expanduser("~/.claude/scripts/harness-review.py")
 
 
+def _cwd_to_proj_hash(cwd):
+    """CWD를 Claude 프로젝트 디렉토리 해시로 변환한다.
+    Claude 내부 규칙: / → -, . → - (예: /Users/dc.kim/.claude → -Users-dc-kim--claude)
+    """
+    return cwd.replace("/", "-").replace(".", "-")
+
+
+def _find_proj_dir(cwd):
+    """CWD에 대응하는 ~/.claude/projects/ 하위 디렉토리를 찾는다."""
+    projects_root = os.path.expanduser("~/.claude/projects")
+    # 1차: 해시 직접 매칭
+    proj_hash = _cwd_to_proj_hash(cwd)
+    candidate = os.path.join(projects_root, proj_hash)
+    if os.path.isdir(candidate):
+        return candidate
+    # 2차: projects/ 하위 디렉토리 스캔 (해시 규칙 변경 대비)
+    try:
+        for d in os.listdir(projects_root):
+            full = os.path.join(projects_root, d)
+            if os.path.isdir(full) and d == proj_hash:
+                return full
+    except Exception:
+        pass
+    return None
+
+
 def _find_session_jsonl():
     """현재 세션의 JSONL 경로를 탐색한다."""
+    cwd = os.getcwd()
+    proj_dir = _find_proj_dir(cwd)
+
+    # 1차: CMUX_CLAUDE_PID → session-id → 정확한 JSONL
     try:
         import subprocess, re
         pid = os.environ.get("CMUX_CLAUDE_PID", "")
-        if pid:
+        if pid and proj_dir:
             args = subprocess.check_output(["ps", "-p", pid, "-o", "args="],
                                            text=True, timeout=3).strip()
             m = re.search(r"session-id\s+([0-9a-f-]+)", args)
             if m:
                 sid = m.group(1)
-                proj_hash = os.getcwd().replace("/", "-")
-                candidate = os.path.expanduser(f"~/.claude/projects/{proj_hash}/{sid}.jsonl")
+                candidate = os.path.join(proj_dir, f"{sid}.jsonl")
                 if os.path.exists(candidate):
                     return candidate
     except Exception:
         pass
 
-    # fallback: 최근 수정 파일
-    try:
-        proj_hash = os.getcwd().replace("/", "-")
-        proj_dir = os.path.expanduser(f"~/.claude/projects/{proj_hash}")
-        if os.path.isdir(proj_dir):
-            sjsonls = glob.glob(os.path.join(proj_dir, "*.jsonl"))
+    # 2차: proj_dir 내 최근 수정 JSONL (서브에이전트 제외)
+    if proj_dir:
+        try:
+            sjsonls = [f for f in glob.glob(os.path.join(proj_dir, "*.jsonl"))
+                       if "subagent" not in f]
             if sjsonls:
                 return max(sjsonls, key=os.path.getmtime)
-    except Exception:
-        pass
+        except Exception:
+            pass
     return None
 
 
@@ -124,7 +152,7 @@ def main():
     with open("/tmp/harness_review_trigger.json", "w") as f:
         json.dump(trigger, f, ensure_ascii=False)
 
-    # harness-review.py 자동 실행 → review-result.json 저장
+    # harness-review.py 자동 실행 → review-result.json 저장 + stdout 주입
     if harness_jsonl and os.path.exists(REVIEW_SCRIPT):
         report = _run_review(harness_jsonl, session_jsonl)
         if report:
@@ -141,6 +169,16 @@ def main():
                 os.makedirs(state_dir, exist_ok=True)
                 with open(result_path, "w") as f:
                     json.dump(result, f, ensure_ascii=False)
+            except Exception:
+                pass
+
+            # review.txt 경로 계산 (harness-review.py가 자동 생성)
+            review_txt = harness_jsonl.replace(".jsonl", "_review.txt")
+            # 모델에 파일 읽기 + 원문 출력 지시
+            print(f"[HARNESS_REVIEW] 리뷰 완료. Read 도구로 {review_txt} 파일을 읽고 원문 그대로 출력하라. 요약·생략·재가공 금지. 리포트 전문 출력 후 별도 줄에서만 코멘트 허용.")
+            # inject 훅 이중 출력 방지
+            try:
+                os.remove(result_path)
             except Exception:
                 pass
 

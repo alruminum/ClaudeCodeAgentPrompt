@@ -53,9 +53,7 @@ _setup_cleanup
 
 touch "${STATE_DIR}/${PREFIX}_harness_active"
 [[ ! -f "${STATE_DIR}/${PREFIX}_plan_validation_passed" ]] && touch "${STATE_DIR}/${PREFIX}_plan_validation_passed"
-rotate_harness_logs "$PREFIX" "impl"
-
-RUN_LOG="${STATE_DIR}/${PREFIX}_run.jsonl"
+rotate_harness_logs "$PREFIX" "impl" "$ISSUE_NUM"
 
 FEATURE_BRANCH=$(create_feature_branch "$BRANCH_TYPE" "$ISSUE_NUM")
 export HARNESS_BRANCH="$FEATURE_BRANCH"
@@ -172,7 +170,7 @@ $spec_gap_context
     case "$sg_result" in
       SPEC_GAP_RESOLVED)
         # depth 재판정 확인: impl frontmatter에서 새 depth 읽기
-        new_depth=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$IMPL_FILE" 2>/dev/null || echo "simple")
+        new_depth=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$IMPL_FILE" 2>/dev/null || echo "simple")
         if [[ "$new_depth" != "simple" && ("$new_depth" == "std" || "$new_depth" == "deep") ]]; then
           hlog "depth 상향: simple → ${new_depth}. 새 depth 루프로 전환 (attempt=${attempt} 이어가기)"
           local sub_script="${HOME}/.claude/harness/impl_${new_depth}.sh"

@@ -46,15 +46,11 @@ def main():
     except Exception:
         pass
 
-    # ISSUE_CREATORS 에이전트 활성이면 허용
+    # ISSUE_CREATORS 에이전트(qa, designer) 활성이면 허용
     if _is_issue_creator_active():
         sys.exit(0)
 
-    # 하네스 내부(harness_active)이면 허용
-    if flag_exists(PREFIX, FLAGS.HARNESS_ACTIVE):
-        sys.exit(0)
-
-    # 그 외 — 메인 Claude 직접 호출 차단
+    # 그 외 — 메인 Claude 직접 호출 차단 (harness_active 여부 무관)
     deny(
         "❌ 메인 Claude의 create_issue 직접 호출 금지 (orchestration/policies.md 정책 3).\n"
         "이슈 생성은 하네스 내부에서 처리됩니다.\n"

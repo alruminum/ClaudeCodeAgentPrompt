@@ -118,16 +118,36 @@ designer 에이전트가 Phase 0-0에서 GitHub 이슈를 직접 생성한다.
 
 DESIGN_HANDOFF 후 이슈 본문에 스펙이 업데이트되어 있다.
 
-### 2. executor.sh impl 호출
+### 2. depth 추천 판단
 
-DESIGN_HANDOFF 패키지의 `## Issue: #N`에서 이슈 번호를 읽는다.
+executor.sh 호출 전 DESIGN_HANDOFF를 보고 depth를 추천한다. 기준: **이 디자인을 코드로 옮길 때 JSX/스타일 수정만으로 끝나는가, 새 로직 코드를 작성해야 하는가?**
+- `simple`: JSX/스타일만 — UI 추가/제거/재배치, 정적 요소. 새 파일이라도 로직 없으면 simple.
+- `std`: 새 로직 코드 필요 — 새 useState/useEffect, 이벤트 핸들러, API 호출
+- `deep`: 보안·결제·인증 관련
+
+대부분의 디자인 반영은 `simple`이다.
+
+### 3. design_critic_passed 플래그 생성
+
+UX 스킬은 harness/design.sh를 거치지 않으므로, executor.sh impl 호출 전 플래그를 직접 생성한다.
+impl.sh UI 키워드 게이트(`design_critic_passed` 체크)를 통과하기 위해 필수.
 
 ```bash
-# PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+STATE_DIR="$(pwd)/.claude/harness-state"
+mkdir -p "$STATE_DIR"
+touch "${STATE_DIR}/${PREFIX:-mb}_design_critic_passed"
+```
+
+### 4. executor.sh impl 호출
+
+DESIGN_HANDOFF 패키지의 `## Issue: #N`에서 이슈 번호를 읽고, 위에서 판단한 depth를 `--depth`로 전달한다.
+
+```bash
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
 bash ~/.claude/harness/executor.sh impl \
   --issue <DESIGN_HANDOFF의 Issue 번호> \
+  --depth <simple|std|deep> \
   $PREFIX_FLAG
 ```
 

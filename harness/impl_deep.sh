@@ -52,9 +52,7 @@ _setup_cleanup
 
 touch "${STATE_DIR}/${PREFIX}_harness_active"
 [[ ! -f "${STATE_DIR}/${PREFIX}_plan_validation_passed" ]] && touch "${STATE_DIR}/${PREFIX}_plan_validation_passed"
-rotate_harness_logs "$PREFIX" "impl"
-
-RUN_LOG="${STATE_DIR}/${PREFIX}_run.jsonl"
+rotate_harness_logs "$PREFIX" "impl" "$ISSUE_NUM"
 
 FEATURE_BRANCH=$(create_feature_branch "$BRANCH_TYPE" "$ISSUE_NUM")
 export HARNESS_BRANCH="$FEATURE_BRANCH"

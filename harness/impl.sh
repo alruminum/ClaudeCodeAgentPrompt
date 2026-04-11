@@ -17,7 +17,7 @@ ensure_depth_frontmatter() {
 
   # frontmatter depth: 필드 존재 여부 확인
   local has_depth
-  has_depth=$(sed -n '/^---$/,/^---$/{ /^depth:/p; }' "$impl" 2>/dev/null || echo "")
+  has_depth=$(awk '/^---$/{n++} n==1 && /^depth:/{print; exit}' "$impl" 2>/dev/null || echo "")
 
   if [[ -n "$has_depth" ]]; then
     echo "[HARNESS] depth frontmatter 확인: $(echo "$has_depth" | head -1 | xargs)"
@@ -41,7 +41,7 @@ issue: #$issue
     "${STATE_DIR}/${prefix}_depth_patch_out.txt"
 
   # 재확인
-  has_depth=$(sed -n '/^---$/,/^---$/{ /^depth:/p; }' "$impl" 2>/dev/null || echo "")
+  has_depth=$(awk '/^---$/{n++} n==1 && /^depth:/{print; exit}' "$impl" 2>/dev/null || echo "")
   if [[ -n "$has_depth" ]]; then
     echo "[HARNESS] depth 패치 성공: $(echo "$has_depth" | head -1 | xargs)"
   else
@@ -88,7 +88,7 @@ run_impl() {
   fi
 
   # run_bugfix → run_impl 이중 로테이션 방지: RUN_LOG 이미 설정돼있으면 스킵
-  [[ -z "$RUN_LOG" ]] && rotate_harness_logs "$PREFIX" "impl"
+  [[ -z "$RUN_LOG" ]] && rotate_harness_logs "$PREFIX" "impl" "$ISSUE_NUM"
 
   # impl 파일 없으면 architect 호출 (MODULE_PLAN 또는 LIGHT_PLAN)
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
@@ -104,7 +104,7 @@ run_impl() {
       issue_summary=$(gh issue view "$ISSUE_NUM" --json title,body -q '"## " + .title + "\n\n" + .body' 2>/dev/null || echo "")
 
       # bug/design-fix 라벨 또는 DESIGN_HANDOFF 이슈 → LIGHT_PLAN
-      if echo "$issue_labels" | grep -qiE "bug|design-fix|fix|hotfix" || \
+      if echo "$issue_labels" | grep -qiE "bug|design-fix|fix|hotfix|cleanup" || \
          echo "$issue_summary" | grep -q "DESIGN_HANDOFF"; then
         arch_mode="LIGHT_PLAN"
         # pre-analysis: suspected_files (issue 키워드 grep 상위 10개)
@@ -122,13 +122,24 @@ run_impl() {
     fi
 
     if [[ "$arch_mode" == "LIGHT_PLAN" ]]; then
-      # depth 힌트: bugfix 라벨이면 simple 권장
-      local depth_hint="std"
-      if echo "$issue_labels" | grep -qiE "bug|fix|hotfix"; then
+      # depth 힌트: 외부 전달(--depth) > DESIGN_HANDOFF > 라벨 기반 > 미지정
+      local depth_hint=""
+      if [[ "$DEPTH" != "auto" ]]; then
+        depth_hint="$DEPTH"
+      elif echo "$issue_summary" | grep -q "DESIGN_HANDOFF"; then
+        depth_hint="simple"
+      elif echo "$issue_labels" | grep -qiE "bug|fix|hotfix|cleanup"; then
         depth_hint="simple"
       fi
 
-      echo "[HARNESS] architect LIGHT_PLAN 작성 (issue #${ISSUE_NUM}, depth_hint=${depth_hint})"
+      local depth_prompt=""
+      if [[ -n "$depth_hint" ]]; then
+        depth_prompt="스킬/하네스 추천: ${depth_hint} (참고용 — architect가 이슈 내용 기반으로 최종 판단. 상향/하향 모두 가능)"
+      else
+        depth_prompt="추천 없음 — 이슈 내용 기반으로 architect가 직접 판단"
+      fi
+
+      echo "[HARNESS] architect LIGHT_PLAN 작성 (issue #${ISSUE_NUM}, depth_hint=${depth_hint:-none})"
       _agent_call "architect" 900 \
         "@MODE:ARCHITECT:LIGHT_PLAN
 issue #${ISSUE_NUM}
@@ -139,10 +150,11 @@ ${issue_summary}
 context: ${CONTEXT}
 
 [DEPTH 선택 — frontmatter depth: 필드 필수]
-- simple: 기존 의도된 behavior 복원 (버그픽스), 설정값·스타일 변경. bug/fix 라벨이면 simple 우선 검토.
-- std: 새 behavior/API 추가, 구조적 변경 (새 모듈, 새 상태 머신, 새 DB 테이블 등)
+기준: 이 이슈의 구현이 기존 코드 구조 수정으로 완결되는가, 새 로직 구조를 신설해야 하는가?
+- simple: 기존 구조 수정 — 값·조건·스타일·요소 변경, 코드 제거/정리
+- std: 새 로직 구조 신설 — 새 함수·모듈·상태·API·데이터 흐름
 - deep: 보안·결제·인증
-이슈 라벨: ${issue_labels} → 권장: ${depth_hint}" \
+${depth_prompt}" \
         "${STATE_DIR}/${PREFIX}_arch_out.txt"
     else
       echo "[HARNESS] architect Module Plan 작성"

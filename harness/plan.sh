@@ -11,7 +11,7 @@
 # harness/executor.sh에서 source — 전역변수(PREFIX, ISSUE_NUM 등) 사용
 
 run_plan() {
-  rotate_harness_logs "$PREFIX" "plan"
+  rotate_harness_logs "$PREFIX" "plan" "$ISSUE_NUM"
   # 루프 타입별 컨텍스트 prepend
   local _lc
   _lc=$(build_loop_context "plan" 2>/dev/null || true)

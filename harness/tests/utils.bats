@@ -134,11 +134,11 @@ teardown() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
     local depth_val
-    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
     case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
   local impl="$TEST_TMP/impl_std.md"
-  printf '---\ndepth: std\nissue: 1\n---\n# Test\n- item (TEST)\n' > "$impl"
+  printf '%s\n' '---' 'depth: std' 'issue: 1' '---' '# Test' '- item (TEST)' > "$impl"
   result=$(detect_depth "$impl")
   [[ "$result" == "std" ]]
 }
@@ -148,11 +148,11 @@ teardown() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
     local depth_val
-    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
     case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
   local impl="$TEST_TMP/impl_simple.md"
-  printf '---\ndepth: simple\nissue: 1\nreason: text change\n---\n# Test\n' > "$impl"
+  printf '%s\n' '---' 'depth: simple' 'issue: 1' 'reason: text change' '---' '# Test' > "$impl"
   result=$(detect_depth "$impl")
   [[ "$result" == "simple" ]]
 }
@@ -162,11 +162,11 @@ teardown() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
     local depth_val
-    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
     case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
   local impl="$TEST_TMP/impl_deep.md"
-  printf '---\ndepth: deep\nissue: 1\n---\n# Test\n- item (BROWSER:DOM)\n' > "$impl"
+  printf '%s\n' '---' 'depth: deep' 'issue: 1' '---' '# Test' '- item (BROWSER:DOM)' > "$impl"
   result=$(detect_depth "$impl")
   [[ "$result" == "deep" ]]
 }
@@ -176,7 +176,7 @@ teardown() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
     local depth_val
-    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
     case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
   result=$(detect_depth "/nonexistent/path.md")
@@ -188,11 +188,11 @@ teardown() {
     local impl="$1"
     if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
     local depth_val
-    depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+    depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
     case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
   }
   local impl="$TEST_TMP/impl_nofm.md"
-  printf '# Test\n- item (TEST)\n' > "$impl"
+  printf '%s\n' '# Test' '- item (TEST)' > "$impl"
   result=$(detect_depth "$impl")
   [[ "$result" == "std" ]]
 }

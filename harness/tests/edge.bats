@@ -115,13 +115,7 @@ exit 0' > "$mock_script"
     BRANCH_TYPE="feat"
     touch "${STATE_DIR}/'"$PREFIX"'_plan_validation_passed"
     PROCESS_SCRIPT="'"$mock_script"'"
-    detect_depth() {
-      local impl="$1"
-      if [[ -z "$impl" || ! -f "$impl" ]]; then echo "std"; return; fi
-      local depth_val
-      depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
-      case "$depth_val" in simple|std|deep) echo "$depth_val" ;; *) echo "std" ;; esac
-    }
+    detect_depth() { echo "deep"; }
     run_impl
   '
   [[ "$output" == *"--depth deep"* ]]

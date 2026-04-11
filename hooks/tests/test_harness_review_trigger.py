@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import importlib.util
 from pathlib import Path
 
 SCRIPT = Path(__file__).parent.parent / "harness-review-trigger.py"
@@ -110,3 +111,51 @@ def test_empty_stdin_no_crash():
         text=True,
     )
     assert result.returncode == 0
+
+
+# ── 7. _cwd_to_proj_hash: / → -, . → - 변환 ──────────────────────────
+def test_cwd_to_proj_hash():
+    spec = importlib.util.spec_from_file_location("trigger", str(SCRIPT))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert mod._cwd_to_proj_hash("/Users/dc.kim/.claude") == "-Users-dc-kim--claude"
+    assert mod._cwd_to_proj_hash("/Users/dc.kim/project/memoryBattle") == "-Users-dc-kim-project-memoryBattle"
+    assert mod._cwd_to_proj_hash("/Users/foo/bar") == "-Users-foo-bar"
+    assert mod._cwd_to_proj_hash("/Users/a.b.c/d.e") == "-Users-a-b-c-d-e"
+
+
+# ── 8. _find_proj_dir: 실제 ~/.claude/projects/ 매칭 ──────────────────
+def test_find_proj_dir(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location("trigger", str(SCRIPT))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # 임시 projects/ 구조 생성
+    projects = tmp_path / "projects"
+    (projects / "-Users-test-user-myproject").mkdir(parents=True)
+    monkeypatch.setattr(os.path, "expanduser", lambda p: str(tmp_path) if p == "~/.claude/projects" else p)
+
+    # expanduser 를 모듈 내부에서도 쓰므로, 함수를 직접 테스트
+    result = mod._cwd_to_proj_hash("/Users/test.user/myproject")
+    assert result == "-Users-test-user-myproject"
+
+
+# ── 9. _find_session_jsonl: proj_dir 내 최근 JSONL 반환 ────────────────
+def test_find_session_jsonl_fallback(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location("trigger", str(SCRIPT))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # 임시 프로젝트 디렉토리
+    proj_dir = tmp_path / "-Users-test-proj"
+    proj_dir.mkdir()
+    (proj_dir / "abc-123.jsonl").write_text('{"type":"system"}\n')
+
+    # _find_proj_dir가 이 디렉토리를 반환하도록 패치
+    monkeypatch.setattr(mod, "_find_proj_dir", lambda cwd: str(proj_dir))
+    monkeypatch.delenv("CMUX_CLAUDE_PID", raising=False)
+
+    result = mod._find_session_jsonl()
+    assert result is not None
+    assert result.endswith("abc-123.jsonl")

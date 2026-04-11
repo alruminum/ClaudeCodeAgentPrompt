@@ -105,7 +105,7 @@ detect_depth() {
   fi
   # frontmatter depth: 필드 읽기 (YAML frontmatter --- ... --- 블록 내)
   local depth_val
-  depth_val=$(sed -n '/^---$/,/^---$/{ /^depth:/{ s/^depth:[[:space:]]*//; s/[[:space:]]*#.*//; p; q; } }' "$impl" 2>/dev/null || echo "")
+  depth_val=$(awk '/^---$/{n++} n==1 && /^depth:/{sub(/^depth:[[:space:]]*/,""); sub(/[[:space:]]*#.*/,""); print; exit}' "$impl" 2>/dev/null || echo "")
   case "$depth_val" in
     simple|std|deep) echo "$depth_val" ;;
     *) echo "std" ;;  # frontmatter 없거나 유효하지 않으면 기본 std

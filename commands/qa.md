@@ -76,12 +76,31 @@ QA 에이전트 출력의 `---QA_SUMMARY---` 블록을 읽어 라우팅한다.
 
 ### FUNCTIONAL_BUG → executor.sh impl
 
+QA 분석 결과에서 depth를 추천한다. 기준: **이 버그 수정이 기존 함수/모듈 안에서 끝나는가, 기존에 없던 처리 경로를 새로 만들어야 하는가?**
+- `simple`: 기존 코드 수정 — 조건 교정, 값 복원, 호출 순서 수정, 누락 처리 추가
+- `std`: 새 처리 경로 신설 — 기존에 없던 에러 핸들링·재시도 로직·상태·모듈 추가 필요
+- `deep`: 보안·결제·인증 관련
+
 ```bash
 # PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
 bash ~/.claude/harness/executor.sh impl \
   --issue <QA가 생성한 이슈 번호> \
+  --depth <simple|std|deep> \
+  $PREFIX_FLAG
+```
+
+### CLEANUP → executor.sh impl (simple 강제)
+
+CLEANUP은 항상 `--depth simple`로 전달한다.
+
+```bash
+PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
+bash ~/.claude/harness/executor.sh impl \
+  --issue <QA가 생성한 이슈 번호> \
+  --depth simple \
   $PREFIX_FLAG
 ```
 

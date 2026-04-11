@@ -20,7 +20,7 @@ STATE_DIR="${STATE_DIR:-/tmp}"
 # ── FIFO 로테이션: prefix별 최신 10개 유지 ──────────────────────────────
 # mapfile 제거 → bash 3.2(macOS 기본) 호환
 rotate_harness_logs() {
-  local prefix="$1" mode="${2:-unknown}"
+  local prefix="$1" mode="${2:-unknown}" issue="${3:-}"
   local dir="${HARNESS_LOG_DIR}/${prefix}"
   mkdir -p "$dir"
 
@@ -35,8 +35,13 @@ rotate_harness_logs() {
   local ts; ts=$(date +%Y%m%d_%H%M%S)
   RUN_LOG="${dir}/run_${ts}.jsonl"
 
-  printf '{"event":"run_start","prefix":"%s","mode":"%s","t":%d}\n' \
-    "$prefix" "$mode" "$_HARNESS_RUN_START" > "$RUN_LOG"
+  if [[ -n "$issue" ]]; then
+    printf '{"event":"run_start","prefix":"%s","mode":"%s","issue":"%s","t":%d}\n' \
+      "$prefix" "$mode" "$issue" "$_HARNESS_RUN_START" > "$RUN_LOG"
+  else
+    printf '{"event":"run_start","prefix":"%s","mode":"%s","t":%d}\n' \
+      "$prefix" "$mode" "$_HARNESS_RUN_START" > "$RUN_LOG"
+  fi
 
   echo "[HARNESS] 실행 로그: $RUN_LOG"
   echo "[HARNESS] 실시간 확인: tail -f \"$RUN_LOG\""
@@ -55,8 +60,9 @@ write_run_end() {
   # branch_name: 제어문자/탭/개행 제거 (git status 출력 혼입 방지)
   local branch_name="${HARNESS_BRANCH:-}"
   branch_name=$(printf '%s' "$branch_name" | tr -d '\t\n\r' | head -c 100)
-  printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s","branch":"%s"}\n' \
-    "$t_end" "$total_elapsed" "$result" "$branch_name" >> "$RUN_LOG"
+  local issue_num="${ISSUE_NUM:-}"
+  printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s","branch":"%s","issue":"%s"}\n' \
+    "$t_end" "$total_elapsed" "$result" "$branch_name" "$issue_num" >> "$RUN_LOG"
 
   # ── 타이밍 요약 출력 (C2) ──
   _print_timing_summary "$RUN_LOG" "$total_elapsed"
@@ -170,7 +176,7 @@ parse_marker() {
   local out_file="$1" marker_list="$2"
   local result=""
   # 1차: 구조화된 마커 ---MARKER:X--- 에서 추출
-  result=$(grep -oEm1 '---MARKER:([A-Z_]+)---' "$out_file" 2>/dev/null \
+  result=$(grep -oEm1 -e '---MARKER:([A-Z_]+)---' "$out_file" 2>/dev/null \
            | sed 's/---MARKER://;s/---//' ) || result=""
   # 허용 마커 필터링
   if [[ -n "$result" ]]; then
