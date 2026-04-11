@@ -8,6 +8,49 @@
 #
 # harness/executor.sh에서 source — 전역변수(PREFIX, IMPL_FILE, ISSUE_NUM 등) 사용
 
+# ── depth frontmatter 강제 검증 ──────────────────────────────────────
+# architect가 impl 파일 생성 시 depth: frontmatter를 누락하면
+# 마이크로 재호출(1회, 60초)로 패치. 실패 시 경고 + std 폴백 (루프 안 끊김).
+ensure_depth_frontmatter() {
+  local impl="$1" issue="$2" prefix="$3"
+  [[ -z "$impl" || ! -f "$impl" ]] && return 0
+
+  # frontmatter depth: 필드 존재 여부 확인
+  local has_depth
+  has_depth=$(sed -n '/^---$/,/^---$/{ /^depth:/p; }' "$impl" 2>/dev/null || echo "")
+
+  if [[ -n "$has_depth" ]]; then
+    echo "[HARNESS] depth frontmatter 확인: $(echo "$has_depth" | head -1 | xargs)"
+    return 0
+  fi
+
+  # frontmatter 자체가 없는지, 있는데 depth만 빠진건지 구분
+  local has_frontmatter
+  has_frontmatter=$(head -1 "$impl" | grep -c '^---$' || echo "0")
+
+  echo "[HARNESS] ⚠️ impl 파일에 depth frontmatter 누락 — architect 마이크로 패치 호출"
+  _agent_call "architect" 60 \
+    "@MODE:ARCHITECT:SPEC_GAP
+이 impl 파일에 YAML frontmatter depth 필드가 누락됐다.
+파일 첫 줄부터 --- 블록을 추가하고 depth: simple|std|deep 중 하나를 선언하라.
+기준: behavior 불변(이름·텍스트·스타일·색상·애니메이션·설정값)=simple, behavior 변경(로직·API·DB)=std, 보안 민감=deep.
+impl: $impl
+issue: #$issue
+기존 frontmatter 유무: $( [[ "$has_frontmatter" -gt 0 ]] && echo '있음(depth만 누락)' || echo '없음')
+파일 내용 확인 후 depth만 추가하라. 다른 내용은 수정하지 마라." \
+    "${STATE_DIR}/${prefix}_depth_patch_out.txt"
+
+  # 재확인
+  has_depth=$(sed -n '/^---$/,/^---$/{ /^depth:/p; }' "$impl" 2>/dev/null || echo "")
+  if [[ -n "$has_depth" ]]; then
+    echo "[HARNESS] depth 패치 성공: $(echo "$has_depth" | head -1 | xargs)"
+  else
+    echo "[HARNESS] ⚠️ depth 패치 실패 — std 폴백 적용 (architect 프롬프트 개선 필요)"
+    [[ -n "$RUN_LOG" ]] && printf '{"event":"warn","msg":"depth_frontmatter_missing_after_retry","impl":"%s","t":%d}\n' \
+      "$impl" "$(date +%s)" >> "$RUN_LOG"
+  fi
+}
+
 run_impl() {
   # ── 재진입 상태 감지 ──
   # plan_validation_passed 플래그 + impl 파일 있으면 → engineer 루프로 바로 진입
@@ -109,6 +152,10 @@ issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
     echo "SPEC_GAP_ESCALATE: architect가 impl 파일을 생성하지 못했다."
     exit 1
   fi
+
+  # ── depth frontmatter 강제 검증 ──────────────────────────────────
+  # architect가 impl 파일에 depth: 선언을 빠뜨리면 마이크로 재호출 (1회, 60초)
+  ensure_depth_frontmatter "$IMPL_FILE" "$ISSUE_NUM" "$PREFIX"
 
   # Plan Validation (구현 전 게이트)
   echo "[HARNESS] Plan Validation"
