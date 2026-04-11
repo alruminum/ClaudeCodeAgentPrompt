@@ -42,7 +42,7 @@ rotate_harness_logs() {
   echo "[HARNESS] 실시간 확인: tail -f \"$RUN_LOG\""
 }
 
-# ── run_end 이벤트 기록 ───────────────────────────────────────────────
+# ── run_end 이벤트 기록 + 타이밍 요약 ────────────────────────────────
 write_run_end() {
   [[ -z "$RUN_LOG" || ! -f "$RUN_LOG" ]] && return
   local result="${HARNESS_RESULT:-unknown}"
@@ -51,17 +51,98 @@ write_run_end() {
     result="HARNESS_CRASH"
   fi
   local t_end; t_end=$(date +%s)
+  local total_elapsed=$((t_end - _HARNESS_RUN_START))
   # branch_name: 제어문자/탭/개행 제거 (git status 출력 혼입 방지)
   local branch_name="${HARNESS_BRANCH:-}"
   branch_name=$(printf '%s' "$branch_name" | tr -d '\t\n\r' | head -c 100)
   printf '{"event":"run_end","t":%d,"elapsed":%d,"result":"%s","branch":"%s"}\n' \
-    "$t_end" "$((t_end - _HARNESS_RUN_START))" "$result" "$branch_name" >> "$RUN_LOG"
+    "$t_end" "$total_elapsed" "$result" "$branch_name" >> "$RUN_LOG"
+
+  # ── 타이밍 요약 출력 (C2) ──
+  _print_timing_summary "$RUN_LOG" "$total_elapsed"
+
   # 완료 후 자동 리뷰 트리거 (백그라운드 — 하네스 종료를 블로킹하지 않음)
   # review-agent.sh 내부에서 harness-review.py도 실행 → _review.txt + review-result.json 모두 생성
   local review_agent="${HOME}/.claude/harness/review-agent.sh"
   if [[ -f "$review_agent" ]]; then
     bash "$review_agent" "$RUN_LOG" "$PREFIX" 2>/dev/null &
   fi
+}
+
+# ── 타이밍 요약 출력 ─────────────────────────────────────────────────
+_print_timing_summary() {
+  local log_file="$1" total_elapsed="$2"
+  [[ ! -f "$log_file" ]] && return
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  하네스 실행 요약"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # 총 실행 시간
+  local mins=$((total_elapsed / 60))
+  local secs=$((total_elapsed % 60))
+  echo "  총 실행 시간: ${mins}m ${secs}s"
+
+  # 에이전트별 시간 집계 (python3으로 JSONL 파싱)
+  python3 -c '
+import json, sys
+
+agents = {}
+total_cost = 0.0
+total_in = 0
+total_out = 0
+
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line: continue
+    try:
+        e = json.loads(line)
+        if e.get("event") == "agent_end":
+            a = e["agent"]
+            elapsed = e.get("elapsed", 0)
+            cost = float(e.get("cost_usd", 0) or 0)
+            if a not in agents:
+                agents[a] = {"calls": 0, "time": 0, "cost": 0.0}
+            agents[a]["calls"] += 1
+            agents[a]["time"] += elapsed
+            agents[a]["cost"] += cost
+            total_cost += cost
+        elif e.get("event") == "agent_stats":
+            a = e.get("agent", "")
+            if a in agents:
+                agents[a].setdefault("in_tok", 0)
+                agents[a].setdefault("out_tok", 0)
+                agents[a]["in_tok"] += e.get("in_tok", 0)
+                agents[a]["out_tok"] += e.get("out_tok", 0)
+                total_in += e.get("in_tok", 0)
+                total_out += e.get("out_tok", 0)
+    except Exception:
+        pass
+
+if not agents:
+    print("  (에이전트 호출 없음)")
+    sys.exit(0)
+
+sorted_agents = sorted(agents.items(), key=lambda x: x[1]["time"], reverse=True)
+
+print("  총 비용: $%.4f" % total_cost)
+print("  총 토큰: in=%s out=%s" % ("{:,}".format(total_in), "{:,}".format(total_out)))
+print()
+print("  %-20s %-5s %-10s %-10s" % ("에이전트", "호출", "시간", "비용"))
+print("  %s %s %s %s" % ("─"*20, "─"*5, "─"*10, "─"*10))
+for name, s in sorted_agents:
+    m = s["time"] // 60
+    sec = s["time"] % 60
+    print("  %-20s %-5d %dm%02ds      $%.4f" % (name, s["calls"], m, sec, s["cost"]))
+
+slowest_name, slowest_data = sorted_agents[0]
+print()
+print("  가장 느린 단계: %s (%ds)" % (slowest_name, slowest_data["time"]))
+' "$log_file" 2>/dev/null || true
+
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
 }
 
 # ── hlog: 공용 로그 함수 (impl_simple/std/deep 외 design/plan 루프에서도 사용) ──
@@ -686,8 +767,9 @@ _agent_call() {
   echo "0" > "$cost_file"
   echo "{}" > "$stats_file"
   : > "$out_file"  # 파이프라인 실패 시에도 파일 존재 보장
-  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d,"prompt_chars":%d}\n' \
-    "$agent" "$t_start" "${#prompt}" >> "$RUN_LOG"
+  local _iso_start; _iso_start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_start","agent":"%s","t":%d,"start_ts":"%s","prompt_chars":%d}\n' \
+    "$agent" "$t_start" "$_iso_start" "${#prompt}" >> "$RUN_LOG"
 
   # 에이전트별 active 플래그 — agent-boundary.py가 이 플래그로 경로 제한 적용
   local _prefix_for_flag=""
@@ -818,9 +900,11 @@ for f in [
 ' "$cost_file" "$out_file" "$stats_file" 2>/dev/null || _call_exit=$?
 
   local t_end; t_end=$(date +%s)
+  local _duration_s=$((t_end - t_start))
+  local _iso_end; _iso_end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   local agent_cost; agent_cost=$(cat "$cost_file" 2>/dev/null || echo "0")
-  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"elapsed":%d,"exit":%d,"cost_usd":%s,"prompt_chars":%d}\n' \
-    "$agent" "$t_end" "$((t_end - t_start))" "$_call_exit" "$agent_cost" "${#prompt}" >> "$RUN_LOG"
+  [[ -n "$RUN_LOG" ]] && printf '{"event":"agent_end","agent":"%s","t":%d,"end_ts":"%s","elapsed":%d,"duration_s":%d,"exit":%d,"cost_usd":%s,"prompt_chars":%d}\n' \
+    "$agent" "$t_end" "$_iso_end" "$_duration_s" "$_duration_s" "$_call_exit" "$agent_cost" "${#prompt}" >> "$RUN_LOG"
 
   # agent_stats: 도구 사용 요약 + Read한 파일 목록 (별도 이벤트)
   if [[ -f "$stats_file" && -n "$RUN_LOG" ]]; then
