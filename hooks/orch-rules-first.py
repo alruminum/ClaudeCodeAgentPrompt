@@ -43,7 +43,8 @@ HARNESS_INFRA_PATTERNS = [
 ]
 
 def is_orch_rules(fp):
-    return bool(re.search(r'orchestration-rules\.md$', fp))
+    return bool(re.search(r'orchestration-rules\.md$', fp)) or \
+           bool(re.search(r'orchestration/[^/]+\.md$', fp))
 
 def is_harness_infra(fp):
     return any(re.search(p, fp) for p in HARNESS_INFRA_PATTERNS)
