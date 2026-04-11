@@ -87,9 +87,9 @@ def main():
                    "pr_reviewer_lgtm", "security_review_passed", "designer_ran", "design_critic_passed"]:
             remove(f)
 
-    # ── architect Mode F (Bugfix Plan) → BUGFIX_PLAN_READY 플래그 ──
-    if agent == "architect" and "BUGFIX_PLAN_READY" in resp:
-        touch("bugfix_plan_ready")
+    # ── architect Light Plan → LIGHT_PLAN_READY 플래그 ──
+    if agent == "architect" and "LIGHT_PLAN_READY" in resp:
+        touch("light_plan_ready")
 
     # ── engineer 완료 → 검증 플래그 삭제 (재검증 강제) ──
     if agent == "engineer":

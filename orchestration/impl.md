@@ -34,7 +34,7 @@ qa 스킬 → QA 에이전트 (이슈 생성 #N)
 → executor.sh impl --issue <N>  (--impl 없이)
 → impl.sh: impl 파일 없음 감지
   → pre-analysis (suspected_files: issue 키워드 grep 상위 10개, issue_summary, labels)
-  → architect BUGFIX_PLAN (suspected_files + issue_summary + labels 전달)
+  → architect LIGHT_PLAN (suspected_files + issue_summary + labels 전달)
     → impl 파일 생성 (frontmatter depth: simple|std|deep 선언)
   → plan_validation
   → simple / std / deep 루프
@@ -62,7 +62,7 @@ flowchart TD
     RE_PV -->|YES| ENG_DIRECT["engineer 루프 직접 진입\n(architect + validator 스킵)"]
     RE_PV -->|NO| RE_IMPL
     RE_IMPL -->|YES| VAL_PV["validator Plan Validation\n(architect 스킵)"]
-    RE_IMPL -->|NO| ARC_START["architect부터 (기본)\nissue labels로 BUGFIX_PLAN vs MODULE_PLAN 분기"]
+    RE_IMPL -->|NO| ARC_START["architect부터 (기본)\nissue labels/본문으로 LIGHT_PLAN vs MODULE_PLAN 분기"]
 ```
 
 ---
@@ -76,6 +76,6 @@ bash ~/.claude/harness/executor.sh impl \
   [--prefix <prefix>] \
   [--depth simple|std|deep]
 
-# impl 파일 없이 (QA/DESIGN_HANDOFF): architect가 BUGFIX_PLAN으로 impl 생성
+# impl 파일 없이 (QA/DESIGN_HANDOFF): architect가 LIGHT_PLAN으로 impl 생성
 bash ~/.claude/harness/executor.sh impl --issue <N> [--prefix <P>]
 ```

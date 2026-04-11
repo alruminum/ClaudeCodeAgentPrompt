@@ -1,10 +1,10 @@
 #!/bin/bash
 # ~/.claude/harness/impl.sh
 # 루프 C (구현 루프): plan_validation_passed → depth별 dispatcher (simple/std/deep)
-# planning fallback: impl 없으면 architect MODULE_PLAN 또는 BUGFIX_PLAN → validator Plan Validation
+# planning fallback: impl 없으면 architect MODULE_PLAN 또는 LIGHT_PLAN → validator Plan Validation
 #
 # QA/DESIGN_HANDOFF 경로:
-#   impl 파일 없이 --issue <N>만 지정 → pre-analysis → architect BUGFIX_PLAN → depth별 라우팅
+#   impl 파일 없이 --issue <N>만 지정 → pre-analysis → architect LIGHT_PLAN → depth별 라우팅
 #
 # harness/executor.sh에서 source — 전역변수(PREFIX, IMPL_FILE, ISSUE_NUM 등) 사용
 
@@ -37,9 +37,9 @@ run_impl() {
   # run_bugfix → run_impl 이중 로테이션 방지: RUN_LOG 이미 설정돼있으면 스킵
   [[ -z "$RUN_LOG" ]] && rotate_harness_logs "$PREFIX" "impl"
 
-  # impl 파일 없으면 architect 호출 (MODULE_PLAN 또는 BUGFIX_PLAN)
+  # impl 파일 없으면 architect 호출 (MODULE_PLAN 또는 LIGHT_PLAN)
   if [[ -z "$IMPL_FILE" || ! -f "$IMPL_FILE" ]]; then
-    # issue labels로 BUGFIX_PLAN vs MODULE_PLAN 분기
+    # issue labels 또는 이슈 본문으로 LIGHT_PLAN vs MODULE_PLAN 분기
     local issue_labels=""
     local issue_summary=""
     local suspected_files=""
@@ -50,9 +50,10 @@ run_impl() {
       issue_labels=$(gh issue view "$ISSUE_NUM" --json labels -q '[.labels[].name] | join(",")' 2>/dev/null || echo "")
       issue_summary=$(gh issue view "$ISSUE_NUM" --json title,body -q '"## " + .title + "\n\n" + .body' 2>/dev/null || echo "")
 
-      # bug/design-fix 라벨이면 BUGFIX_PLAN
-      if echo "$issue_labels" | grep -qiE "bug|design-fix|fix|hotfix"; then
-        arch_mode="BUGFIX_PLAN"
+      # bug/design-fix 라벨 또는 DESIGN_HANDOFF 이슈 → LIGHT_PLAN
+      if echo "$issue_labels" | grep -qiE "bug|design-fix|fix|hotfix" || \
+         echo "$issue_summary" | grep -q "DESIGN_HANDOFF"; then
+        arch_mode="LIGHT_PLAN"
         # pre-analysis: suspected_files (issue 키워드 grep 상위 10개)
         local issue_title
         issue_title=$(gh issue view "$ISSUE_NUM" --json title -q '.title' 2>/dev/null || echo "")
@@ -67,10 +68,10 @@ run_impl() {
       fi
     fi
 
-    if [[ "$arch_mode" == "BUGFIX_PLAN" ]]; then
-      echo "[HARNESS] architect BUGFIX_PLAN 작성 (issue #${ISSUE_NUM})"
+    if [[ "$arch_mode" == "LIGHT_PLAN" ]]; then
+      echo "[HARNESS] architect LIGHT_PLAN 작성 (issue #${ISSUE_NUM})"
       _agent_call "architect" 900 \
-        "@MODE:ARCHITECT:BUGFIX_PLAN
+        "@MODE:ARCHITECT:LIGHT_PLAN
 issue #${ISSUE_NUM}
 suspected_files: ${suspected_files}
 labels: ${issue_labels}
@@ -86,9 +87,9 @@ issue #${ISSUE_NUM} impl 계획 작성. context: ${CONTEXT}" \
         "${STATE_DIR}/${PREFIX}_arch_out.txt"
     fi
 
-    # architect 결과 마커 확인 (BUGFIX_PLAN_READY 또는 READY_FOR_IMPL)
+    # architect 결과 마커 확인 (LIGHT_PLAN_READY 또는 READY_FOR_IMPL)
     local arch_marker
-    arch_marker=$(parse_marker "${STATE_DIR}/${PREFIX}_arch_out.txt" "BUGFIX_PLAN_READY|READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+    arch_marker=$(parse_marker "${STATE_DIR}/${PREFIX}_arch_out.txt" "LIGHT_PLAN_READY|READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
     if [[ "$arch_marker" == "PRODUCT_PLANNER_ESCALATION_NEEDED" ]]; then
       export HARNESS_RESULT="PRODUCT_PLANNER_ESCALATION_NEEDED"
       echo "PRODUCT_PLANNER_ESCALATION_NEEDED"

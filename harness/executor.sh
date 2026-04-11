@@ -18,7 +18,7 @@
 #
 # ⚠️  bugfix/direct 모드: REMOVED (v6)
 #   버그 보고는 qa 스킬이 QA 에이전트를 직접 호출해 분류 후 executor.sh impl --issue <N>으로 라우팅.
-#   impl.sh가 issue labels로 BUGFIX_PLAN vs MODULE_PLAN을 분기한다.
+#   impl.sh가 issue labels/본문으로 LIGHT_PLAN vs MODULE_PLAN을 분기한다.
 
 set -euo pipefail
 

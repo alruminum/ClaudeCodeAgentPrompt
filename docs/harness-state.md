@@ -30,7 +30,7 @@ Claude Code 위에서 bash 스크립트 + Python 훅만으로 동작 (외부 인
 | `harness/utils.sh` | 공용 유틸: `_agent_call()`, `kill_check()`, `parse_marker()`, `run_plan_validation()`, `run_design_validation()`, `create_feature_branch()`, `merge_to_main()`, `generate_commit_msg()`, `rotate_harness_logs()`, `write_run_end()`, `build_loop_context()` (Phase C), `explore_instruction()`, `prune_history()` | 모든 harness 스크립트에서 source |
 | `harness/review-agent.sh` | Phase D Step A: 하네스 완료 후 Haiku 로그 분석 → `/tmp/{prefix}_review-result.json` 생성 (JSON 검증 포함) | `write_run_end()` 백그라운드 트리거 |
 | `harness/executor.sh` | 순수 라우터 + 공유 인프라 (lock, heartbeat, detect_depth) | harness-{impl,design,plan}.sh |
-| `harness/impl.sh` | impl 모드: 재진입 감지 → architect (MODULE_PLAN/BUGFIX_PLAN) → `run_plan_validation()` → depth별 루프 | harness/impl_{simple,std,deep}.sh |
+| `harness/impl.sh` | impl 모드: 재진입 감지 → architect (MODULE_PLAN/LIGHT_PLAN) → `run_plan_validation()` → depth별 루프 | harness/impl_{simple,std,deep}.sh |
 | `harness/impl_simple.sh` | simple depth 루프 (engineer → pr-reviewer → merge, LLM 2회, behavior 불변) | /tmp/{p}_* 플래그들 |
 | `harness/impl_std.sh` | std depth 루프 (engineer → test → vitest → validator → pr-reviewer → merge, LLM 3회) | /tmp/{p}_* 플래그들 |
 | `harness/impl_deep.sh` | deep depth 루프 (impl_std + security-reviewer, LLM 5회) | /tmp/{p}_* 플래그들 |

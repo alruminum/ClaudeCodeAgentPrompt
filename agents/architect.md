@@ -7,7 +7,7 @@ description: >
   SPEC_GAP: SPEC_GAP 피드백 처리 — engineer 요청 시.
   Task Decompose: Epic stories → 기술 태스크 분해 + impl batch 작성.
   Technical Epic: 기술부채/인프라 에픽 설계.
-  Bugfix Plan: 국소적 버그 수정 계획 — 아키텍처 변경 없는 단순 수정.
+  Light Plan: 국소적 변경 계획 — 아키텍처 변경 없는 버그 수정·디자인 반영.
 tools: Read, Glob, Grep, Write, Edit, mcp__github__create_issue, mcp__github__list_issues, mcp__github__get_issue, mcp__github__update_issue, Bash, mcp__pencil__get_editor_state, mcp__pencil__batch_get, mcp__pencil__get_screenshot, mcp__pencil__get_guidelines, mcp__pencil__get_variables
 model: sonnet
 ---
@@ -64,7 +64,7 @@ model: sonnet
 | `@MODE:ARCHITECT:SPEC_GAP` | SPEC_GAP — engineer 갭 피드백 처리 | `SPEC_GAP_RESOLVED` | [상세](architect/spec-gap.md) |
 | `@MODE:ARCHITECT:TASK_DECOMPOSE` | Task Decompose — Epic → 태스크 분해 + impl batch | `READY_FOR_IMPL` ×N | [상세](architect/task-decompose.md) |
 | `@MODE:ARCHITECT:TECH_EPIC` | Technical Epic — 기술부채/인프라 에픽 설계 | `SYSTEM_DESIGN_READY` | [상세](architect/tech-epic.md) |
-| `@MODE:ARCHITECT:BUGFIX_PLAN` | Bugfix Plan — 국소적 버그 수정 계획 | `BUGFIX_PLAN_READY` | [상세](architect/bugfix-plan.md) |
+| `@MODE:ARCHITECT:LIGHT_PLAN` | Light Plan — 국소적 변경 계획 (버그·디자인 반영) | `LIGHT_PLAN_READY` | [상세](architect/light-plan.md) |
 
 ### @PARAMS 스키마
 
@@ -89,9 +89,9 @@ model: sonnet
 @PARAMS: { "goal": "개선 목표 설명", "scope": "영향 범위" }
 @OUTPUT: { "marker": "SYSTEM_DESIGN_READY", "stories_doc": "생성된 stories.md 경로", "updated_files": ["backlog.md", "CLAUDE.md"] }
 
-@MODE:ARCHITECT:BUGFIX_PLAN
-@PARAMS: { "suspected_files": "issue 키워드 grep 상위 10개 파일 경로", "issue_summary": "GitHub 이슈 제목+본문", "labels": "GitHub 이슈 라벨 목록", "issue": "GitHub 이슈 번호" }
-@OUTPUT: { "marker": "BUGFIX_PLAN_READY", "impl_path": "docs/bugfix/#N-slug.md", "depth": "frontmatter depth: simple|std|deep 선언 필수" }
+@MODE:ARCHITECT:LIGHT_PLAN
+@PARAMS: { "suspected_files": "관련 파일 경로 (grep 결과 또는 DESIGN_HANDOFF 대상)", "issue_summary": "GitHub 이슈 제목+본문", "labels": "GitHub 이슈 라벨 목록", "issue": "GitHub 이슈 번호" }
+@OUTPUT: { "marker": "LIGHT_PLAN_READY", "impl_path": "docs/bugfix/#N-slug.md", "depth": "frontmatter depth: simple|std|deep 선언 필수" }
 ```
 
 모드 미지정 시 입력 내용으로 판단한다.

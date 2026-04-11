@@ -313,12 +313,12 @@ print("ENGINEER_DOCS_BLOCKED")
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-# agent-gate.py: bugfix_plan_ready 폴백 검증
+# agent-gate.py: light_plan_ready 폴백 검증
 # ═══════════════════════════════════════════════════════════════════════
 
-@test "agent-gate: engineer allows bugfix_plan_ready as alternative to plan_validation_passed" {
-  run grep -A2 'bugfix_plan_ready' "${BATS_TEST_DIRNAME}/../../hooks/agent-gate.py"
-  [[ "$output" == *"bugfix_plan_ready"* ]]
+@test "agent-gate: engineer allows light_plan_ready as alternative to plan_validation_passed" {
+  run grep -A2 'light_plan_ready' "${BATS_TEST_DIRNAME}/../../hooks/agent-gate.py"
+  [[ "$output" == *"light_plan_ready"* ]]
 }
 
 # ═══════════════════════════════════════════════════════════════════════
