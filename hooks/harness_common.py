@@ -40,6 +40,20 @@ class FLAGS:
     DESIGN_CRITIC_PASSED = "design_critic_passed"
 
 
+# ── 에이전트 분류 상수 (Single Source of Truth) ──
+# 훅에서 에이전트별 권한/제약을 판단할 때 이 상수만 참조한다.
+# 변경 시 이 파일만 수정 → 모든 훅에 즉시 반영.
+
+# 하네스(executor.sh) 경유 필수 에이전트 — 직접 Agent 호출 금지
+HARNESS_ONLY_AGENTS = ("engineer", "architect")
+
+# 이슈 생성 가능 에이전트 — issue-gate.py에서 harness_active 없이도 허용
+ISSUE_CREATORS = ("qa", "designer")
+
+# 이슈 번호 필수 에이전트 — 프롬프트에 #NNN 없으면 차단
+ISSUE_REQUIRED_AGENTS = ("architect", "engineer")
+
+
 def get_prefix():
     """프로젝트별 prefix를 env → harness.config.json (상위 순환) → 디렉토리명 → "proj" 폴백으로 유도."""
     # 훅 서브프로세스에서는 HARNESS_PREFIX env var가 전파되지 않을 수 있음.

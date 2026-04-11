@@ -28,7 +28,7 @@ import json
 import re
 import subprocess
 from datetime import datetime
-from harness_common import get_prefix, get_state_dir, deny, flag_exists, FLAGS
+from harness_common import get_prefix, get_state_dir, deny, flag_exists, FLAGS, HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS
 
 PREFIX = get_prefix()
 
@@ -51,8 +51,8 @@ def main():
     if not agent:
         sys.exit(0)
 
-    # 1. 프롬프트 검증: architect/engineer 호출 전 이슈 번호 필수
-    if agent in ("architect", "engineer"):
+    # 1. 프롬프트 검증: 이슈 번호 필수 에이전트
+    if agent in ISSUE_REQUIRED_AGENTS:
         if not re.search(r"#\d+", prompt):
             deny(f"❌ {agent} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.")
 
@@ -62,7 +62,6 @@ def main():
             deny("❌ architect 호출 시 Mode A/B/C/D/E/F를 프롬프트에 명시하세요.")
 
     # 3. 하네스 내부 에이전트는 harness/executor.sh 경유 필수
-    HARNESS_ONLY_AGENTS = ("engineer", "architect")
     if agent in HARNESS_ONLY_AGENTS and not flag(FLAGS.HARNESS_ACTIVE):
         cmds = {
             "engineer": "bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N>",
