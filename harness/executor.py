@@ -102,6 +102,13 @@ def main() -> None:
 
     atexit.register(cleanup)
 
+    # SIGTERM/SIGINT 핸들러 — bash trap EXIT가 SIGTERM에도 반응한 것과 동일
+    def _signal_cleanup(signum: int, frame: object) -> None:
+        cleanup()
+        sys.exit(128 + signum)
+    signal.signal(signal.SIGTERM, _signal_cleanup)
+    signal.signal(signal.SIGINT, _signal_cleanup)
+
     # ── 모드 라우터 ──
     if args.mode == "impl":
         from .impl_router import run_impl

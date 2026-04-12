@@ -463,6 +463,21 @@ def agent_call(
         deadline = time.time() + timeout_secs
         assert proc.stdout is not None
 
+        # Watchdog: stdout 블로킹 시에도 타임아웃 강제 (bash timeout 명령 대응)
+        import threading
+        def _watchdog() -> None:
+            remaining = deadline - time.time()
+            if remaining > 0:
+                time.sleep(remaining)
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+        wd = threading.Thread(target=_watchdog, daemon=True)
+        wd.start()
+
         for line in proc.stdout:
             # tee to RUN_LOG
             if log_fh:
@@ -536,11 +551,11 @@ def agent_call(
             proc.wait()
             call_exit = proc.returncode or 0
 
-        if log_fh:
-            log_fh.close()
-
     except Exception as exc:
         call_exit = 1
+    finally:
+        if log_fh:
+            log_fh.close()
 
     # 결과 파일 기록
     try:

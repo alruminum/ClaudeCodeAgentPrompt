@@ -218,17 +218,11 @@ def run_automated_checks(
     out_file = state_dir.path / f"{prefix}_autocheck_fail.txt"
     out_file.unlink(missing_ok=True)
 
-    # 1. 변경 파일 확인
+    # 1. 변경 파일 확인 (bash: git status --short | grep -qE "^ M|^M |^A ")
     r = subprocess.run(
         ["git", "status", "--short"],
         capture_output=True, text=True, timeout=10,
     )
-    has_changes = False
-    for line in r.stdout.splitlines():
-        if re.match(r"^( M|M |A )", line.strip() if not line.startswith(" ") else line):
-            has_changes = True
-            break
-    # 원본 bash: grep -qE "^ M|^M |^A "
     has_changes = bool(re.search(r"^ M|^M |^A ", r.stdout, re.MULTILINE))
 
     if not has_changes:
