@@ -26,7 +26,7 @@ from harness.helpers import append_failure, budget_check
 class TestFlagEnumMatchesBash(unittest.TestCase):
     def test_flag_enum_matches_bash(self):
         """Flag enum 값이 flags.sh와 일치하는지 확인."""
-        flags_sh = HARNESS_DIR / "flags.sh"
+        flags_sh = HARNESS_DIR / "flags.sh.bak"
         content = flags_sh.read_text()
         sh_flags = dict(re.findall(r'FLAG_(\w+)="(\w+)"', content))
         for name, val in sh_flags.items():
@@ -38,7 +38,7 @@ class TestFlagEnumMatchesBash(unittest.TestCase):
 class TestMarkerEnumMatchesBash(unittest.TestCase):
     def test_marker_enum_matches_bash(self):
         """Marker enum 값이 markers.sh KNOWN_MARKERS와 일치하는지 확인."""
-        markers_sh = HARNESS_DIR / "markers.sh"
+        markers_sh = HARNESS_DIR / "markers.sh.bak"
         content = markers_sh.read_text()
         start = content.index("KNOWN_MARKERS=(")
         end = content.index(")", start + len("KNOWN_MARKERS=("))
@@ -209,6 +209,159 @@ class TestKillCheck(unittest.TestCase):
             sd.flag_touch("harness_kill")
             with self.assertRaises(SystemExit):
                 kill_check(sd)
+
+
+class TestExecutorCLI(unittest.TestCase):
+    """executor.py argparse 드라이런."""
+    def test_impl_help(self):
+        import subprocess
+        r = subprocess.run(
+            ["python3", "-c", "import sys; sys.argv=['e','impl','--help']; from harness.executor import main; main()"],
+            capture_output=True, text=True, cwd=str(HARNESS_DIR.parent), timeout=5,
+        )
+        self.assertIn("impl", r.stdout)
+        self.assertIn("--issue", r.stdout)
+
+    def test_invalid_mode(self):
+        import subprocess
+        r = subprocess.run(
+            ["python3", "-c", "import sys; sys.argv=['e','bogus']; from harness.executor import main; main()"],
+            capture_output=True, text=True, cwd=str(HARNESS_DIR.parent), timeout=5,
+        )
+        self.assertNotEqual(r.returncode, 0)
+
+
+class TestHooksSyntax(unittest.TestCase):
+    """hooks/*.py 파일 문법 검증."""
+    def test_all_hooks_parse(self):
+        import ast, glob
+        hooks_dir = HARNESS_DIR.parent / "hooks"
+        for py in sorted(hooks_dir.glob("*.py")):
+            with self.subTest(hook=py.name):
+                ast.parse(py.read_text())
+
+
+class TestRunLoggerJsonlCompat(unittest.TestCase):
+    """RunLogger가 생성하는 JSONL이 harness-review.py의 EXPECTED_SEQUENCE와 호환되는지."""
+    def test_event_sequence(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["HOME"] = td
+            log_dir = Path(td) / ".claude" / "harness-logs" / "test"
+            log_dir.mkdir(parents=True)
+            rl = RunLogger("test", "impl", "1")
+            rl.log_agent_start("engineer", 500)
+            rl.log_agent_end("engineer", 30, 0.1, 0, 500)
+            rl.log_agent_stats("engineer", {"Read": 2}, ["a.ts"], 5000, 2000)
+
+            # JSONL 파싱 — 모든 줄이 유효한 JSON
+            events = []
+            for line in rl.log_file.read_text().splitlines():
+                if line.strip():
+                    e = json.loads(line)
+                    events.append(e["event"])
+                    # 모든 이벤트에 필수 키 확인
+                    self.assertIn("event", e)
+
+            # harness-review.py가 기대하는 최소 시퀀스
+            self.assertIn("run_start", events)
+            self.assertIn("agent_start", events)
+            self.assertIn("agent_end", events)
+            self.assertIn("agent_stats", events)
+
+            # agent_end.cost_usd가 숫자인지 (harness-review.py가 float로 파싱)
+            ae = next(json.loads(l) for l in rl.log_file.read_text().splitlines()
+                      if '"agent_end"' in l)
+            self.assertIsInstance(ae["cost_usd"], (int, float))
+
+
+class TestRollbackScript(unittest.TestCase):
+    """rollback.sh가 .sh.bak → .sh 복원하는지."""
+    def test_rollback_restores(self):
+        with tempfile.TemporaryDirectory() as td:
+            # 시뮬레이션: .sh.bak 파일 생성
+            bak = Path(td) / "executor.sh.bak"
+            bak.write_text("#!/bin/bash\noriginal content")
+            # rollback 스크립트 복사
+            import shutil
+            rollback = Path(td) / "rollback.sh"
+            shutil.copy2(str(HARNESS_DIR / "rollback.sh"), str(rollback))
+            # 실행
+            import subprocess
+            r = subprocess.run(["bash", str(rollback)], capture_output=True, text=True, cwd=td, timeout=5)
+            self.assertEqual(r.returncode, 0)
+            restored = Path(td) / "executor.sh"
+            self.assertTrue(restored.exists())
+            self.assertEqual(restored.read_text(), "#!/bin/bash\noriginal content")
+
+
+class TestMockRunSimple(unittest.TestCase):
+    """run_simple 흐름을 mock agent_call로 검증."""
+    def test_run_simple_flow(self):
+        """agent_call을 mock하여 run_simple의 engineer→pr-reviewer→merge 흐름 확인."""
+        from unittest.mock import patch
+        from harness.config import HarnessConfig
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "harness-memory.md").write_text("# Harness Memory\n\n## impl 패턴\n\n## Auto-Promoted Rules\n")
+
+            # impl 파일 생성
+            impl = proj / "impl.md"
+            impl.write_text("---\ndepth: simple\n---\ntest impl")
+
+            os.chdir(td)
+            # git repo 초기화
+            import subprocess
+            subprocess.run(["git", "init"], capture_output=True, cwd=td)
+            subprocess.run(["git", "config", "user.email", "test@test.com"], capture_output=True, cwd=td)
+            subprocess.run(["git", "config", "user.name", "test"], capture_output=True, cwd=td)
+            subprocess.run(["git", "add", "."], capture_output=True, cwd=td)
+            subprocess.run(["git", "commit", "-m", "init"], capture_output=True, cwd=td)
+
+            sd = StateDir(proj, "test")
+            config = HarnessConfig(prefix="test")
+
+            call_count = [0]
+            def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
+                call_count[0] += 1
+                Path(out_file).write_text(f"mock output from {agent}\n---MARKER:LGTM---\n")
+                return 0
+
+            with patch("harness.impl_loop.agent_call", side_effect=mock_agent_call), \
+                 patch("harness.impl_loop.create_feature_branch", return_value="feat/test-1"), \
+                 patch("harness.impl_loop.merge_to_main", return_value=True), \
+                 patch("harness.impl_loop.collect_changed_files", return_value=["src/test.ts"]), \
+                 patch("harness.impl_loop.run_automated_checks", return_value=(True, "")), \
+                 patch("subprocess.run") as mock_sub:
+                mock_sub.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="abc123", stderr="")
+
+                from harness.impl_loop import run_simple
+                from harness.core import RunLogger
+
+                rl = RunLogger("test", "impl", "1")
+                result = run_simple(str(impl), "1", config, sd, "test", "feat", rl)
+
+            # engineer + pr-reviewer = 최소 2회 agent_call
+            self.assertGreaterEqual(call_count[0], 2)
+            # LGTM이면 HARNESS_DONE
+            self.assertEqual(result, "HARNESS_DONE")
+
+
+class TestConfigTestCommand(unittest.TestCase):
+    def test_empty_test_command_means_skip(self):
+        cfg = HarnessConfig(test_command="")
+        self.assertEqual(cfg.test_command, "")
+
+    def test_custom_test_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            config_dir = Path(td) / ".claude"
+            config_dir.mkdir()
+            (config_dir / "harness.config.json").write_text(
+                '{"prefix": "x", "test_command": "npm test"}'
+            )
+            cfg = load_config(Path(td))
+            self.assertEqual(cfg.test_command, "npm test")
 
 
 if __name__ == "__main__":

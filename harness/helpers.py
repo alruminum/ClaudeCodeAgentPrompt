@@ -12,9 +12,14 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
-from .core import (
-    Flag, RunLogger, StateDir, hlog, write_attempt_meta,
-)
+try:
+    from .core import (
+        Flag, RunLogger, StateDir, hlog, write_attempt_meta,
+    )
+except ImportError:
+    from core import (
+        Flag, RunLogger, StateDir, hlog, write_attempt_meta,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -382,7 +387,7 @@ def generate_pr_body(
         f"Issue #{issue_num} — `{impl_name}`\n"
         f"{why}\n\n"
         f"## 작동 증거\n"
-        f"- vitest: {test_summary}\n"
+        f"- test: {test_summary}\n"
         f"- 시도: {attempt_num}/{max_attempts}회 성공\n\n"
         f"## 위험 + AI 역할\n"
         f"- 보안 최고 등급: {sec_level}\n"

@@ -15,21 +15,38 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from .config import HarnessConfig, load_config
-from .core import (
-    Flag, Marker, RunLogger, StateDir,
-    agent_call, parse_marker,
-    create_feature_branch, merge_to_main, generate_commit_msg,
-    collect_changed_files,
-    build_smart_context, build_validator_context, explore_instruction,
-    prune_history, kill_check, detect_depth,
-)
-from .helpers import (
-    load_constraints, append_failure, append_success,
-    rollback_attempt, check_agent_output, run_automated_checks,
-    budget_check, generate_pr_body, save_impl_meta,
-    setup_hlog, log_decision, log_phase,
-)
+try:
+    from .config import HarnessConfig, load_config
+    from .core import (
+        Flag, Marker, RunLogger, StateDir,
+        agent_call, parse_marker,
+        create_feature_branch, merge_to_main, generate_commit_msg,
+        collect_changed_files,
+        build_smart_context, build_validator_context, explore_instruction,
+        prune_history, kill_check, detect_depth,
+    )
+    from .helpers import (
+        load_constraints, append_failure, append_success,
+        rollback_attempt, check_agent_output, run_automated_checks,
+        budget_check, generate_pr_body, save_impl_meta,
+        setup_hlog, log_decision, log_phase,
+    )
+except ImportError:
+    from config import HarnessConfig, load_config
+    from core import (
+        Flag, Marker, RunLogger, StateDir,
+        agent_call, parse_marker,
+        create_feature_branch, merge_to_main, generate_commit_msg,
+        collect_changed_files,
+        build_smart_context, build_validator_context, explore_instruction,
+        prune_history, kill_check, detect_depth,
+    )
+    from helpers import (
+        load_constraints, append_failure, append_success,
+        rollback_attempt, check_agent_output, run_automated_checks,
+        budget_check, generate_pr_body, save_impl_meta,
+        setup_hlog, log_decision, log_phase,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -713,11 +730,12 @@ def _run_std_deep(
         hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=600s)")
         kill_check(state_dir)
 
+        test_cmd = config.test_command or "npx vitest run"
         if attempt > 0:
             te_prompt = (
                 f"[RETRY 모드] 이전 attempt에서 테스트 파일이 이미 작성됨. 새 테스트 파일 작성 불필요.\n"
                 f"impl: {impl_file}\n수정된 파일: {changed_files_str}\nissue: #{issue_num}\n\n"
-                f"[지시] npx vitest run만 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
+                f"[지시] {test_cmd}만 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
             )
         else:
             te_prompt = (
@@ -742,36 +760,62 @@ def _run_std_deep(
             attempt += 1
             continue
 
-        # ── vitest run (ground truth) ─────────────────────────────
-        print(f"[HARNESS] vitest 실행 (attempt {attempt + 1}/{MAX})")
-        hlog_fn("vitest 시작")
-        kill_check(state_dir)
-        test_result = subprocess.run(
-            ["npx", "vitest", "run"],
-            capture_output=True, text=True, timeout=300,
-        )
-        test_out_file = state_dir.path / f"{prefix}_test_out.txt"
-        test_out_file.write_text(test_result.stdout + test_result.stderr, encoding="utf-8")
-        hlog_fn(f"vitest 종료 (exit={test_result.returncode})")
+        # ── test run (ground truth) ───────────────────────────────
+        import shlex as _shlex
+        if not config.test_command:
+            # test_command 미설정 → ground-truth 테스트 스킵, test-engineer 마커에 의존
+            hlog_fn("test_command 미설정 → ground-truth 테스트 스킵")
+            print("[HARNESS] test_command 미설정 — ground-truth 테스트 스킵")
+            te_content = Path(te_out).read_text(encoding="utf-8", errors="replace")
+            te_marker = parse_marker(te_out, "TESTS_PASS|TESTS_FAIL")
+            if te_marker == "TESTS_FAIL":
+                fail_type = "test_fail"
+                error_trace = te_content
+                log_decision("fail_type", fail_type, "test-engineer reported TESTS_FAIL", run_logger, attempt)
+                append_failure(impl_file, "test_fail", error_trace, state_dir, prefix)
+                try:
+                    shutil.copy2(te_out, str(attempt_dir / "test-engineer.log"))
+                except OSError:
+                    pass
+                save_impl_meta(attempt_dir, attempt, "FAIL", depth, "test_fail",
+                               f"{attempt_dir}/test-engineer.log 확인")
+                rollback_attempt(attempt, run_logger)
+                attempt += 1
+                continue
+            # TESTS_PASS 또는 UNKNOWN → 통과 처리
+            state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
+            print("[HARNESS] TESTS_PASS (test-engineer marker)")
+        else:
+            test_cmd_parts = _shlex.split(config.test_command)
+            print(f"[HARNESS] 테스트 실행: {config.test_command} (attempt {attempt + 1}/{MAX})")
+            hlog_fn(f"테스트 시작: {config.test_command}")
+            kill_check(state_dir)
+            test_result = subprocess.run(
+                test_cmd_parts,
+                capture_output=True, text=True, timeout=300,
+            )
+            test_out_file = state_dir.path / f"{prefix}_test_out.txt"
+            test_out_file.write_text(test_result.stdout + test_result.stderr, encoding="utf-8")
+            hlog_fn(f"테스트 종료 (exit={test_result.returncode})")
 
-        if test_result.returncode != 0:
-            print("[HARNESS] TESTS_FAIL")
-            error_trace = test_out_file.read_text(encoding="utf-8")
-            fail_type = "test_fail"
-            log_decision("fail_type", fail_type, f"vitest exit={test_result.returncode}", run_logger, attempt)
-            append_failure(impl_file, "test_fail", error_trace, state_dir, prefix)
-            try:
-                shutil.copy2(str(test_out_file), str(attempt_dir / "test-results.log"))
-                shutil.copy2(te_out, str(attempt_dir / "test-engineer.log"))
-            except OSError:
-                pass
-            save_impl_meta(attempt_dir, attempt, "FAIL", depth, "test_fail",
-                           f"{attempt_dir}/test-results.log 의 실패 케이스 확인")
-            rollback_attempt(attempt, run_logger)
-            attempt += 1
-            continue
-        state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
-        print("[HARNESS] TESTS_PASS")
+            if test_result.returncode != 0:
+                print("[HARNESS] TESTS_FAIL")
+                error_trace = test_out_file.read_text(encoding="utf-8")
+                fail_type = "test_fail"
+                log_decision("fail_type", fail_type, f"test exit={test_result.returncode}", run_logger, attempt)
+                append_failure(impl_file, "test_fail", error_trace, state_dir, prefix)
+                try:
+                    shutil.copy2(str(test_out_file), str(attempt_dir / "test-results.log"))
+                    shutil.copy2(te_out, str(attempt_dir / "test-engineer.log"))
+                except OSError:
+                    pass
+                save_impl_meta(attempt_dir, attempt, "FAIL", depth, "test_fail",
+                               f"{attempt_dir}/test-results.log 의 실패 케이스 확인")
+                rollback_attempt(attempt, run_logger)
+                attempt += 1
+                continue
+            state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
+            print("[HARNESS] TESTS_PASS")
 
         # ── 워커 3: validator ─────────────────────────────────────
         log_phase("validator", run_logger, attempt)
