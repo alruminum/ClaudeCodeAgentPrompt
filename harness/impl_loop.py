@@ -795,12 +795,12 @@ def _run_std_deep(
         hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=600s)")
         kill_check(state_dir)
 
-        test_cmd = config.test_command or "npx vitest run"
+        test_cmd_hint = config.test_command or "프로젝트의 테스트 명령어"
         if attempt > 0:
             te_prompt = (
                 f"[RETRY 모드] 이전 attempt에서 테스트 파일이 이미 작성됨. 새 테스트 파일 작성 불필요.\n"
                 f"impl: {impl_file}\n수정된 파일: {changed_files_str}\nissue: #{issue_num}\n\n"
-                f"[지시] {test_cmd}만 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
+                f"[지시] {test_cmd_hint}를 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
             )
         else:
             te_prompt = (
