@@ -16,14 +16,14 @@ argument-hint: "[prefix]"
 
 ```bash
 for f in \
-  ~/.claude/harness/executor.sh \
-  ~/.claude/harness/impl.sh \
-  ~/.claude/harness/impl_simple.sh \
-  ~/.claude/harness/impl_std.sh \
-  ~/.claude/harness/impl_deep.sh \
-  ~/.claude/harness/impl_helpers.sh \
-  ~/.claude/harness/design.sh \
-  ~/.claude/harness/plan.sh \
+  ~/.claude/harness/executor.py \
+  ~/.claude/harness/core.py \
+  ~/.claude/harness/config.py \
+  ~/.claude/harness/impl_router.py \
+  ~/.claude/harness/impl_loop.py \
+  ~/.claude/harness/helpers.py \
+  ~/.claude/harness/plan_loop.py \
+  ~/.claude/harness/review_agent.py \
   ~/.claude/hooks/harness-router.py \
   ~/.claude/hooks/harness-session-start.py \
   ~/.claude/hooks/agent-boundary.py \
@@ -44,17 +44,14 @@ echo "PREFIX: $PREFIX"
 ### 3. 스크립트 문법 검증
 
 ```bash
-bash -n ~/.claude/harness/executor.sh && echo "OK executor syntax" || echo "FAIL executor syntax"
-bash -n ~/.claude/harness/impl.sh && echo "OK impl syntax" || echo "FAIL impl syntax"
-bash -n ~/.claude/harness/impl_simple.sh && echo "OK impl_simple syntax" || echo "FAIL impl_simple syntax"
-bash -n ~/.claude/harness/impl_std.sh && echo "OK impl_std syntax" || echo "FAIL impl_std syntax"
-bash -n ~/.claude/harness/impl_deep.sh && echo "OK impl_deep syntax" || echo "FAIL impl_deep syntax"
-bash -n ~/.claude/harness/impl_helpers.sh && echo "OK impl_helpers syntax" || echo "FAIL impl_helpers syntax"
-bash -n ~/.claude/harness/design.sh && echo "OK design syntax" || echo "FAIL design syntax"
-bash -n ~/.claude/harness/plan.sh && echo "OK plan syntax" || echo "FAIL plan syntax"
+for f in executor core config impl_router impl_loop helpers plan_loop review_agent; do
+  python3 -c "import ast; ast.parse(open('$HOME/.claude/harness/${f}.py').read())" 2>/dev/null \
+    && echo "OK ${f}.py syntax" || echo "FAIL ${f}.py syntax"
+done
 python3 -m py_compile ~/.claude/hooks/harness-router.py && echo "OK router syntax" || echo "FAIL router syntax"
 python3 -m py_compile ~/.claude/hooks/harness-session-start.py && echo "OK session-start syntax" || echo "FAIL session-start syntax"
 python3 -m py_compile ~/.claude/hooks/agent-boundary.py && echo "OK agent-boundary syntax" || echo "FAIL agent-boundary syntax"
+python3 -m pytest ~/.claude/harness/tests/test_parity.py -q 2>/dev/null && echo "OK parity tests" || echo "FAIL parity tests"
 ```
 
 ### 4. 플래그 읽기/쓰기 dry-run

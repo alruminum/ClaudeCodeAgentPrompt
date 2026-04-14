@@ -6,7 +6,7 @@ description: 버그/이슈를 자연어로 설명하면 명확히 정의한 뒤 
 # QA Skill
 
 유저의 이슈 신고를 구조화하고, QA 에이전트를 직접 호출해 분류한 뒤 적절한 루프로 라우팅한다.
-**executor.sh bugfix는 사용하지 않는다. 오케스트레이션은 이 스킬이 담당한다.**
+**executor.py bugfix는 사용하지 않는다. 오케스트레이션은 이 스킬이 담당한다.**
 
 ## 0단계: 버그 vs 디자인 구분
 
@@ -85,7 +85,7 @@ QA 분석 결과에서 depth를 추천한다. 기준: **이 버그 수정이 기
 # PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
-bash ~/.claude/harness/executor.sh impl \
+python3 ~/.claude/harness/executor.py impl \
   --issue <QA가 생성한 이슈 번호> \
   --depth <simple|std|deep> \
   $PREFIX_FLAG
@@ -98,7 +98,7 @@ CLEANUP은 항상 `--depth simple`로 전달한다.
 ```bash
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
-bash ~/.claude/harness/executor.sh impl \
+python3 ~/.claude/harness/executor.py impl \
   --issue <QA가 생성한 이슈 번호> \
   --depth simple \
   $PREFIX_FLAG

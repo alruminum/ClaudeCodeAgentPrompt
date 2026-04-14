@@ -12,12 +12,20 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import HarnessConfig
-from .core import (
-    RunLogger, StateDir,
-    agent_call, parse_marker, kill_check,
-    build_loop_context, run_design_validation, run_plan_validation,
-)
+try:
+    from .config import HarnessConfig
+    from .core import (
+        RunLogger, StateDir,
+        agent_call, parse_marker, kill_check,
+        build_loop_context, run_design_validation, run_plan_validation,
+    )
+except ImportError:
+    from config import HarnessConfig
+    from core import (
+        RunLogger, StateDir,
+        agent_call, parse_marker, kill_check,
+        build_loop_context, run_design_validation, run_plan_validation,
+    )
 
 
 def run_plan(
@@ -32,7 +40,10 @@ def run_plan(
     issue_num = str(issue_num)
 
     if config is None:
-        from .config import load_config
+        try:
+            from .config import load_config
+        except ImportError:
+            from config import load_config
         config = load_config()
     if state_dir is None:
         state_dir = StateDir(Path.cwd(), prefix)

@@ -82,7 +82,7 @@ CLAUDE.md 를 열어 [채우기] 표시된 항목을 이 프로젝트에 맞게 
 1. product-planner 에이전트와 대화해서 PRD/TRD 작성
 2. architect Mode A → 설계 문서 초안
 3. architect Mode D → 에픽 → backlog.md + stories.md 분해
-4. 구현 루프 실행 (bash ~/.claude/harness/executor.sh impl ...)
+4. 구현 루프 실행 (python3 ~/.claude/harness/executor.py impl ...)
 ```
 
 ---

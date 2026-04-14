@@ -30,8 +30,12 @@ def main() -> None:
     args = parser.parse_args()
 
     # config + state_dir 초기화
-    from .config import load_config
-    from .core import StateDir, RunLogger, Flag
+    try:
+        from .config import load_config
+        from .core import StateDir, RunLogger, Flag
+    except ImportError:
+        from config import load_config
+        from core import StateDir, RunLogger, Flag
 
     config = load_config()
     prefix = args.prefix or config.prefix
@@ -111,7 +115,10 @@ def main() -> None:
 
     # ── 모드 라우터 ──
     if args.mode == "impl":
-        from .impl_router import run_impl
+        try:
+            from .impl_router import run_impl
+        except ImportError:
+            from impl_router import run_impl
         run_logger = RunLogger(prefix, "impl", args.issue_num)
         run_logger_ref[0] = run_logger
         result = run_impl(
@@ -129,7 +136,10 @@ def main() -> None:
         _run_end_written[0] = True  # run_impl 내부에서 write_run_end 호출됨
 
     elif args.mode == "plan":
-        from .plan_loop import run_plan
+        try:
+            from .plan_loop import run_plan
+        except ImportError:
+            from plan_loop import run_plan
         run_logger = RunLogger(prefix, "plan", args.issue_num)
         run_logger_ref[0] = run_logger
         result = run_plan(

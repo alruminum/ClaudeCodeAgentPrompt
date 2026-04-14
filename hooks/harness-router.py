@@ -336,8 +336,8 @@ def _main_inner():
             log(prefix, f"AUTO_CLEAR stale {FLAGS.DESIGNER_RAN} (age={age_min:.0f}min)")
 
     # executor 경로 감지 (프로젝트 → 글로벌 폴백)
-    local_executor = os.path.join(os.getcwd(), ".claude", "harness/executor.sh")
-    global_executor = os.path.expanduser("~/.claude/harness/executor.sh")
+    local_executor = os.path.join(os.getcwd(), ".claude", "harness/executor.py")
+    global_executor = os.path.expanduser("~/.claude/harness/executor.py")
     executor_path = local_executor if os.path.exists(local_executor) else global_executor
 
     # 현재 플래그 상태
@@ -535,7 +535,7 @@ def _main_inner():
             issue_ref = current_issue or "N"
             harness_directive = (
                 f"\n\n🔁 [HARNESS ROUTER] plan_validation_passed OK → 아래 Bash 명령을 즉시 실행하라:\n"
-                f"bash {executor_path} impl --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
+                f"python3 {executor_path} impl --impl {impl_path} --issue {issue_ref} --prefix {prefix}\n"
                 "engineer 직접 호출 금지. 위 스크립트가 루프를 완주한다.\n"
                 "⚠️ 반드시 포어그라운드로 실행 (run_in_background 금지)."
             )
@@ -549,7 +549,7 @@ def _main_inner():
         else:
             harness_directive = (
                 "\n\n⚠️ src/** 직접 Edit/Write 금지. engineer 에이전트 직접 호출 금지.\n"
-                f"올바른 순서: Bash로 harness/executor.sh 호출.\n"
+                f"올바른 순서: python3로 harness/executor.py 호출.\n"
                 f"예: bash {executor_path} impl --impl [IMPL_PATH] --issue {current_issue or 'N'} --prefix {prefix}\n"
                 "⚠️ 반드시 포어그라운드로 실행 (run_in_background 금지)."
             )

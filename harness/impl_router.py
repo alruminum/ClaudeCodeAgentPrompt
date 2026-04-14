@@ -13,13 +13,22 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .config import HarnessConfig
-from .core import (
-    Flag, RunLogger, StateDir,
-    agent_call, parse_marker, detect_depth,
-    run_plan_validation,
-)
-from .impl_loop import run_simple, run_std, run_deep
+try:
+    from .config import HarnessConfig
+    from .core import (
+        Flag, RunLogger, StateDir,
+        agent_call, parse_marker, detect_depth,
+        run_plan_validation,
+    )
+    from .impl_loop import run_simple, run_std, run_deep
+except ImportError:
+    from config import HarnessConfig
+    from core import (
+        Flag, RunLogger, StateDir,
+        agent_call, parse_marker, detect_depth,
+        run_plan_validation,
+    )
+    from impl_loop import run_simple, run_std, run_deep
 
 
 def ensure_depth_frontmatter(
@@ -130,7 +139,10 @@ def run_impl(
     issue_num = str(issue_num)
 
     if config is None:
-        from .config import load_config
+        try:
+            from .config import load_config
+        except ImportError:
+            from config import load_config
         config = load_config()
     if state_dir is None:
         state_dir = StateDir(Path.cwd(), prefix)

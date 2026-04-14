@@ -54,8 +54,8 @@ def main():
     deny(
         "❌ 메인 Claude의 create_issue 직접 호출 금지 (orchestration/policies.md 정책 3).\n"
         "이슈 생성은 하네스 내부에서 처리됩니다.\n"
-        "버그: /qa 스킬 → QA 에이전트가 분석·이슈 생성 → executor.sh impl --issue <N>\n"
-        "구현: executor.sh impl --impl <path> 으로 진입하면 architect가 이슈를 생성합니다."
+        "버그: /qa 스킬 → QA 에이전트가 분석·이슈 생성 → python3 executor.py impl --issue <N>\n"
+        "구현: python3 executor.py impl --impl <path> 으로 진입하면 architect가 이슈를 생성합니다."
     )
 
 

@@ -25,16 +25,18 @@ FLAG = "/tmp/_orch_rules_touched"
 SESSION_TIMEOUT = 7200
 
 HARNESS_INFRA_PATTERNS = [
-    # harness/*.sh 스크립트 (디렉토리 구조)
+    # harness Python 모듈
+    r'harness/executor\.py',
+    r'harness/core\.py',
+    r'harness/config\.py',
+    r'harness/impl_router\.py',
+    r'harness/impl_loop\.py',
+    r'harness/helpers\.py',
+    r'harness/plan_loop\.py',
+    r'harness/review_agent\.py',
+    # harness/*.sh 래퍼/레거시
     r'harness/executor\.sh',
-    r'harness/impl\.sh',
-    r'harness/impl_simple\.sh',
-    r'harness/impl_std\.sh',
-    r'harness/impl_deep\.sh',
-    r'harness/impl_helpers\.sh',
     r'harness/design\.sh',
-    r'harness/plan\.sh',
-    r'harness/utils\.sh',
     # 셋업 스크립트
     r'setup-harness\.sh',
     r'setup-agents\.sh',

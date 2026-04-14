@@ -67,7 +67,7 @@ Bash 도구로 실행한다:
 # PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략 (executor.sh 기본값 사용)
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
-bash ~/.claude/harness/executor.sh plan \
+python3 ~/.claude/harness/executor.py plan \
   --context "[기능] <무엇> / [목적] <왜> / [범위] <범위>" \
   $PREFIX_FLAG
 ```

@@ -61,15 +61,15 @@ def main():
         if not re.search(r"Mode [A-F]", prompt, re.IGNORECASE):
             deny("❌ architect 호출 시 Mode A/B/C/D/E/F를 프롬프트에 명시하세요.")
 
-    # 3. 하네스 내부 에이전트는 harness/executor.sh 경유 필수
+    # 3. 하네스 내부 에이전트는 harness/executor.py 경유 필수
     if agent in HARNESS_ONLY_AGENTS and not flag(FLAGS.HARNESS_ACTIVE):
         cmds = {
-            "engineer": "bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N>",
-            "architect": "bash ~/.claude/harness/executor.sh bugfix|impl|plan ...",
+            "engineer": "python3 ~/.claude/harness/executor.py impl --impl <path> --issue <N>",
+            "architect": "python3 ~/.claude/harness/executor.py impl|plan ...",
         }
-        deny(f"❌ {agent}는 harness/executor.sh를 통해서만 호출 가능. "
+        deny(f"❌ {agent}는 harness/executor.py를 통해서만 호출 가능. "
              f"{get_state_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
-             f"직접 호출 금지 → {cmds.get(agent, 'executor.sh')}")
+             f"직접 호출 금지 → {cmds.get(agent, 'executor.py')}")
 
     # 4. engineer는 feature branch에서만 실행 (main 보호)
     if agent == "engineer" and flag(FLAGS.HARNESS_ACTIVE):

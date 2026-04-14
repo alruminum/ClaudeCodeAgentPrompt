@@ -56,7 +56,7 @@ def main():
         deny(
             "❌ gh issue create 직접 호출 금지.\n"
             "버그 이슈는 QA 에이전트가, 디자인 이슈는 designer 에이전트가 생성한다.\n"
-            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성 → executor.sh impl --issue <N> --prefix {PREFIX}"
+            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성 → python3 executor.py impl --issue <N> --prefix {PREFIX}"
         )
 
     # ── Gate 2: (removed in v6 — bugfix 모드 제거에 따라 is_bug 게이트 삭제)
@@ -65,10 +65,10 @@ def main():
     # harness-router.py가 AMBIGUOUS 분류 시 interview_state.json을 생성.
     # 인터뷰 완료(DONE) 전까지 구현 루프 진입 금지.
     _interview_path = f"{get_state_dir()}/{PREFIX}_interview_state.json"
-    _IS_EXECUTOR_ANY = re.search(r"executor\.sh\s+(impl|bugfix|design|plan)\b", cmd)
+    _IS_EXECUTOR_ANY = re.search(r"executor\.(sh|py)\s+(impl|bugfix|design|plan)\b", cmd)
     if _IS_EXECUTOR_ANY and os.path.exists(_interview_path) and os.environ.get("HARNESS_INTERNAL") != "1":
         deny(
-            "❌ 인터뷰 진행 중 — executor.sh 호출 불가.\n"
+            "❌ 인터뷰 진행 중 — executor.py 호출 불가.\n"
             "요구사항 명확화 인터뷰를 먼저 완료하세요.\n"
             "현재 질문에 답변하면 다음 단계로 진행됩니다."
         )
