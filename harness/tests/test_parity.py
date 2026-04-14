@@ -20,7 +20,7 @@ from harness.core import (
     parse_marker, detect_depth, hlog, kill_check,
     build_smart_context,
 )
-from harness.helpers import append_failure, budget_check
+from harness.helpers import append_failure, append_success, budget_check
 
 
 class TestFlagEnumMatchesBash(unittest.TestCase):
@@ -362,6 +362,48 @@ class TestConfigTestCommand(unittest.TestCase):
             )
             cfg = load_config(Path(td))
             self.assertEqual(cfg.test_command, "npm test")
+
+
+class TestAppendSuccessReflection(unittest.TestCase):
+    def test_reflection_extracted(self):
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            mem_dir = proj / ".claude"
+            mem_dir.mkdir()
+            mem_file = mem_dir / "harness-memory.md"
+            mem_file.write_text("# Harness Memory\n\n## Success Patterns\n")
+            os.chdir(td)
+
+            eng_out = Path(td) / "eng_out.txt"
+            eng_out.write_text(
+                "some output\n"
+                "src/App.tsx 파일 수정 — 버튼 핸들러 추가\n"
+                "문제 해결: 이벤트 바인딩 누락 수정 완료\n"
+            )
+
+            append_success("docs/impl/01-foo.md", 1, eng_out=str(eng_out))
+            content = mem_file.read_text()
+            self.assertIn("Success Patterns", content)
+            self.assertIn("01-foo", content)
+
+    def test_no_reflection_on_empty_output(self):
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            mem_dir = proj / ".claude"
+            mem_dir.mkdir()
+            mem_file = mem_dir / "harness-memory.md"
+            mem_file.write_text("# Harness Memory\n\n## Success Patterns\n")
+            os.chdir(td)
+
+            append_success("docs/impl/02-bar.md", 1)
+            content = mem_file.read_text()
+            # success 기록은 있어야 함
+            self.assertIn("02-bar | success", content)
+            # Success Patterns 섹션에 reflection 라인은 없어야 함 (eng_out 미제공)
+            patterns_section = content.split("## Success Patterns")[1]
+            reflection_lines = [l for l in patterns_section.splitlines()
+                                if l.startswith("- ") and "해결" in l or "수정" in l or "fixed" in l]
+            self.assertEqual(len(reflection_lines), 0)
 
 
 if __name__ == "__main__":

@@ -430,7 +430,7 @@ def run_simple(
         except OSError:
             pass
 
-        append_success(impl_file, attempt + 1)
+        append_success(impl_file, attempt + 1, eng_out=eng_out, attempt_dir=str(attempt_dir))
         save_impl_meta(attempt_dir, attempt, "PASS", depth, hints="구현 완료")
         (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
 
@@ -1028,7 +1028,7 @@ def _run_std_deep(
         except OSError:
             pass
 
-        append_success(impl_file, attempt + 1)
+        append_success(impl_file, attempt + 1, eng_out=eng_out, attempt_dir=str(attempt_dir))
         save_impl_meta(attempt_dir, attempt, "PASS", depth, hints="구현 완료")
         (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
 

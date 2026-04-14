@@ -74,6 +74,26 @@ def load_constraints(config: object = None) -> str:
                     + "\n".join(promoted_lines)
                 )
 
+            # Success Patterns 섹션에서 성공 패턴 추출
+            success_lines = []
+            in_success = False
+            for line in text.splitlines():
+                if line.startswith("## Success Patterns"):
+                    in_success = True
+                    continue
+                if in_success and line.startswith("##"):
+                    break
+                if in_success and line.startswith("- "):
+                    success_lines.append(line)
+                    if len(success_lines) >= 5:
+                        break
+
+            if success_lines:
+                constraints += (
+                    "\n[SUCCESS PATTERNS — 이전 성공에서 배운 접근법, 참고]:\n"
+                    + "\n".join(success_lines)
+                )
+
     # 글로벌/로컬 각각 tail 20줄
     if mem_global.exists():
         lines = mem_global.read_text(encoding="utf-8").splitlines()
@@ -164,14 +184,39 @@ def append_failure(
 # 3. append_success — 성공 기록
 # ═══════════════════════════════════════════════════════════════════════
 
-def append_success(impl_file: str, attempt_num: int) -> None:
-    """성공 기록을 harness-memory.md에 append."""
+def append_success(
+    impl_file: str,
+    attempt_num: int,
+    eng_out: str = "",
+    attempt_dir: str = "",
+) -> None:
+    """성공 기록 + 성공 패턴 추출하여 harness-memory.md에 append."""
     date_str = time.strftime("%Y-%m-%d")
     impl_name = Path(impl_file).stem
     mem_local = Path(".claude") / "harness-memory.md"
     entry = f"- {date_str} | {impl_name} | success | attempt {attempt_num}\n"
     with open(mem_local, "a", encoding="utf-8") as f:
         f.write(entry)
+
+    # ── 성공 패턴 추출 (REFLECTION) ──
+    eng_content = ""
+    if eng_out and Path(eng_out).exists():
+        try:
+            eng_content = Path(eng_out).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+    elif attempt_dir:
+        eng_log = Path(attempt_dir) / "engineer.log"
+        if eng_log.exists():
+            try:
+                eng_content = eng_log.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+
+    if eng_content:
+        reflection = _extract_reflection(impl_name, eng_content, attempt_num)
+        if reflection:
+            _write_reflection(mem_local, impl_name, date_str, reflection)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -511,3 +556,60 @@ def log_phase(
             "t": int(time.time()),
             "attempt": attempt,
         })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 13. _extract_reflection / _write_reflection — 성공 패턴 추출
+# ═══════════════════════════════════════════════════════════════════════
+
+def _extract_reflection(impl_name: str, eng_content: str, attempt_num: int) -> str:
+    """engineer 출력에서 성공 패턴/핵심 접근법을 추출.
+
+    마지막 500줄에서 핵심 키워드가 포함된 문장 추출.
+    attempt > 1이면 재시도 성공이므로 "무엇이 달라져서 성공했나"에 초점.
+    """
+    lines = eng_content.splitlines()[-500:]
+
+    # 패턴 1: 명시적 해결 마커
+    summary_lines = [
+        l.strip() for l in lines
+        if re.search(r"해결|수정|완료|fixed|resolved|solution|approach", l, re.IGNORECASE)
+        and len(l.strip()) > 20
+    ]
+
+    # 패턴 2: 파일 변경 + 이유 설명 라인
+    change_lines = [
+        l.strip() for l in lines
+        if re.search(r"\.(ts|tsx|js|jsx|py|css|json)\b", l)
+        and re.search(r"변경|추가|수정|삭제|refactor|add|update|fix|remove", l, re.IGNORECASE)
+        and len(l.strip()) > 15
+    ]
+
+    candidates = summary_lines[:3] + change_lines[:2]
+    if not candidates:
+        return ""
+
+    result = [c[:150] for c in candidates[:5]]
+    prefix = f"[attempt={attempt_num}] " if attempt_num > 1 else ""
+    return prefix + " | ".join(result)
+
+
+def _write_reflection(mem_local: Path, impl_name: str, date_str: str, reflection: str) -> None:
+    """## Success Patterns 섹션에 reflection 기록."""
+    try:
+        content = mem_local.read_text(encoding="utf-8") if mem_local.exists() else ""
+    except OSError:
+        content = ""
+
+    if "## Success Patterns" not in content:
+        with open(mem_local, "a", encoding="utf-8") as f:
+            f.write("\n## Success Patterns\n")
+
+    # 중복 방지: 같은 impl에 대해 같은 날짜 기록이 있으면 스킵
+    parts = content.split("## Success Patterns")
+    if len(parts) > 1 and f"{date_str} | {impl_name}" in parts[-1]:
+        return
+
+    entry = f"- {date_str} | {impl_name} | {reflection}\n"
+    with open(mem_local, "a", encoding="utf-8") as f:
+        f.write(entry)
