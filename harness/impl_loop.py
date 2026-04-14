@@ -190,7 +190,7 @@ def run_simple(
         hlog_fn(f"engineer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("engineer timeout")
-        total_cost = budget_check("engineer", eng_out, 0, config.max_total_cost, state_dir, prefix)
+        total_cost = budget_check("engineer", eng_out, 0, config.max_total_cost, state_dir, prefix, config=config)
 
         # engineer 출력 보존
         try:
@@ -236,7 +236,7 @@ def run_simple(
                 f"상향만 허용(simple→std→deep).",
                 arch_out, run_logger, config,
             )
-            budget_check("architect", arch_out, total_cost, config.max_total_cost, state_dir, prefix)
+            budget_check("architect", arch_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
 
             sg_result = parse_marker(arch_out, "SPEC_GAP_RESOLVED|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
 
@@ -351,7 +351,7 @@ def run_simple(
         hlog_fn(f"pr-reviewer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("pr-reviewer timeout")
-        total_cost = budget_check("pr-reviewer", pr_out, total_cost, config.max_total_cost, state_dir, prefix)
+        total_cost = budget_check("pr-reviewer", pr_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
 
         try:
             shutil.copy2(pr_out, str(attempt_dir / "pr.log"))
@@ -598,7 +598,7 @@ def _run_std_deep(
         hlog_fn(f"engineer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("engineer timeout")
-        total_cost = budget_check("engineer", eng_out, 0, config.max_total_cost, state_dir, prefix)
+        total_cost = budget_check("engineer", eng_out, 0, config.max_total_cost, state_dir, prefix, config=config)
         try:
             shutil.copy2(eng_out, str(attempt_dir / "engineer.log"))
         except OSError:
@@ -651,7 +651,7 @@ def _run_std_deep(
 
             arch_out = str(state_dir.path / f"{prefix}_arch_sg_out.txt")
             agent_call("architect", 900, sg_prompt, arch_out, run_logger, config)
-            budget_check("architect", arch_out, total_cost, config.max_total_cost, state_dir, prefix)
+            budget_check("architect", arch_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
 
             sg_result = parse_marker(arch_out, "SPEC_GAP_RESOLVED|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
 
@@ -750,7 +750,7 @@ def _run_std_deep(
         hlog_fn(f"test-engineer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("test-engineer timeout")
-        total_cost = budget_check("test-engineer", te_out, total_cost, config.max_total_cost, state_dir, prefix)
+        total_cost = budget_check("test-engineer", te_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
 
         if not check_agent_output("test-engineer", te_out):
             fail_type = "test_fail"
@@ -833,7 +833,7 @@ def _run_std_deep(
         hlog_fn(f"validator 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("validator timeout")
-        total_cost = budget_check("validator", val_out, total_cost, config.max_total_cost, state_dir, prefix)
+        total_cost = budget_check("validator", val_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
         try:
             shutil.copy2(val_out, str(attempt_dir / "validator.log"))
         except OSError:
@@ -858,7 +858,7 @@ def _run_std_deep(
                 f"@MODE:ARCHITECT:MODULE_PLAN\nSPEC_MISSING 복구. impl: {impl_file} issue: #{issue_num}",
                 arch_sm_out, run_logger, config,
             )
-            budget_check("architect", arch_sm_out, total_cost, config.max_total_cost, state_dir, prefix)
+            budget_check("architect", arch_sm_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
             fail_type = "validator_fail"
             error_trace = "SPEC_MISSING: impl 파일 복구 후 재시도"
             rollback_attempt(attempt, run_logger)
@@ -900,7 +900,7 @@ def _run_std_deep(
         hlog_fn(f"pr-reviewer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("pr-reviewer timeout")
-        total_cost = budget_check("pr-reviewer", pr_out, total_cost, config.max_total_cost, state_dir, prefix)
+        total_cost = budget_check("pr-reviewer", pr_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
         try:
             shutil.copy2(pr_out, str(attempt_dir / "pr.log"))
         except OSError:
@@ -955,7 +955,7 @@ def _run_std_deep(
             hlog_fn(f"security-reviewer 종료 (exit={agent_exit})")
             if agent_exit == 124:
                 hlog_fn("security-reviewer timeout")
-            total_cost = budget_check("security-reviewer", sec_out, total_cost, config.max_total_cost, state_dir, prefix)
+            total_cost = budget_check("security-reviewer", sec_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
             try:
                 shutil.copy2(sec_out, str(attempt_dir / "security.log"))
             except OSError:

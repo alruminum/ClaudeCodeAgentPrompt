@@ -332,12 +332,16 @@ def budget_check(
     max_cost: float,
     state_dir: Optional[StateDir] = None,
     prefix: str = "",
+    config: object = None,
 ) -> float:
-    """비용 확인. 누적 비용 반환. 상한 초과 시 sys.exit."""
+    """비용 + 토큰 확인. 누적 비용 반환. 상한 초과 시 sys.exit."""
+    import json as _json
+
     stem = str(out_file)
     if stem.endswith(".txt"):
         stem = stem[:-4]
     cost_file = Path(f"{stem}_cost.txt")
+    stats_file = Path(f"{stem}_stats.json")
 
     try:
         agent_cost = float(cost_file.read_text().strip())
@@ -354,6 +358,27 @@ def budget_check(
         if state_dir:
             state_dir.flag_rm(Flag.HARNESS_ACTIVE)
         sys.exit(1)
+
+    # ── 토큰 예산 체크 ──
+    if config and getattr(config, "token_budget", None):
+        try:
+            stats = _json.loads(stats_file.read_text()) if stats_file.exists() else {}
+        except (OSError, ValueError):
+            stats = {}
+
+        in_tok = stats.get("in_tok", 0)
+        out_tok = stats.get("out_tok", 0)
+        used_tok = in_tok + out_tok
+
+        limit = config.token_budget.get(agent_name, config.token_budget.get("default", 0))
+        if limit > 0 and used_tok > 0:
+            ratio = used_tok / limit
+            if ratio >= 0.85:
+                hlog(f"TOKEN WARNING: {agent_name} {used_tok}/{limit} ({ratio:.0%})")
+                print(f"[HARNESS] TOKEN WARNING: {agent_name} {ratio:.0%} of budget ({used_tok}/{limit}tok)")
+            if ratio > 1.0:
+                hlog(f"TOKEN BUDGET EXCEEDED: {agent_name} {used_tok} > {limit}")
+                print(f"[HARNESS] TOKEN BUDGET EXCEEDED: {agent_name}")
 
     return total_cost
 

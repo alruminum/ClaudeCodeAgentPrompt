@@ -406,5 +406,32 @@ class TestAppendSuccessReflection(unittest.TestCase):
             self.assertEqual(len(reflection_lines), 0)
 
 
+class TestTokenBudgetConfig(unittest.TestCase):
+    def test_dict_budget(self):
+        with tempfile.TemporaryDirectory() as td:
+            config_dir = Path(td) / ".claude"
+            config_dir.mkdir()
+            (config_dir / "harness.config.json").write_text(
+                '{"prefix": "x", "token_budget": {"engineer": 200000, "default": 100000}}'
+            )
+            cfg = load_config(Path(td))
+            self.assertIsInstance(cfg.token_budget, dict)
+            self.assertEqual(cfg.token_budget["engineer"], 200000)
+
+    def test_empty_budget_backward_compat(self):
+        cfg = HarnessConfig()
+        self.assertEqual(cfg.token_budget, {})
+
+    def test_invalid_budget_type_fallback(self):
+        with tempfile.TemporaryDirectory() as td:
+            config_dir = Path(td) / ".claude"
+            config_dir.mkdir()
+            (config_dir / "harness.config.json").write_text(
+                '{"prefix": "x", "token_budget": 12345}'
+            )
+            cfg = load_config(Path(td))
+            self.assertEqual(cfg.token_budget, {})
+
+
 if __name__ == "__main__":
     unittest.main()
