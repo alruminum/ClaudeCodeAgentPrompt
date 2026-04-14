@@ -449,5 +449,24 @@ class TestIsolationConfig(unittest.TestCase):
         self.assertEqual(cfg.isolation, "")
 
 
+class TestCircuitBreaker(unittest.TestCase):
+    def test_triggers_on_repeated_fail(self):
+        from harness.impl_loop import _circuit_breaker_check
+        ts = {}
+        # 첫 번째 실패 — 트리거 안 됨
+        r1 = _circuit_breaker_check("test_fail", ts, print, None)
+        self.assertFalse(r1)
+        # 두 번째 실패 (같은 윈도우 내) — 트리거
+        r2 = _circuit_breaker_check("test_fail", ts, print, None)
+        self.assertTrue(r2)
+
+    def test_different_fail_types_no_trigger(self):
+        from harness.impl_loop import _circuit_breaker_check
+        ts = {}
+        _circuit_breaker_check("test_fail", ts, print, None)
+        r = _circuit_breaker_check("pr_fail", ts, print, None)
+        self.assertFalse(r)
+
+
 if __name__ == "__main__":
     unittest.main()

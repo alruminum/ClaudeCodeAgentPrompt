@@ -50,6 +50,49 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# 0. Circuit Breaker — 시간 윈도우 기반 동일 실패 감지
+# ═══════════════════════════════════════════════════════════════════════
+
+CIRCUIT_BREAKER_WINDOW = 120   # 초
+CIRCUIT_BREAKER_THRESHOLD = 2  # 동일 타입 N회
+
+
+def _circuit_breaker_check(
+    fail_type: str,
+    fail_timestamps: Dict[str, List[float]],
+    hlog_fn: Callable,
+    run_logger: Optional[RunLogger] = None,
+) -> bool:
+    """동일 fail_type이 CIRCUIT_BREAKER_WINDOW초 내 CIRCUIT_BREAKER_THRESHOLD회 반복 → True.
+
+    True이면 즉시 IMPLEMENTATION_ESCALATE해야 함.
+    """
+    now = time.time()
+    if fail_type not in fail_timestamps:
+        fail_timestamps[fail_type] = []
+    fail_timestamps[fail_type].append(now)
+
+    # window 바깥 타임스탬프 제거
+    cutoff = now - CIRCUIT_BREAKER_WINDOW
+    fail_timestamps[fail_type] = [t for t in fail_timestamps[fail_type] if t >= cutoff]
+
+    count = len(fail_timestamps[fail_type])
+    if count >= CIRCUIT_BREAKER_THRESHOLD:
+        hlog_fn(f"CIRCUIT BREAKER: {fail_type} {count}회/{CIRCUIT_BREAKER_WINDOW}s → 조기 에스컬레이션")
+        print(f"[HARNESS] CIRCUIT BREAKER: {fail_type}이 {CIRCUIT_BREAKER_WINDOW}초 내 {count}회 반복 — 조기 에스컬레이션")
+        if run_logger:
+            run_logger.log_event({
+                "event": "circuit_breaker",
+                "fail_type": fail_type,
+                "count": count,
+                "window_s": CIRCUIT_BREAKER_WINDOW,
+                "t": int(now),
+            })
+        return True
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 1. AgentStep dataclass
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -117,6 +160,7 @@ def run_simple(
     spec_gap_count = 0
     error_trace = ""
     fail_type = ""
+    _fail_timestamps: Dict[str, List[float]] = {}
 
     hlog_fn(f"=== 하네스 루프 시작 (depth=simple, max_retries={MAX}) ===")
 
@@ -139,6 +183,16 @@ def run_simple(
     while attempt < MAX:
         hlog_fn.set_attempt(attempt)
         kill_check(state_dir)
+
+        # Circuit Breaker: 이전 루프에서 실패한 fail_type이 있으면 시간 윈도우 검사
+        if fail_type and _circuit_breaker_check(fail_type, _fail_timestamps, hlog_fn, run_logger):
+            state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+            os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+            hlog_fn("=== circuit breaker → IMPLEMENTATION_ESCALATE ===")
+            print("IMPLEMENTATION_ESCALATE (circuit_breaker)")
+            print(f"branch: {feature_branch}")
+            run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+            return "IMPLEMENTATION_ESCALATE"
 
         attempt_dir = loop_out_dir / f"attempt-{attempt}"
         attempt_dir.mkdir(parents=True, exist_ok=True)
@@ -521,6 +575,7 @@ def _run_std_deep(
     spec_gap_count = 0
     error_trace = ""
     fail_type = ""
+    _fail_timestamps: Dict[str, List[float]] = {}
 
     hlog_fn(f"=== 하네스 루프 시작 (depth={depth}, max_retries={MAX}) ===")
 
@@ -537,6 +592,16 @@ def _run_std_deep(
     while attempt < MAX:
         hlog_fn.set_attempt(attempt)
         kill_check(state_dir)
+
+        # Circuit Breaker: 이전 루프에서 실패한 fail_type이 있으면 시간 윈도우 검사
+        if fail_type and _circuit_breaker_check(fail_type, _fail_timestamps, hlog_fn, run_logger):
+            state_dir.flag_rm(Flag.PLAN_VALIDATION_PASSED)
+            os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
+            hlog_fn("=== circuit breaker → IMPLEMENTATION_ESCALATE ===")
+            print("IMPLEMENTATION_ESCALATE (circuit_breaker)")
+            print(f"branch: {feature_branch}")
+            run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
+            return "IMPLEMENTATION_ESCALATE"
 
         attempt_dir = loop_out_dir / f"attempt-{attempt}"
         attempt_dir.mkdir(parents=True, exist_ok=True)
