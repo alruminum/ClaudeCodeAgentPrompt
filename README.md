@@ -1,7 +1,7 @@
 # ClaudeCodeAgentPrompt
 
 Claude Code 기반 멀티 에이전트 오케스트레이션 시스템.
-Bash 스크립트 + Python 훅으로 11개 에이전트의 워크플로우를 결정론적으로 강제한다.
+Python 코어 + Bash 래퍼 + Python 훅으로 11개 에이전트의 워크플로우를 결정론적으로 강제한다.
 
 ## 아키텍처
 
@@ -10,7 +10,7 @@ orchestration-rules.md (단일 소스)
         │
    ┌────┴────┐
    ▼         ▼
-hooks/*.py   harness-*.sh
+hooks/*.py   harness/*.py (코어) + *.sh (래퍼)
 (게이트)      (루프 엔진)
    │              │
    ▼              ▼
@@ -35,8 +35,8 @@ bash ~/.claude/setup-agents.sh --repo owner/repo
 # 구현 루프
 bash .claude/harness/executor.sh impl --impl docs/impl/01-module.md --issue 42 --prefix proj
 
-# 버그픽스 루프
-bash .claude/harness/executor.sh bugfix --bug "설명" --issue 42 --prefix proj
+# 플랜 루프
+bash .claude/harness/executor.sh plan --prefix proj
 
 # 디자인 루프 — ux 스킬이 designer를 직접 호출 (harness 경유 없음)
 # /ux 스킬 실행 → TYPE(SCREEN/COMPONENT) + variant 수 선택 → designer Agent 직접 호출
@@ -44,15 +44,36 @@ bash .claude/harness/executor.sh bugfix --bug "설명" --issue 42 --prefix proj
 
 ## 핵심 파일
 
+### Python 코어 (harness/*.py)
+
+| 파일 | 역할 |
+|------|------|
+| `executor.py` | 메인 엔트리포인트 — 모드 라우팅, lock, heartbeat, depth 감지 |
+| `core.py` | `_agent_call()`, `kill_check()`, `parse_marker()` 등 코어 유틸 |
+| `config.py` | 프로젝트 설정 로드 (prefix, 경로) |
+| `helpers.py` | impl 루프 공유 헬퍼 (constraints, budget_check, hlog) |
+| `impl_loop.py` | impl depth별 루프 엔진 (simple/std/deep) |
+| `impl_router.py` | impl 모드 진입 — 재진입 감지, architect, plan validation |
+| `plan_loop.py` | plan 모드 전체 흐름 |
+| `review_agent.py` | 하네스 완료 후 Haiku 로그 분석 |
+
+### Bash 래퍼 (harness/*.sh)
+
+| 파일 | 역할 |
+|------|------|
+| `executor.sh` | Python executor.py 래퍼 (Bash 도구 호출 호환) |
+| `impl.sh` / `impl_simple.sh` / `impl_std.sh` / `impl_deep.sh` | depth별 Python 래퍼 |
+| `utils.sh` | Python core.py 래퍼 |
+| `flags.sh` / `markers.sh` | 플래그 상수 + 마커 파싱 유틸 |
+
+### 기타
+
 | 파일 | 역할 |
 |------|------|
 | `orchestration-rules.md` | 마스터 규칙 (루프, 마커, 정책) |
-| `harness/executor.sh` | 순수 라우터 + 공유 인프라 |
-| `harness/{impl,bugfix,plan}.sh` | 모드별 로직 (design.sh는 DEPRECATED — ux 스킬이 designer 직접 호출) |
-| `harness/impl_{fast,std,deep}.sh` | impl 깊이별 루프 엔진 (impl_helpers.sh 공유) |
-| `hooks/harness_common.py` | 훅 공유 유틸 (get_prefix, deny) |
-| `hooks/*.py` | PreToolUse/PostToolUse 게이트 (11개) |
-| `agents/*.md` | 에이전트 정의 파일 |
+| `agents/preamble.md` | Universal Preamble — 전 에이전트 공통 지침 |
+| `hooks/*.py` | PreToolUse/PostToolUse 게이트 (16개) |
+| `agents/*.md` | 에이전트 정의 파일 (11개) |
 | `docs/harness-state.md` | 현행 상태 문서 |
 | `docs/harness-backlog.md` | 개선 로드맵 |
 
