@@ -16,6 +16,7 @@ class HarnessConfig:
     lint_command: str = ""
     max_total_cost: float = 20.0
     token_budget: dict = field(default_factory=dict)
+    isolation: str = ""  # "" (없음) 또는 "worktree"
 
 
 def load_config(project_root: Path | None = None) -> HarnessConfig:
@@ -46,6 +47,7 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
         lint_command=data.get("lint_command", ""),
         max_total_cost=float(data.get("max_total_cost", 20.0)),
         token_budget=data.get("token_budget", {}) if isinstance(data.get("token_budget", {}), dict) else {},
+        isolation=data.get("isolation", ""),
     )
 
 

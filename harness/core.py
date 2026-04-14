@@ -15,7 +15,10 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .config import HarnessConfig, load_config
+try:
+    from .config import HarnessConfig, load_config
+except ImportError:
+    from config import HarnessConfig, load_config
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. StateDir — 상태 파일 관리 (init_state_dir + flag_touch/rm/exists)
@@ -280,10 +283,17 @@ class RunLogger:
         print()
 
         # 완료 후 자동 리뷰 트리거 (백그라운드)
-        review_agent = Path.home() / ".claude" / "harness" / "review-agent.sh"
-        if review_agent.exists():
+        review_agent_py = Path.home() / ".claude" / "harness" / "review_agent.py"
+        review_agent_sh = Path.home() / ".claude" / "harness" / "review-agent.sh"
+        if review_agent_py.exists():
             subprocess.Popen(
-                ["bash", str(review_agent), str(self.log_file), self.prefix],
+                ["python3", str(review_agent_py), str(self.log_file), self.prefix],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        elif review_agent_sh.exists():
+            subprocess.Popen(
+                ["bash", str(review_agent_sh), str(self.log_file), self.prefix],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
@@ -424,15 +434,17 @@ def agent_call(
     print(f"  → {agent}: {preview}")
 
     # claude CLI 실행
-    cmd = [
+    base_cmd = [
         "claude", "--agent", agent, "--print", "--verbose",
         "--output-format", "stream-json", "--include-partial-messages",
         "--max-budget-usd", "2.00",
         "--permission-mode", "bypassPermissions",
         "--disallowedTools", "Agent",
         "--fallback-model", "haiku",
-        "-p", full_prompt,
     ]
+    if config and getattr(config, "isolation", ""):
+        base_cmd += ["--isolation", config.isolation]
+    cmd = base_cmd + ["-p", full_prompt]
 
     env = os.environ.copy()
     env["HARNESS_INTERNAL"] = "1"

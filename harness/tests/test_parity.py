@@ -433,5 +433,21 @@ class TestTokenBudgetConfig(unittest.TestCase):
             self.assertEqual(cfg.token_budget, {})
 
 
+class TestIsolationConfig(unittest.TestCase):
+    def test_worktree_isolation(self):
+        with tempfile.TemporaryDirectory() as td:
+            config_dir = Path(td) / ".claude"
+            config_dir.mkdir()
+            (config_dir / "harness.config.json").write_text(
+                '{"prefix": "x", "isolation": "worktree"}'
+            )
+            cfg = load_config(Path(td))
+            self.assertEqual(cfg.isolation, "worktree")
+
+    def test_default_no_isolation(self):
+        cfg = HarnessConfig()
+        self.assertEqual(cfg.isolation, "")
+
+
 if __name__ == "__main__":
     unittest.main()
