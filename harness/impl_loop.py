@@ -18,7 +18,7 @@ from typing import Callable, Dict, List, Optional
 try:
     from .config import HarnessConfig, load_config
     from .core import (
-        Flag, Marker, RunLogger, StateDir,
+        Flag, Marker, RunLogger, StateDir, HUD,
         agent_call, parse_marker,
         create_feature_branch, merge_to_main, generate_commit_msg,
         collect_changed_files,
@@ -166,6 +166,9 @@ def run_simple(
 
     hlog_fn(f"=== 하네스 루프 시작 (depth=simple, max_retries={MAX}) ===")
 
+    # HUD 초기화
+    hud = HUD(depth, prefix, issue_num, MAX, config.max_total_cost, state_dir)
+
     # 히스토리 디렉토리
     hist_dir = state_dir.path / f"{prefix}_history"
     run_ts = os.environ.get("HARNESS_RUN_TS", time.strftime("%Y%m%d_%H%M%S"))
@@ -232,17 +235,21 @@ def run_simple(
 
         # ── 워커 1: engineer ─────────────────────────────────────
         log_phase("engineer", run_logger, attempt)
-        print(f"[HARNESS] engineer (attempt {attempt + 1}/{MAX})")
         hlog_fn(f"engineer 시작 (depth=simple, timeout=900s)")
         kill_check(state_dir)
+        hud.set_attempt(attempt)
+        hud.agent_start("engineer")
 
         eng_out = str(state_dir.path / f"{prefix}_eng_out.txt")
+        _eng_t0 = time.time()
         agent_exit = agent_call(
             "engineer", 900,
             f"impl: {impl_file}\nissue: #{issue_num}\ntask:\n{task}\n"
             f"context:\n{context}\nconstraints:\n{constraints}",
             eng_out, run_logger, config, str(attempt_dir),
         )
+        _eng_cost = float(Path(f"{eng_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{eng_out[:-4]}_cost.txt").exists() else 0.0
+        hud.agent_done("engineer", int(time.time() - _eng_t0), _eng_cost, "done" if agent_exit == 0 else "fail")
         hlog_fn(f"engineer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("engineer timeout")
@@ -381,9 +388,9 @@ def run_simple(
 
         # ── 워커 2: pr-reviewer ──────────────────────────────────
         log_phase("pr-reviewer", run_logger, attempt)
-        print(f"[HARNESS] pr-reviewer (attempt {attempt + 1}/{MAX})")
         hlog_fn("pr-reviewer 시작 (depth=simple, timeout=240s)")
         kill_check(state_dir)
+        hud.agent_start("pr-reviewer")
 
         # diff 생성
         r = subprocess.run(
@@ -405,6 +412,7 @@ def run_simple(
         src_files = " ".join(r_names.stdout.strip().splitlines()) if r_names.returncode == 0 else ""
 
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
+        _pr_t0 = time.time()
         agent_exit = agent_call(
             "pr-reviewer", 240,
             f'@MODE:PR_REVIEWER:REVIEW\n'
@@ -412,6 +420,8 @@ def run_simple(
             f"변경 diff:\n{diff_out}",
             pr_out, run_logger, config, str(attempt_dir),
         )
+        _pr_cost = float(Path(f"{pr_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{pr_out[:-4]}_cost.txt").exists() else 0.0
+        hud.agent_done("pr-reviewer", int(time.time() - _pr_t0), _pr_cost, "done" if agent_exit == 0 else "fail")
         hlog_fn(f"pr-reviewer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("pr-reviewer timeout")
@@ -498,6 +508,8 @@ def run_simple(
         save_impl_meta(attempt_dir, attempt, "PASS", depth, hints="구현 완료")
         (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
 
+        hud.agent_done("merge", 0, 0.0, "done")
+        hud.cleanup()
         os.environ["HARNESS_RESULT"] = "HARNESS_DONE"
         hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")
         print("HARNESS_DONE")
@@ -589,6 +601,9 @@ def _run_std_deep(
 
     hlog_fn(f"=== 하네스 루프 시작 (depth={depth}, max_retries={MAX}) ===")
 
+    # HUD 초기화
+    hud = HUD(depth, prefix, issue_num, MAX, config.max_total_cost, state_dir)
+
     hist_dir = state_dir.path / f"{prefix}_history"
     run_ts = os.environ.get("HARNESS_RUN_TS", time.strftime("%Y%m%d_%H%M%S"))
     loop_out_dir = hist_dir / "impl" / f"run_{run_ts}"
@@ -659,17 +674,21 @@ def _run_std_deep(
 
         # ── 워커 1: engineer ────────────────────────────────────────
         log_phase("engineer", run_logger, attempt)
-        print(f"[HARNESS] engineer (attempt {attempt + 1}/{MAX})")
         hlog_fn(f"engineer 시작 (depth={depth}, timeout=900s)")
         kill_check(state_dir)
+        hud.set_attempt(attempt)
+        hud.agent_start("engineer")
 
         eng_out = str(state_dir.path / f"{prefix}_eng_out.txt")
+        _eng_t0 = time.time()
         agent_exit = agent_call(
             "engineer", 900,
             f"impl: {impl_file}\nissue: #{issue_num}\ntask:\n{task}\n"
             f"context:\n{context}\nconstraints:\n{constraints}",
             eng_out, run_logger, config, str(attempt_dir),
         )
+        _eng_cost = float(Path(f"{eng_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{eng_out[:-4]}_cost.txt").exists() else 0.0
+        hud.agent_done("engineer", int(time.time() - _eng_t0), _eng_cost, "done" if agent_exit == 0 else "fail")
         hlog_fn(f"engineer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("engineer timeout")
@@ -822,9 +841,9 @@ def _run_std_deep(
             changed_files_str = " ".join(r_changed.stdout.strip().splitlines())
 
         log_phase("test-engineer", run_logger, attempt)
-        print(f"[HARNESS] test-engineer (attempt {attempt + 1}/{MAX})")
         hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=600s)")
         kill_check(state_dir)
+        hud.agent_start("test-engineer")
 
         test_cmd_hint = config.test_command or "프로젝트의 테스트 명령어"
         if attempt > 0:
@@ -915,8 +934,8 @@ def _run_std_deep(
 
         # ── 워커 3: validator ─────────────────────────────────────
         log_phase("validator", run_logger, attempt)
-        print(f"[HARNESS] validator (attempt {attempt + 1}/{MAX})")
         hlog_fn(f"validator 시작 (depth={depth}, timeout=300s)")
+        hud.agent_start("validator")
         kill_check(state_dir)
         val_context = build_validator_context(impl_file)
 
@@ -974,8 +993,8 @@ def _run_std_deep(
 
         # ── 워커 4: pr-reviewer ───────────────────────────────────
         log_phase("pr-reviewer", run_logger, attempt)
-        print(f"[HARNESS] pr-reviewer (attempt {attempt + 1}/{MAX})")
         hlog_fn(f"pr-reviewer 시작 (depth={depth}, timeout=240s)")
+        hud.agent_start("pr-reviewer")
         kill_check(state_dir)
 
         r = subprocess.run(["git", "diff", "HEAD~1"], capture_output=True, text=True, timeout=10)
@@ -1027,8 +1046,8 @@ def _run_std_deep(
         # ── 워커 5: security-reviewer (deep only) ─────────────────
         if depth == "deep":
             log_phase("security-reviewer", run_logger, attempt)
-            print(f"[HARNESS] security-reviewer (attempt {attempt + 1}/{MAX})")
             hlog_fn("security-reviewer 시작 (deep only, timeout=180s)")
+            hud.agent_start("security-reviewer")
             kill_check(state_dir)
 
             r_src = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
@@ -1084,8 +1103,10 @@ def _run_std_deep(
             # std: security-reviewer 스킵
             state_dir.flag_touch(Flag.SECURITY_REVIEW_PASSED)
             hlog_fn("security-reviewer 스킵 (depth=std)")
+            hud.agent_skip("security-reviewer", "depth=std")
 
         # ── merge to main ─────────────────────────────────────────
+        hud.agent_start("merge")
         # 미커밋 변경 커밋 (테스트 파일 등)
         changed2 = collect_changed_files()
         if changed2:
@@ -1128,6 +1149,8 @@ def _run_std_deep(
         save_impl_meta(attempt_dir, attempt, "PASS", depth, hints="구현 완료")
         (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
 
+        hud.agent_done("merge", 0, 0.0, "done")
+        hud.cleanup()
         os.environ["HARNESS_RESULT"] = "HARNESS_DONE"
         hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")
         print("HARNESS_DONE")

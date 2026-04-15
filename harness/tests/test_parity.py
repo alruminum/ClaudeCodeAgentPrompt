@@ -547,5 +547,49 @@ class TestExtractAcceptanceCriteria(unittest.TestCase):
         self.assertEqual(result, [])
 
 
+class TestHUD(unittest.TestCase):
+    def test_hud_lifecycle(self):
+        from harness.core import HUD, StateDir
+        with tempfile.TemporaryDirectory() as d:
+            sd = StateDir(Path(d), "test")
+            hud = HUD("std", "test", "42", 3, 20.0, sd)
+
+            # 초기 상태: 모든 에이전트 pending
+            self.assertEqual(hud.agent_status["engineer"]["status"], "pending")
+            self.assertEqual(hud.agent_status["validator"]["status"], "pending")
+
+            # agent_start → running
+            hud.agent_start("engineer")
+            self.assertEqual(hud.agent_status["engineer"]["status"], "running")
+
+            # agent_done → done
+            hud.agent_done("engineer", 45, 0.32)
+            self.assertEqual(hud.agent_status["engineer"]["status"], "done")
+            self.assertEqual(hud.agent_status["engineer"]["cost"], 0.32)
+            self.assertAlmostEqual(hud.total_cost, 0.32)
+
+            # agent_skip
+            hud.agent_skip("security-reviewer", "depth=std")
+            self.assertEqual(hud.agent_status.get("security-reviewer", {}).get("status"), None)  # std에 없음
+
+            # HUD JSON 파일 생성 확인
+            hud_path = sd.path / "test_hud.json"
+            self.assertTrue(hud_path.exists())
+            data = json.loads(hud_path.read_text())
+            self.assertEqual(data["depth"], "std")
+            self.assertEqual(data["attempt"], 0)
+
+            # cleanup
+            hud.cleanup()
+            self.assertFalse(hud_path.exists())
+
+    def test_hud_depth_agents(self):
+        from harness.core import HUD
+        hud_simple = HUD("simple", "t", "1", 3, 10.0)
+        hud_deep = HUD("deep", "t", "1", 3, 10.0)
+        self.assertEqual(len(hud_simple.agents), 3)  # engineer, pr-reviewer, merge
+        self.assertEqual(len(hud_deep.agents), 6)    # +test-engineer, validator, security-reviewer
+
+
 if __name__ == "__main__":
     unittest.main()

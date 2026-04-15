@@ -118,6 +118,159 @@ class Marker(str, Enum):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# 3.5 HUD — 실시간 진행 상태 표시 + JSON 파일 저장
+# ═══════════════════════════════════════════════════════════════════════
+
+class HUD:
+    """하네스 실행 중 진행 상태를 시각적으로 표시하고 JSON으로 저장.
+
+    - stdout에 진행 바 블록 출력 (Bash 출력 내)
+    - .claude/harness-state/{prefix}_hud.json에 실시간 상태 저장
+      (/harness-monitor에서 watch 가능)
+    """
+
+    DEPTH_AGENTS = {
+        "simple": ["engineer", "pr-reviewer", "merge"],
+        "std": ["engineer", "test-engineer", "validator", "pr-reviewer", "merge"],
+        "deep": ["engineer", "test-engineer", "validator", "security-reviewer", "pr-reviewer", "merge"],
+    }
+
+    def __init__(
+        self,
+        depth: str,
+        prefix: str,
+        issue_num: str | int,
+        max_attempts: int,
+        budget: float,
+        state_dir: Optional["StateDir"] = None,
+    ) -> None:
+        self.depth = depth
+        self.prefix = prefix
+        self.issue = str(issue_num)
+        self.max_attempts = max_attempts
+        self.budget = budget
+        self.start_time = time.time()
+        self.attempt = 0
+        self.total_cost = 0.0
+
+        self.agents = self.DEPTH_AGENTS.get(depth, self.DEPTH_AGENTS["std"])
+        self.agent_status: Dict[str, Dict[str, Any]] = {
+            a: {"status": "pending", "elapsed": 0, "cost": 0.0}
+            for a in self.agents
+        }
+
+        self._hud_path: Optional[Path] = None
+        if state_dir:
+            self._hud_path = state_dir.path / f"{prefix}_hud.json"
+
+    def set_attempt(self, n: int) -> None:
+        self.attempt = n
+
+    def agent_start(self, agent: str) -> None:
+        if agent in self.agent_status:
+            self.agent_status[agent] = {
+                "status": "running",
+                "start": time.time(),
+                "elapsed": 0,
+                "cost": 0.0,
+            }
+        self._write_json()
+        self._print_block()
+
+    def agent_done(self, agent: str, elapsed: int, cost: float, result: str = "done") -> None:
+        if agent in self.agent_status:
+            self.agent_status[agent] = {
+                "status": result,  # "done", "fail", "skip"
+                "elapsed": elapsed,
+                "cost": cost,
+            }
+        self.total_cost += cost
+        self._write_json()
+        self._print_block()
+
+    def agent_skip(self, agent: str, reason: str = "") -> None:
+        if agent in self.agent_status:
+            self.agent_status[agent] = {
+                "status": "skip",
+                "elapsed": 0,
+                "cost": 0.0,
+                "reason": reason,
+            }
+        self._write_json()
+
+    def _elapsed_str(self) -> str:
+        e = int(time.time() - self.start_time)
+        m, s = divmod(e, 60)
+        return f"{m}m{s:02d}s"
+
+    def _bar(self, status: str, width: int = 20) -> str:
+        if status == "done":
+            return "▓" * width + " ✅"
+        elif status == "fail":
+            return "▓" * width + " ❌"
+        elif status == "skip":
+            return "░" * width + " ⏭"
+        elif status == "running":
+            return "▓" * (width // 2) + "░" * (width - width // 2) + " ⏳"
+        else:
+            return "░" * width + "   "
+
+    def _print_block(self) -> None:
+        total = len(self.agents)
+        done = sum(1 for a in self.agents if self.agent_status[a]["status"] in ("done", "skip"))
+        pct = int(done / total * 100) if total else 0
+
+        print()
+        print(f"━━━ 📊 depth={self.depth} | attempt {self.attempt + 1}/{self.max_attempts}"
+              f" | ${self.total_cost:.2f}/${self.budget:.0f}"
+              f" | {self._elapsed_str()}"
+              f" | {pct}% ━━━")
+
+        for i, agent in enumerate(self.agents, 1):
+            s = self.agent_status[agent]
+            status = s["status"]
+            bar = self._bar(status)
+            detail = ""
+            if status == "done":
+                detail = f" {s.get('elapsed', 0)}s ${s.get('cost', 0):.2f}"
+            elif status == "running":
+                e = int(time.time() - s.get("start", time.time()))
+                detail = f" {e}s..."
+            print(f" [{i}/{total}] {agent:<20s} {bar}{detail}")
+
+        print()
+
+    def _write_json(self) -> None:
+        if not self._hud_path:
+            return
+        data = {
+            "depth": self.depth,
+            "attempt": self.attempt,
+            "max_attempts": self.max_attempts,
+            "cost": round(self.total_cost, 4),
+            "budget": self.budget,
+            "elapsed": int(time.time() - self.start_time),
+            "issue": self.issue,
+            "agents": [
+                {"name": a, **self.agent_status[a]}
+                for a in self.agents
+            ],
+        }
+        try:
+            self._hud_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def cleanup(self) -> None:
+        """하네스 종료 시 HUD 파일 삭제."""
+        if self._hud_path and self._hud_path.exists():
+            self._hud_path.unlink(missing_ok=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 4. parse_marker — markers.sh의 parse_marker() 대체
 # ═══════════════════════════════════════════════════════════════════════
 
