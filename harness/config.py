@@ -17,6 +17,8 @@ class HarnessConfig:
     max_total_cost: float = 20.0
     token_budget: dict = field(default_factory=dict)
     isolation: str = ""  # "" (없음) 또는 "worktree"
+    second_reviewer: str = ""  # "gemini", "gpt", "" (비활성)
+    second_reviewer_model: str = ""  # "gemini-2.5-flash", "gpt-4o-mini" 등
 
 
 def load_config(project_root: Path | None = None) -> HarnessConfig:
@@ -48,6 +50,8 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
         max_total_cost=float(data.get("max_total_cost", 20.0)),
         token_budget=data.get("token_budget", {}) if isinstance(data.get("token_budget", {}), dict) else {},
         isolation=data.get("isolation", ""),
+        second_reviewer=data.get("second_reviewer", ""),
+        second_reviewer_model=data.get("second_reviewer_model", ""),
     )
 
 

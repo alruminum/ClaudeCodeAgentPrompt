@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -265,9 +266,87 @@ class HUD:
             pass
 
     def cleanup(self) -> None:
-        """하네스 종료 시 HUD 파일 삭제."""
+        """하네스 종료 시 HUD에 완료 상태 기록 (파일 유지)."""
+        self._write_json()
         if self._hud_path and self._hud_path.exists():
-            self._hud_path.unlink(missing_ok=True)
+            try:
+                data = json.loads(self._hud_path.read_text(encoding="utf-8"))
+                data["status"] = "done"
+                self._hud_path.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except (OSError, json.JSONDecodeError):
+                pass
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 3.6 Second Reviewer — 외부 AI 병렬 리뷰 (Gemini/GPT)
+# ═══════════════════════════════════════════════════════════════════════
+
+def start_second_review(
+    diff_text: str,
+    reviewer: str,
+    model: str = "",
+) -> Optional[subprocess.Popen]:
+    """외부 AI 리뷰를 비동기로 시작. Popen 객체 반환. CLI 없으면 None."""
+    cli_map = {
+        "gemini": "gemini",
+        "gpt": "gpt",
+        "copilot": "gh",
+    }
+    cli_name = cli_map.get(reviewer, reviewer)
+    if not shutil.which(cli_name):
+        print(f"[HARNESS] second_reviewer '{reviewer}' CLI 없음 — 스킵")
+        return None
+
+    prompt = (
+        "아래 코드 diff를 리뷰하라. 기능 정확성이 아닌 코드 품질에 집중:\n"
+        "- 불필요한 주석이나 console.log\n"
+        "- 과도한 추상화나 래퍼 함수\n"
+        "- 네이밍 개선점\n"
+        "- AI 생성 코드 특유의 패턴 (장황한 에러 메시지, 불필요한 try-catch 등)\n"
+        "- 사용되지 않는 import/변수\n"
+        "\n"
+        "발견한 항목을 bullet list로 출력하라. 없으면 'CLEAN'.\n"
+        f"\n=== DIFF ===\n{diff_text[:15000]}"
+    )
+
+    if reviewer == "gemini":
+        cmd = ["gemini", "-m", model or "gemini-2.5-flash", prompt]
+    elif reviewer == "gpt":
+        cmd = ["gpt", "-m", model or "gpt-4o-mini", prompt]
+    else:
+        cmd = [cli_name, prompt]
+
+    try:
+        return subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+    except OSError as e:
+        print(f"[HARNESS] second_reviewer 실행 실패: {e}")
+        return None
+
+
+def collect_second_review(proc: Optional[subprocess.Popen], timeout: int = 120) -> str:
+    """비동기 리뷰 결과 수집. 타임아웃/에러/CLEAN 시 빈 문자열."""
+    if proc is None:
+        return ""
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+        if proc.returncode != 0:
+            if stderr and any(kw in stderr.lower() for kw in ("auth", "unauthorized", "api key")):
+                print(f"[HARNESS] second_reviewer 인증 에러 — 스킵")
+            return ""
+        if stdout.strip() and "CLEAN" not in stdout.upper():
+            return stdout.strip()
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        print(f"[HARNESS] second_reviewer 타임아웃 — 스킵")
+    except Exception:
+        pass
+    return ""
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1452,6 +1531,7 @@ def run_plan_validation(
     state_dir: Optional[StateDir] = None,
     run_logger: Optional[RunLogger] = None,
     config: Optional[HarnessConfig] = None,
+    handoff_path: Optional[str] = None,
 ) -> bool:
     """Plan Validation 실행. True=PASS, False=ESCALATE."""
     if state_dir is None:
@@ -1459,10 +1539,11 @@ def run_plan_validation(
 
     val_out = str(state_dir.path / f"{prefix}_val_pv_out.txt")
 
+    handoff_hint = f"\n인수인계 문서: {handoff_path}" if handoff_path else ""
     print("[HARNESS] Plan Validation")
     agent_call(
         "validator", 300,
-        f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: #{issue_num}",
+        f"@MODE:VALIDATOR:PLAN_VALIDATION\nimpl: {impl_file} issue: #{issue_num}{handoff_hint}",
         val_out, run_logger, config,
     )
     val_result = parse_marker(val_out, "PLAN_VALIDATION_PASS|PLAN_VALIDATION_FAIL|PASS|FAIL")
@@ -1474,6 +1555,21 @@ def run_plan_validation(
 
     if val_result == "PASS":
         state_dir.flag_touch(Flag.PLAN_VALIDATION_PASSED)
+        # Handoff: validator → engineer
+        try:
+            val_content = Path(val_out).read_text(encoding="utf-8", errors="replace")
+            _val_handoff = generate_handoff(
+                "validator", "engineer", val_content,
+                impl_file, 0, str(issue_num),
+            )
+            write_handoff(state_dir, prefix, 0, "validator", "engineer", _val_handoff)
+            if run_logger:
+                run_logger.log_event({
+                    "event": "handoff", "from": "validator", "to": "engineer",
+                    "t": int(time.time()),
+                })
+        except OSError:
+            pass
         return True
 
     # FAIL → architect 재보강

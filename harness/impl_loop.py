@@ -24,6 +24,7 @@ try:
         collect_changed_files,
         build_smart_context, build_validator_context, explore_instruction,
         generate_handoff, write_handoff,
+        start_second_review, collect_second_review,
         prune_history, kill_check, detect_depth,
     )
     from .helpers import (
@@ -36,11 +37,13 @@ try:
 except ImportError:
     from config import HarnessConfig, load_config
     from core import (
-        Flag, Marker, RunLogger, StateDir,
+        Flag, Marker, RunLogger, StateDir, HUD,
         agent_call, parse_marker,
         create_feature_branch, merge_to_main, generate_commit_msg,
         collect_changed_files,
         build_smart_context, build_validator_context, explore_instruction,
+        generate_handoff, write_handoff,
+        start_second_review, collect_second_review,
         prune_history, kill_check, detect_depth,
     )
     from helpers import (
@@ -48,6 +51,7 @@ except ImportError:
         rollback_attempt, check_agent_output, run_automated_checks,
         budget_check, generate_pr_body, save_impl_meta,
         setup_hlog, log_decision, log_phase,
+        extract_acceptance_criteria, extract_polish_items,
     )
 
 
@@ -233,6 +237,13 @@ def run_simple(
             "attempt": attempt,
         })
 
+        # ── validator → engineer 핸드오프 확인 ──────────────────
+        _val_handoff_hint = ""
+        if attempt == 0:
+            _val_handoff_file = state_dir.path / f"{prefix}_handoffs" / "attempt-0" / "validator-to-engineer.md"
+            if _val_handoff_file.exists():
+                _val_handoff_hint = f"\n인수인계 문서: {_val_handoff_file}"
+
         # ── 워커 1: engineer ─────────────────────────────────────
         log_phase("engineer", run_logger, attempt)
         hlog_fn(f"engineer 시작 (depth=simple, timeout=900s)")
@@ -245,7 +256,7 @@ def run_simple(
         agent_exit = agent_call(
             "engineer", 900,
             f"impl: {impl_file}\nissue: #{issue_num}\ntask:\n{task}\n"
-            f"context:\n{context}\nconstraints:\n{constraints}",
+            f"context:\n{context}\nconstraints:\n{constraints}{_val_handoff_hint}",
             eng_out, run_logger, config, str(attempt_dir),
         )
         _eng_cost = float(Path(f"{eng_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{eng_out[:-4]}_cost.txt").exists() else 0.0
@@ -291,6 +302,10 @@ def run_simple(
                 impl_file, attempt, issue_num,
             )
             _sg_handoff_path = write_handoff(state_dir, prefix, attempt, "engineer", "architect-specgap", _sg_handoff)
+            run_logger.log_event({
+                "event": "handoff", "from": "engineer", "to": "architect-specgap",
+                "t": int(time.time()),
+            })
 
             # architect SPEC_GAP 처리
             log_phase("architect-spec-gap", run_logger, attempt)
@@ -386,7 +401,25 @@ def run_simple(
             })
             hlog_fn(f"early commit: {early_commit} (attempt={attempt + 1})")
 
-        # ── 워커 2: pr-reviewer ──────────────────────────────────
+        # ── Handoff: engineer → pr-reviewer ─────────────────────
+        _eng_handoff_hint = ""
+        try:
+            _eng_content_for_ho = Path(eng_out).read_text(encoding="utf-8", errors="replace")
+            _eng_ho = generate_handoff(
+                "engineer", "pr-reviewer", _eng_content_for_ho,
+                impl_file, attempt, issue_num,
+                changed_files=changed if changed else None,
+            )
+            _eng_ho_path = write_handoff(state_dir, prefix, attempt, "engineer", "pr-reviewer", _eng_ho)
+            _eng_handoff_hint = f"\n인수인계 문서: {_eng_ho_path}"
+            run_logger.log_event({
+                "event": "handoff", "from": "engineer", "to": "pr-reviewer",
+                "t": int(time.time()),
+            })
+        except OSError:
+            pass
+
+        # ── 워커 2: pr-reviewer + second reviewer (병렬) ─────────
         log_phase("pr-reviewer", run_logger, attempt)
         hlog_fn("pr-reviewer 시작 (depth=simple, timeout=240s)")
         kill_check(state_dir)
@@ -411,13 +444,21 @@ def run_simple(
         )
         src_files = " ".join(r_names.stdout.strip().splitlines()) if r_names.returncode == 0 else ""
 
+        # second reviewer 비동기 발사 (pr-reviewer와 병렬)
+        _second_proc = None
+        if config.second_reviewer:
+            _diff_for_2nd = diff_out or r.stdout[:15000]
+            _second_proc = start_second_review(_diff_for_2nd, config.second_reviewer, config.second_reviewer_model)
+            if _second_proc:
+                hlog_fn(f"second reviewer ({config.second_reviewer}) 비동기 시작")
+
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
         _pr_t0 = time.time()
         agent_exit = agent_call(
             "pr-reviewer", 240,
             f'@MODE:PR_REVIEWER:REVIEW\n'
             f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
-            f"변경 diff:\n{diff_out}",
+            f"변경 diff:\n{diff_out}{_eng_handoff_hint}",
             pr_out, run_logger, config, str(attempt_dir),
         )
         _pr_cost = float(Path(f"{pr_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{pr_out[:-4]}_cost.txt").exists() else 0.0
@@ -459,8 +500,24 @@ def run_simple(
         state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
         print("[HARNESS] LGTM")
 
+        # second reviewer 결과 수집
+        _second_findings = ""
+        if _second_proc:
+            _second_findings = collect_second_review(_second_proc)
+            if _second_findings:
+                hlog_fn(f"second reviewer findings: {len(_second_findings)} chars")
+                if run_logger:
+                    run_logger.log_event({
+                        "event": "second_review",
+                        "reviewer": config.second_reviewer,
+                        "findings_chars": len(_second_findings),
+                        "t": int(time.time()),
+                    })
+
         # ── POLISH: 코드 다듬기 (LGTM 후, merge 전) ──────────────
         polish_items = extract_polish_items(pr_out)
+        if _second_findings:
+            polish_items = (polish_items + f"\n\n[{config.second_reviewer} 리뷰]\n{_second_findings}").strip()
         if polish_items:
             hlog_fn("POLISH 항목 감지 — engineer POLISH 모드 실행")
             print("[HARNESS] POLISH: 코드 다듬기")
@@ -876,6 +933,10 @@ def _run_std_deep(
             acceptance_criteria=extract_acceptance_criteria(impl_file),
         )
         _handoff_path = write_handoff(state_dir, prefix, attempt, "engineer", "test-engineer", _handoff_content)
+        run_logger.log_event({
+            "event": "handoff", "from": "engineer", "to": "test-engineer",
+            "t": int(time.time()),
+        })
 
         # ── 워커 2: test-engineer ─────────────────────────────────
         r_changed = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
@@ -1039,7 +1100,7 @@ def _run_std_deep(
             continue
         state_dir.flag_touch(Flag.VALIDATOR_B_PASSED)
 
-        # ── 워커 4: pr-reviewer ───────────────────────────────────
+        # ── 워커 4: pr-reviewer + second reviewer (병렬) ─────────
         log_phase("pr-reviewer", run_logger, attempt)
         hlog_fn(f"pr-reviewer 시작 (depth={depth}, timeout=240s)")
         hud.agent_start("pr-reviewer")
@@ -1051,6 +1112,14 @@ def _run_std_deep(
         diff_out = "\n".join(r.stdout.splitlines()[:300])
         r_names = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
         src_files = " ".join(r_names.stdout.strip().splitlines()) if r_names.returncode == 0 else ""
+
+        # second reviewer 비동기 발사
+        _second_proc = None
+        if config.second_reviewer:
+            _diff_for_2nd = diff_out or r.stdout[:15000]
+            _second_proc = start_second_review(_diff_for_2nd, config.second_reviewer, config.second_reviewer_model)
+            if _second_proc:
+                hlog_fn(f"second reviewer ({config.second_reviewer}) 비동기 시작")
 
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
         agent_exit = agent_call(
@@ -1091,8 +1160,24 @@ def _run_std_deep(
         state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
         print("[HARNESS] LGTM")
 
+        # second reviewer 결과 수집
+        _second_findings = ""
+        if _second_proc:
+            _second_findings = collect_second_review(_second_proc)
+            if _second_findings:
+                hlog_fn(f"second reviewer findings: {len(_second_findings)} chars")
+                if run_logger:
+                    run_logger.log_event({
+                        "event": "second_review",
+                        "reviewer": config.second_reviewer,
+                        "findings_chars": len(_second_findings),
+                        "t": int(time.time()),
+                    })
+
         # ── POLISH: 코드 다듬기 (LGTM 후, security/merge 전) ─────
         polish_items = extract_polish_items(str(state_dir.path / f"{prefix}_pr_out.txt"))
+        if _second_findings:
+            polish_items = (polish_items + f"\n\n[{config.second_reviewer} 리뷰]\n{_second_findings}").strip()
         if polish_items:
             hlog_fn("POLISH 항목 감지 — engineer POLISH 모드 실행")
             print("[HARNESS] POLISH: 코드 다듬기")

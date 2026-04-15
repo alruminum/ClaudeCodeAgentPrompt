@@ -16,3 +16,6 @@
 | 2026-04-15 | HUD Statusline (HUD 클래스 + hud.json + harness-monitor 전용 세션) | 진행 바 시각화 + 별도 세션 실시간 모니터링. Osmani 기사 참고 |
 | 2026-04-15 | POLISH 모드 (@MODE:ENGINEER:POLISH + regression revert) | pr-reviewer LGTM 후 NICE TO HAVE 경량 정리. regression 실패 시 revert. OMC ai-slop-cleaner 참고 |
 | 2026-04-15 | Circuit Breaker (시간 윈도우 120초 내 동일 fail_type 2회 → 조기 에스컬레이션) | harness_framework 참고. 기존 max 3 attempts와 독립 동작 |
+| 2026-04-15 | `impl_loop.py` fallback import 블록에 `HUD`, `generate_handoff`, `write_handoff` 누락 수정 | `except ImportError` 경로에서 HUD 미import → `NameError: name 'HUD' is not defined` 크래시. try 블록과 동기화 |
+| 2026-04-15 | `core.py` HUD.cleanup() 삭제 대신 완료 상태 기록으로 변경 | cleanup()이 HARNESS_DONE 직전에 hud.json 삭제 → harness-monitor가 최종 상태를 못 읽음. 삭제 대신 `status: "done"` 기록 후 파일 유지 |
+| 2026-04-15 | Second Reviewer — 외부 AI(Gemini/GPT) 병렬 리뷰 | pr-reviewer와 동시 실행, LGTM 시 findings → POLISH 합산. config.second_reviewer로 on/off. CLI 미설치 시 자동 스킵 |

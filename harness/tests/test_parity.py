@@ -579,9 +579,11 @@ class TestHUD(unittest.TestCase):
             self.assertEqual(data["depth"], "std")
             self.assertEqual(data["attempt"], 0)
 
-            # cleanup
+            # cleanup — 파일 삭제 대신 상태 기록 (harness-monitor가 최종 상태 읽기 위해)
             hud.cleanup()
-            self.assertFalse(hud_path.exists())
+            self.assertTrue(hud_path.exists())  # 파일은 유지됨
+            cleanup_data = json.loads(hud_path.read_text())
+            self.assertIn("status", cleanup_data)  # 완료 상태 기록
 
     def test_hud_depth_agents(self):
         from harness.core import HUD
@@ -614,6 +616,30 @@ class TestExtractPolishItems(unittest.TestCase):
     def test_missing_file(self):
         from harness.helpers import extract_polish_items
         self.assertEqual(extract_polish_items("/nonexistent"), "")
+
+
+class TestSecondReview(unittest.TestCase):
+    def test_start_returns_none_when_cli_missing(self):
+        from harness.core import start_second_review
+        # 존재하지 않는 CLI
+        result = start_second_review("diff", "nonexistent_ai_cli_xyz")
+        self.assertIsNone(result)
+
+    def test_collect_returns_empty_on_none(self):
+        from harness.core import collect_second_review
+        result = collect_second_review(None)
+        self.assertEqual(result, "")
+
+    def test_config_second_reviewer_fields(self):
+        from harness.config import HarnessConfig
+        cfg = HarnessConfig(second_reviewer="gemini", second_reviewer_model="gemini-2.5-flash")
+        self.assertEqual(cfg.second_reviewer, "gemini")
+        self.assertEqual(cfg.second_reviewer_model, "gemini-2.5-flash")
+
+    def test_config_default_disabled(self):
+        from harness.config import HarnessConfig
+        cfg = HarnessConfig()
+        self.assertEqual(cfg.second_reviewer, "")
 
 
 if __name__ == "__main__":

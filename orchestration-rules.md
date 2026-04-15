@@ -62,7 +62,7 @@
 impl 루프 실행 중 depth별 에이전트 체인의 진행 상태를 stdout에 시각적으로 표시.
 - 실시간 JSON: `.claude/harness-state/{prefix}_hud.json`
 - `/harness-monitor` 스킬: 별도 세션에서 HUD를 실시간 모니터링 (전용 세션, 무한 대기)
-- 하네스 완료 시 HUD 파일 자동 삭제
+- 하네스 완료 시 HUD 파일 유지 (`"status": "done"` 필드 추가), 다음 루프 시작 시 덮어쓰기
 
 ### POLISH 모드 (LGTM 후 경량 코드 다듬기)
 pr-reviewer LGTM 후, merge 전에 NICE TO HAVE 항목을 경량 정리한다.
@@ -75,6 +75,14 @@ pr-reviewer LGTM 후, merge 전에 NICE TO HAVE 항목을 경량 정리한다.
 동일 fail_type이 120초 내 2회 반복되면 attempt를 소진하지 않고 즉시 IMPLEMENTATION_ESCALATE.
 - JSONL에 `circuit_breaker` 이벤트 기록
 - 기존 max 3 attempts와 독립 동작 (시간 기반 조기 탈출)
+
+### Second Reviewer (외부 AI 병렬 리뷰)
+pr-reviewer(Claude) 실행과 동시에 외부 AI(Gemini/GPT)를 비동기로 병렬 실행. 추가 대기 시간 0.
+- 설정: `harness.config.json`의 `second_reviewer` (예: `"gemini"`, `"gpt"`, `""` = 비활성)
+- 실행: pr-reviewer `agent_call` 직전에 `subprocess.Popen`으로 비동기 발사, 완료 후 결과 수집
+- 결과 합산: LGTM 시 findings → POLISH 항목에 append (기존 POLISH 파이프라인 재활용)
+- CHANGES_REQUESTED 시 gemini 결과 무시 (기능 수정 우선)
+- 폴백: CLI 미설치/타임아웃/에러 → 조용히 스킵, 기존 파이프라인 영향 0
 
 ---
 
