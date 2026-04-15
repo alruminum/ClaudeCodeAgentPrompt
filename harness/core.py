@@ -260,14 +260,29 @@ class HUD:
         print()
 
     def _write_json(self) -> None:
+        try:
+            _dbg = Path.cwd() / ".claude" / "harness-state" / "_hud_debug.log"
+        except OSError:
+            _dbg = None
         if not self._hud_path:
             # fallback: prefix 기반 경로 추론
             if self.prefix:
                 _fb = Path.cwd() / ".claude" / "harness-state"
                 if _fb.is_dir():
                     self._hud_path = _fb / f"{self.prefix}_hud.json"
-                    print(f"[HUD] _hud_path fallback: {self._hud_path}")
+                    if _dbg:
+                        try:
+                            with open(_dbg, "a") as f:
+                                f.write(f"fallback: {self._hud_path}\n")
+                        except OSError:
+                            pass
             if not self._hud_path:
+                if _dbg:
+                    try:
+                        with open(_dbg, "a") as f:
+                            f.write(f"_hud_path is None, prefix={self.prefix}\n")
+                    except OSError:
+                        pass
                 return
         data = {
             "depth": self.depth,
@@ -287,8 +302,20 @@ class HUD:
                 json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            if not hasattr(self, "_write_ok_logged") and _dbg:
+                self._write_ok_logged = True
+                try:
+                    with open(_dbg, "a") as f:
+                        f.write(f"write OK: {self._hud_path}\n")
+                except OSError:
+                    pass
         except OSError as e:
-            print(f"[HUD] _write_json 실패: {e} (path={self._hud_path})")
+            if _dbg:
+                try:
+                    with open(_dbg, "a") as f:
+                        f.write(f"write FAIL: {e} path={self._hud_path}\n")
+                except OSError:
+                    pass
 
     def cleanup(self) -> None:
         """하네스 종료 시 HUD에 완료 상태 기록 (파일 유지)."""
