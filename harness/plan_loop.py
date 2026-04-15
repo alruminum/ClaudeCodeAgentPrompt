@@ -66,7 +66,7 @@ def run_plan(
     print("[HARNESS] product-planner 기획")
     pp_out_file = str(state_dir.path / f"{prefix}_pp_out.txt")
     agent_call(
-        "product-planner", 300,
+        "product-planner", 600,
         f"@MODE:PLANNER:PRODUCT_PLAN\ncontext: {context} issue: #{issue_num}",
         pp_out_file, run_logger, config,
     )
@@ -83,6 +83,14 @@ def run_plan(
         run_logger.write_run_end("CLARITY_INSUFFICIENT", "", issue_num)
         return "CLARITY_INSUFFICIENT"
 
+    if pp_marker not in ("PRODUCT_PLAN_READY", "PRODUCT_PLAN_UPDATED"):
+        # 마커 누락 또는 예상 외 값 — 유저 인터랙션 필요로 간주
+        os.environ["HARNESS_RESULT"] = "CLARITY_INSUFFICIENT"
+        print(f"CLARITY_INSUFFICIENT (마커 감지 실패: {pp_marker})")
+        print(pp_out)
+        run_logger.write_run_end("CLARITY_INSUFFICIENT", "", issue_num)
+        return "CLARITY_INSUFFICIENT"
+
     # ── architect System Design ──
     print("[HARNESS] architect System Design 작성")
     arch_sd_out = str(state_dir.path / f"{prefix}_arch_sd_out.txt")
@@ -92,6 +100,20 @@ def run_plan(
         arch_sd_out, run_logger, config,
     )
     kill_check(state_dir)
+
+    arch_sd_marker = parse_marker(arch_sd_out, "SYSTEM_DESIGN_READY|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+    if arch_sd_marker == "PRODUCT_PLANNER_ESCALATION_NEEDED":
+        os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
+        print("PRODUCT_PLANNER_ESCALATION_NEEDED")
+        run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", "", issue_num)
+        return "PRODUCT_PLANNER_ESCALATION_NEEDED"
+    if arch_sd_marker not in ("SYSTEM_DESIGN_READY",):
+        os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
+        print(f"SPEC_GAP_ESCALATE: architect System Design 마커 감지 실패 ({arch_sd_marker})")
+        arch_sd_content = Path(arch_sd_out).read_text(encoding="utf-8", errors="replace") if Path(arch_sd_out).exists() else ""
+        print(arch_sd_content[-500:] if len(arch_sd_content) > 500 else arch_sd_content)
+        run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
+        return "SPEC_GAP_ESCALATE"
 
     # design_doc 경로 추출
     design_doc = ""
@@ -127,6 +149,18 @@ def run_plan(
         arch_mp_out, run_logger, config,
     )
     kill_check(state_dir)
+
+    arch_mp_marker = parse_marker(arch_mp_out, "READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+    if arch_mp_marker == "PRODUCT_PLANNER_ESCALATION_NEEDED":
+        os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
+        print("PRODUCT_PLANNER_ESCALATION_NEEDED")
+        run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", "", issue_num)
+        return "PRODUCT_PLANNER_ESCALATION_NEEDED"
+    if arch_mp_marker not in ("READY_FOR_IMPL",):
+        os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
+        print(f"SPEC_GAP_ESCALATE: architect Module Plan 마커 감지 실패 ({arch_mp_marker})")
+        run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
+        return "SPEC_GAP_ESCALATE"
 
     impl_file = ""
     try:

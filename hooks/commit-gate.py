@@ -45,18 +45,19 @@ def main():
 
     cmd = d.get("tool_input", {}).get("command", "")
 
-    # ── Gate 1: gh issue create 직접 호출 차단 ────────────────────────
-    # QA/designer 에이전트만 이슈를 생성할 수 있다. 메인 Claude 직접 생성 금지.
-    _IS_GH_ISSUE_CREATE = (
-        re.search(r"gh\s+issue\s+create", cmd)
+    # ── Gate 1: gh issue create/edit 직접 호출 차단 ────────────────────────
+    # QA/designer 에이전트만 이슈를 생성/수정할 수 있다. 메인 Claude 직접 호출 금지.
+    _IS_GH_ISSUE_MUTATE = (
+        re.search(r"gh\s+issue\s+(create|edit)", cmd)
         or re.search(r"gh\s+api\s+.*issues.*--method\s+POST", cmd)
-        or re.search(r"gh\s+api\s+.*issues.*-X\s+POST", cmd)
+        or re.search(r"gh\s+api\s+.*issues.*-X\s+(POST|PATCH)", cmd)
+        or re.search(r"gh\s+api\s+.*issues/\d+.*-X\s+PATCH", cmd)
     )
-    if _IS_GH_ISSUE_CREATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active():
+    if _IS_GH_ISSUE_MUTATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active():
         deny(
-            "❌ gh issue create 직접 호출 금지.\n"
-            "버그 이슈는 QA 에이전트가, 디자인 이슈는 designer 에이전트가 생성한다.\n"
-            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성 → python3 executor.py impl --issue <N> --prefix {PREFIX}"
+            "❌ gh issue create/edit 직접 호출 금지.\n"
+            "이슈 생성/수정은 QA 에이전트가, 디자인 이슈는 designer 에이전트가 처리한다.\n"
+            f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성/수정 → python3 executor.py impl --issue <N> --prefix {PREFIX}"
         )
 
     # ── Gate 2: (removed in v6 — bugfix 모드 제거에 따라 is_bug 게이트 삭제)

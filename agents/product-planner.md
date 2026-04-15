@@ -128,9 +128,12 @@ model: sonnet
 
 ### CLARITY_INSUFFICIENT 출력 형식
 
-PRD 작성 중 정보가 부족하여 진행 불가한 항목이 있을 때:
+PRD 작성 중 유저 답변이 필요한 미결 항목이 있을 때.
+**절대 규칙: 유저에게 질문을 던지는 출력은 반드시 `---MARKER:CLARITY_INSUFFICIENT---`로 끝나야 한다.** 마커 없이 질문만 던지면 하네스 루프가 유저 응답 없이 다음 단계로 폭주한다.
 
 ```
+(질문/옵션 제시 내용)
+
 ---MARKER:CLARITY_INSUFFICIENT---
 
 부족 항목:
@@ -219,6 +222,7 @@ Option D — Reduction:   가장 빠르게 검증 가능한 핵심만 (MVP에서
 ```
 
 유저가 옵션을 **명시적으로 선택**하기 전까지 PRODUCT_PLAN_READY 출력 금지.
+옵션을 제시하고 유저 선택을 기다릴 때는 반드시 `---MARKER:CLARITY_INSUFFICIENT---`를 출력한다.
 
 #### Step 8 — 최종 확정
 

@@ -28,6 +28,17 @@
 
 ---
 
+## 마커 안전 규칙 (Marker Safety)
+
+에이전트 호출 후 `parse_marker()`가 **UNKNOWN**을 반환하면 (= 기대 마커 미감지):
+- **진행 게이트** (다음 단계로 넘어가는 판단): UNKNOWN → **에스컬레이션** (fail-safe). 예: product-planner 마커 없음 → CLARITY_INSUFFICIENT, architect 마커 없음 → SPEC_GAP_ESCALATE
+- **실패 게이트** (PASS인지 판단): UNKNOWN → **FAIL 처리** (fail-safe). 예: validator UNKNOWN → FAIL, pr-reviewer UNKNOWN → CHANGES_REQUESTED
+- **재시도 게이트** (SPEC_GAP 등): UNKNOWN → **재시도** 허용 (attempt 소진). 예: architect SPEC_GAP UNKNOWN → engineer 재시도
+
+원칙: **마커 없으면 진행 금지**. 우연히 텍스트에서 추출한 경로로 다음 단계에 진입하는 것을 방지한다.
+
+---
+
 ## 에스컬레이션 마커 — 모두 "메인 Claude 보고 후 대기"
 
 | 마커 | 발행 주체 | 처리 |

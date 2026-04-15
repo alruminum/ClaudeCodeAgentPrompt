@@ -313,6 +313,10 @@ def run_impl(
             os.environ["HARNESS_RESULT"] = "TECH_CONSTRAINT_CONFLICT"
             print("TECH_CONSTRAINT_CONFLICT")
             return "TECH_CONSTRAINT_CONFLICT"
+        if arch_marker not in ("LIGHT_PLAN_READY", "READY_FOR_IMPL"):
+            os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
+            print(f"SPEC_GAP_ESCALATE: architect 마커 감지 실패 ({arch_marker})")
+            return "SPEC_GAP_ESCALATE"
 
         # impl 파일 경로 추출
         try:

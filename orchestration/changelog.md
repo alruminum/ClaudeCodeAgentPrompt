@@ -25,3 +25,7 @@
 | 2026-04-15 | `harness-review.py` INFRA_EXCLUSIONS에 `handoff` 추가 | handoff 파일은 에이전트 간 인수인계 문서로 의도된 Read인데 `.claude/` 경로 포함으로 WASTE_INFRA_READ 오탐 |
 | 2026-04-15 | HUD `_write_json` 진단 강화 + fallback 경로 | `_hud_path`가 None일 때 cwd 기반 fallback 추론, `except OSError: pass` → 에러 메시지 출력, 첫 agent_start 시 one-time 진단 로그 |
 | 2026-04-15 | `harness-router.py` 대폭 간소화 — 7카테고리 → 3카테고리(BUG/UI/IMPL) | Haiku 폴백 90% 타임아웃, Adaptive Interview 0.2% 성공률, GREETING/QUESTION/GENERIC/AMBIGUOUS 전부 동일 동작(sys.exit). Haiku·Interview·extract_intent·socrates 에이전트 전부 제거. 스킬(/qa /ux /product-plan)이 정밀 라우팅 담당 |
+| 2026-04-15 | QA 에이전트에 `update_issue`+`add_issue_comment` 도구 추가 + `issue-gate.py`에 update_issue 차단 추가 | 메인 Claude가 이슈 수정(edit)도 직접 하면 안 됨. QA/designer 에이전트만 이슈 생성+수정 가능. #106에서 메인이 직접 edit해서 요구사항 왜곡 3회 발생 |
+| 2026-04-15 | QA 이슈 본문에 유저 원문 인용 필수 | #106에서 architect가 QA 요약을 과잉 해석하여 3회 재작업. 유저 원문이 이슈 → impl → engineer까지 전달되면 architect의 자체 해석 방지 |
+| 2026-04-15 | `plan_loop.py` product-planner 타임아웃 300s → 600s | MCP 문서 검색(apps-in-toss)에 시간 소모되어 PRD 작성 전 타임아웃. 코인 시스템 기획에서 발생 |
+| 2026-04-15 | Marker Safety 규칙 추가 — UNKNOWN 마커 시 진행 금지 | product-planner가 마커 없이 Q1/Q2 질문 → UNKNOWN → plan_loop가 architect까지 폭주. 전체 parse_marker 감사 후 진행 게이트 4곳 수정: plan_loop(pp/arch_sd/arch_mp) + impl_router(arch). orchestration-rules.md에 Marker Safety 원칙 추가, product-planner.md에 마커 필수 경고 추가 |

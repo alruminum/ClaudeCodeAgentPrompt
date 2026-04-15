@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-issue-gate.py — PreToolUse(mcp__github__create_issue) 글로벌 훅
-메인 Claude가 하네스 외부에서 GitHub 이슈를 직접 생성하는 것을 차단한다.
+issue-gate.py — PreToolUse(mcp__github__create_issue, mcp__github__update_issue) 글로벌 훅
+메인 Claude가 GitHub 이슈를 직접 생성/수정하는 것을 차단한다.
 
 orchestration/policies.md 정책 3:
-"메인 Claude — 하네스 진입 전 GitHub 이슈 직접 생성 금지.
- 이슈 생성은 qa/designer 에이전트가 내부에서 처리한다."
+"메인 Claude — GitHub 이슈 직접 생성/수정 금지.
+ 이슈 생성/수정은 qa/designer 에이전트가 내부에서 처리한다."
 
 예외: ISSUE_CREATORS 에이전트(qa, designer)가 활성 상태이면 허용.
 """
@@ -52,9 +52,9 @@ def main():
 
     # 그 외 — 메인 Claude 직접 호출 차단 (harness_active 여부 무관)
     deny(
-        "❌ 메인 Claude의 create_issue 직접 호출 금지 (orchestration/policies.md 정책 3).\n"
-        "이슈 생성은 하네스 내부에서 처리됩니다.\n"
-        "버그: /qa 스킬 → QA 에이전트가 분석·이슈 생성 → python3 executor.py impl --issue <N>\n"
+        "❌ 메인 Claude의 이슈 생성/수정 직접 호출 금지 (orchestration/policies.md 정책 3).\n"
+        "이슈 생성/수정은 QA/designer 에이전트가 처리합니다.\n"
+        "버그: /qa 스킬 → QA 에이전트가 분석·이슈 생성/수정 → python3 executor.py impl --issue <N>\n"
         "구현: python3 executor.py impl --impl <path> 으로 진입하면 architect가 이슈를 생성합니다."
     )
 

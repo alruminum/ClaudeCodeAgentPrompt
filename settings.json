@@ -242,6 +242,17 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "_meta": "harness",
+        "matcher": "mcp__github__update_issue",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/issue-gate.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
       }
     ]
   },
