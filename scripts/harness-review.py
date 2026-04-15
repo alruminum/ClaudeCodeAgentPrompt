@@ -24,8 +24,8 @@ INFRA_PATTERNS = [
     "harness-executor",
 ]
 
-# agent-config/는 의도된 프로젝트 컨텍스트 읽기 — INFRA 분류 제외
-INFRA_EXCLUSIONS = ["agent-config/"]
+# agent-config/는 의도된 프로젝트 컨텍스트, handoff/는 에이전트 간 인수인계 — INFRA 분류 제외
+INFRA_EXCLUSIONS = ["agent-config/", "handoff"]
 
 EXPECTED_ELAPSED = {
     "engineer": 900,
