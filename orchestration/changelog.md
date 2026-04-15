@@ -32,3 +32,4 @@
 | 2026-04-15 | Plan 루프 HUD 추가 + 로그 보강 | plan_loop.py에 HUD 없어서 진행 상태 파악 불가. HUD depth="plan" 추가 (agents: product-planner→architect-sd→design-validation→architect-mp→plan-validation). 각 단계 마커 결과를 `[HARNESS] agent → MARKER` 형식으로 출력 |
 | 2026-04-15 | drift-check에 스크립트→orchestration 상세 문서 역매핑 추가 | plan_loop.py 변경 시 orchestration/plan.md 동기화 누락 방지 |
 | 2026-04-15 | plan_loop architect에 pp_out 전문 대신 prd.md 경로만 전달 | architect가 pp_out(수만 토큰)을 prd.md로 다시 쓰려고 Bash heredoc 루프에 빠져 900초 타임아웃. 경로만 넘기고 Read하게 변경 |
+| 2026-04-15 | plan 루프 전면 타임아웃 조정 + 도구 차단 | Bash 20분 < plan loop 50분(worst case) 문제. product-plan 스킬에 timeout 3600000(60분) 명시. architect-sd/mp 900s→600s. agent_call에 에이전트별 disallowedTools 추가 (product-planner: Bash 차단, validator/pr-reviewer/critic: Bash+Write+Edit 차단) |

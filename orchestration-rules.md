@@ -41,6 +41,11 @@
 - plan 루프에서 product-planner → architect 전환 시, **pp_out 전문을 프롬프트에 넣지 않는다**. prd.md 경로만 전달하고 architect가 직접 Read하도록 한다.
 - 이유: 수만 토큰의 PRD 전문이 architect 프롬프트에 들어가면 architect가 prd.md를 자기가 다시 써야 한다고 착각해서 Bash heredoc 파일 쓰기 루프에 빠진다 (900초 타임아웃 사고 원인).
 
+### plan 루프 타임아웃 정책
+- plan 루프 Bash 호출 시 **timeout 3600000ms (60분)** 명시. 기본 20분으로는 plan loop 완주 불가.
+- 에이전트별 타임아웃: product-planner 600s, architect-sd 600s, architect-mp 600s, validator 300s.
+- `agent_call`에서 에이전트 frontmatter `tools:` 목록 외 도구를 `--disallowedTools`에 추가하여 불필요한 도구 사용 방지 (예: product-planner의 Bash 차단).
+
 ---
 
 ## 에스컬레이션 마커 — 모두 "메인 Claude 보고 후 대기"

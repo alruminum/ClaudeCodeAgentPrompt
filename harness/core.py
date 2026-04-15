@@ -669,13 +669,23 @@ def agent_call(
     preview = " ".join(preview_lines).replace("  ", " ")[:160]
     print(f"  → {agent}: {preview}")
 
+    # 에이전트별 불필요 도구 차단 (bypassPermissions가 frontmatter tools를 무시하므로 여기서 강제)
+    _AGENT_DISALLOWED: Dict[str, str] = {
+        "product-planner": "Agent,Bash,NotebookEdit",
+        "validator": "Agent,Bash,Write,Edit,NotebookEdit",
+        "pr-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
+        "design-critic": "Agent,Bash,Write,Edit,NotebookEdit",
+        "security-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
+    }
+    disallowed = _AGENT_DISALLOWED.get(agent, "Agent")
+
     # claude CLI 실행
     base_cmd = [
         "claude", "--agent", agent, "--print", "--verbose",
         "--output-format", "stream-json", "--include-partial-messages",
         "--max-budget-usd", "2.00",
         "--permission-mode", "bypassPermissions",
-        "--disallowedTools", "Agent",
+        "--disallowedTools", disallowed,
         "--fallback-model", "haiku",
     ]
     if config and getattr(config, "isolation", ""):

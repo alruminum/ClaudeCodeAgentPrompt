@@ -120,7 +120,7 @@ def run_plan(
     arch_sd_out = str(state_dir.path / f"{prefix}_arch_sd_out.txt")
     # pp_out 전문이 아닌 prd.md 경로만 전달 — architect가 직접 Read
     agent_call(
-        "architect", 900,
+        "architect", 600,
         f"@MODE:ARCHITECT:SYSTEM_DESIGN\nplan_doc: {prd_path}\nissue: #{issue_num}",
         arch_sd_out, run_logger, config,
     )
@@ -185,7 +185,7 @@ def run_plan(
     hud.agent_start("architect-mp")
     arch_mp_out = str(state_dir.path / f"{prefix}_arch_mp_out.txt")
     agent_call(
-        "architect", 900,
+        "architect", 600,
         f"@MODE:ARCHITECT:MODULE_PLAN\ndesign_doc: {design_doc or 'N/A'} issue: #{issue_num}",
         arch_mp_out, run_logger, config,
     )
