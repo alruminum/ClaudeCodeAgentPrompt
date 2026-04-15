@@ -33,6 +33,20 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 | product-planner | `prd.md`, `trd.md` | 설계 문서 금지 |
 | validator, design-critic, pr-reviewer, qa, security-reviewer | *(없음 — ReadOnly)* | 모든 Write/Edit deny |
 
+## 인프라 파일 접근 금지 (전 에이전트 공통)
+
+아래 경로는 하네스 인프라 파일로, 모든 에이전트가 Read/Glob/Grep 대상에서 제외해야 한다.
+
+| 경로 패턴 | 설명 |
+|-----------|------|
+| `.claude/harness-memory.md` | 하네스 메모리 |
+| `.claude/harness-state/` | 하네스 상태 플래그·히스토리 |
+| `.claude/harness-logs/` | 실행 로그 |
+| `.claude/harness.config.json` | 하네스 설정 |
+| `.claude/harness/` | 하네스 스크립트 |
+
+> 반복 위반 에이전트: engineer, pr-reviewer (WASTE_INFRA_READ 패턴)
+
 ## Pencil MCP 접근 권한 (Read-Only)
 
 디자인 파일 참조 목적으로 아래 에이전트에 Pencil MCP 읽기 도구를 부여한다.

@@ -113,6 +113,8 @@ class Marker(str, Enum):
     HARNESS_DONE = "HARNESS_DONE"
     IMPLEMENTATION_ESCALATE = "IMPLEMENTATION_ESCALATE"
     MERGE_CONFLICT_ESCALATE = "MERGE_CONFLICT_ESCALATE"
+    # product-planner (정보 부족 에스컬레이션)
+    CLARITY_INSUFFICIENT = "CLARITY_INSUFFICIENT"
 
 
 # ═══════════════════════════════════════════════════════════════════════

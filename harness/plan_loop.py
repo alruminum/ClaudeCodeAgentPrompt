@@ -73,7 +73,15 @@ def run_plan(
     pp_out = Path(pp_out_file).read_text(encoding="utf-8", errors="replace")
     kill_check(state_dir)
 
-    pp_marker = parse_marker(pp_out_file, "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED")
+    pp_marker = parse_marker(pp_out_file, "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED|CLARITY_INSUFFICIENT")
+
+    if pp_marker == "CLARITY_INSUFFICIENT":
+        # 에스컬레이션: 부족 항목을 메인 Claude에 전달하여 유저 추가 질문 유도
+        os.environ["HARNESS_RESULT"] = "CLARITY_INSUFFICIENT"
+        print("CLARITY_INSUFFICIENT")
+        print(pp_out)  # 부족 항목 + 질문 제안 + PRD 초안 경로
+        run_logger.write_run_end("CLARITY_INSUFFICIENT", "", issue_num)
+        return "CLARITY_INSUFFICIENT"
 
     # ── architect System Design ──
     print("[HARNESS] architect System Design 작성")

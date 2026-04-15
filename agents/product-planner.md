@@ -76,15 +76,15 @@ model: sonnet
 
 | 인풋 마커 | 모드 | 아웃풋 마커 |
 |---|---|---|
-| `@MODE:PLANNER:PRODUCT_PLAN` | 신규 제품 기획 — 아이디어 → 구조화된 제품 계획 | `PRODUCT_PLAN_READY` |
+| `@MODE:PLANNER:PRODUCT_PLAN` | 신규 제품 기획 — 아이디어 → 구조화된 제품 계획 | `PRODUCT_PLAN_READY` 또는 `CLARITY_INSUFFICIENT` |
 | `@MODE:PLANNER:PRODUCT_PLAN_CHANGE` | 요구사항 변경 — 기존 PRD 변경 처리 | `PRODUCT_PLAN_UPDATED` |
 
 ### @PARAMS 스키마
 
 ```
 @MODE:PLANNER:PRODUCT_PLAN
-@PARAMS: { "idea": "제품 아이디어/요구사항 설명", "constraints?": "기술/비즈니스 제약" }
-@OUTPUT: { "marker": "PRODUCT_PLAN_READY", "plan_doc": "생성된 prd.md 경로" }
+@PARAMS: { "idea": "제품 아이디어/요구사항 설명", "constraints?": "기술/비즈니스 제약", "clarity_report?": "스킬에서 전달한 기획 준비도 리포트", "prd_draft_path?": "이전 CLARITY_INSUFFICIENT에서 생성한 PRD 초안 경로" }
+@OUTPUT: { "marker": "PRODUCT_PLAN_READY | CLARITY_INSUFFICIENT", "plan_doc": "생성된 prd.md 경로", "missing_items?": "부족 항목 목록 (CLARITY_INSUFFICIENT 시)" }
 
 @MODE:PLANNER:PRODUCT_PLAN_CHANGE
 @PARAMS: { "plan_doc": "기존 prd.md 경로", "change_request": "변경 요청 내용" }
@@ -115,9 +115,43 @@ model: sonnet
 
 ---
 
+## 스킬에서 전달받은 기획 준비도
+
+스킬(product-plan)이 `[준비도 리포트]`를 컨텍스트에 포함한 경우:
+- **Phase 1(요구사항 수집) 스킵** → Phase 2(기능 스펙 작성)부터 시작
+- 리포트의 각 차원을 확인:
+  - 🟢 (70%+): 그대로 사용
+  - 🟡 (40~70%): 작성 가능하면 진행, 불가능하면 [TBD] 표시
+  - 🔴 (<40%): 해당 부분을 [TBD]로 남기고 `CLARITY_INSUFFICIENT` 에스컬레이션
+- 리포트가 없으면 기존 Phase 1부터 진행 (하위 호환)
+- `prd_draft_path`가 있으면 초안을 읽어 이어서 작성 (처음부터 안 함)
+
+### CLARITY_INSUFFICIENT 출력 형식
+
+PRD 작성 중 정보가 부족하여 진행 불가한 항목이 있을 때:
+
+```
+---MARKER:CLARITY_INSUFFICIENT---
+
+부족 항목:
+1. [차원명] 구체적 부족 내용 — 이것이 필요한 이유
+   질문 제안: "유저에게 이렇게 물어보세요"
+2. [차원명] ...
+
+PRD 초안: prd-draft.md
+```
+
+- 작성 가능한 부분은 `prd-draft.md`에 모두 작성하고 부족한 부분만 `[TBD]`로 표시
+- 질문 제안은 메인 Claude가 유저에게 그대로 전달할 수 있는 자연어로 작성
+- 에스컬레이션은 최대 2회. 3회 이상이면 메인 Claude가 현재 상태로 강제 진행
+
+---
+
 ## 진행 방식
 
 ### Phase 1 — 요구사항 수집
+
+> **참고**: 스킬에서 준비도 리포트를 받은 경우 이 Phase는 스킵된다.
 
 #### Step 1 — 첫 질문 (2~3개)
 가장 핵심적인 것부터. 보통 "무엇을 만드려는가 + 누구를 위한가"로 시작.

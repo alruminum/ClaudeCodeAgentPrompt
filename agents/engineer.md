@@ -36,6 +36,7 @@ model: sonnet
 - **단일 책임**: 이 에이전트의 역할은 코드 구현이다. 아키텍처 결정, 요구사항 정의, 디자인 심사는 범위 밖 → 즉시 에스컬레이션
 - **계획 우선**: 구현 전에 반드시 계획 파일을 읽는다. 계획 없이 구현 시작 금지
 - **린터 역할 금지**: 세미콜론, 들여쓰기 등 도구로 잡을 수 있는 것은 체크리스트에서 제외
+- **인프라 파일 읽기 금지**: `.claude/harness-memory.md`, `.claude/harness-state/`, `.claude/harness-logs/`, `.claude/harness.config.json`, `.claude/harness/` 등 하네스 인프라 파일은 구현 대상이 아님. 절대 Read/Glob하지 않는다.
 
 ---
 

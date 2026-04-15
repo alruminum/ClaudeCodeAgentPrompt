@@ -9,3 +9,5 @@
 | 2026-04-11 | `parse_marker()` BSD grep 버그픽스 — `grep -oEm1` → `grep -oEm1 -e` | macOS BSD grep이 `---MARKER:...` 패턴을 long option으로 오인 → 1차 마커 검출 실패 → 2차 fallback에서 본문 속 "FAIL" 단어 오탐. `-e` 플래그로 패턴 명시 |
 | 2026-04-11 | `impl.sh` PLAN_VALIDATION_PASS 후 직접 dispatch | 기존: exit 0 → 플래그 재진입 → engineer. 플래그 영속성 버그로 재진입 실패 반복. 변경: validation PASS → engineer 루프 직접 진입 (재호출 불필요) |
 | 2026-04-11 | `harness-review.py` EXPECTED_SEQUENCE에 `simple` 키 추가 | depth=simple에서 test-engineer/validator 스킵은 정상인데 MISSING_PHASE로 오탐 |
+| 2026-04-15 | UI 디자인 게이트: 키워드 스캔 → opt-in frontmatter(`design: required`) 전환 | impl 텍스트에 "컴포넌트/디자인" 등 포함 시 무조건 UI_DESIGN_REQUIRED 트리거 → dead code 삭제 같은 비시각적 작업도 차단. "스크린샷이 달라지는가?"는 단어로 판단 불가하므로 명시적 opt-in으로 전환 |
+| 2026-04-15 | `agent-boundaries.md`에 인프라 파일 접근 금지 규칙 추가 | engineer, pr-reviewer의 WASTE_INFRA_READ 반복 — `.claude/harness-*` 경로 Read/Glob 금지 명시 |

@@ -156,35 +156,22 @@ def run_impl(
         print(f"[HARNESS] depth: {depth}")
         return _dispatch_depth(depth, impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger)
 
-    # ── UI 키워드 감지 (design 루프 전환) ──
-    skip_design_check = False
-    issue_labels_cache = ""
-    if issue_num and issue_num != "N":
-        try:
-            r = subprocess.run(
-                ["gh", "issue", "view", issue_num, "--json", "labels", "-q",
-                 '[.labels[].name] | join(",")'],
-                capture_output=True, text=True, timeout=10,
-            )
-            if r.returncode == 0:
-                issue_labels_cache = r.stdout.strip()
-        except Exception:
-            pass
-        if re.search(r"bug|fix|hotfix", issue_labels_cache, re.IGNORECASE):
-            skip_design_check = True
-
-    if not skip_design_check and impl_file and Path(impl_file).exists():
+    # ── UI 디자인 게이트 (opt-in: frontmatter `design: required`) ──
+    # 키워드 스캔 폐기 — "스크린샷이 달라지는가?"는 단어로 판단 불가.
+    # 디자인 리뷰가 필요하면 impl frontmatter에 `design: required` 명시.
+    if impl_file and Path(impl_file).exists():
         try:
             impl_text = Path(impl_file).read_text(encoding="utf-8")
-            ui_kw = re.search(
-                r"화면|컴포넌트|레이아웃|UI|스타일|디자인|색상|애니메이션|오버레이",
+            design_required = re.search(
+                r"^design:\s*required",
                 impl_text,
+                re.MULTILINE,
             )
-            if ui_kw and not state_dir.flag_exists(Flag.DESIGN_CRITIC_PASSED):
+            if design_required and not state_dir.flag_exists(Flag.DESIGN_CRITIC_PASSED):
                 os.environ["HARNESS_RESULT"] = "UI_DESIGN_REQUIRED"
                 print("UI_DESIGN_REQUIRED")
                 print(f"impl: {impl_file}")
-                print(f"이유: {ui_kw.group()}")
+                print("이유: frontmatter design: required")
                 print("필요 조치: mode:design 완료 후 mode:impl 재호출")
                 return "UI_DESIGN_REQUIRED"
         except OSError:
