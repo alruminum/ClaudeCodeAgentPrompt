@@ -707,6 +707,8 @@ def agent_call(
     files_read: List[str] = []
     cur_tool = ""
     cur_input = ""
+    _last_heartbeat = time.time()
+    _hb_interval = 30  # 30초마다 heartbeat
 
     try:
         proc = subprocess.Popen(
@@ -769,6 +771,10 @@ def agent_call(
                             tools[name] = tools.get(name, 0) + 1
                             cur_tool = name
                             cur_input = ""
+                            # tool call 시 즉시 출력
+                            elapsed = int(time.time() - t_start)
+                            total_calls = sum(tools.values())
+                            print(f"  [{agent}] {elapsed}s | {name} (#{total_calls})", flush=True)
 
                     elif et == "content_block_delta":
                         d = e.get("delta", {})
@@ -794,6 +800,14 @@ def agent_call(
                             out_tok += u.get("output_tokens", 0)
             except Exception:
                 pass
+
+            # 주기적 heartbeat (30초마다, tool call 없는 thinking 구간 대응)
+            now = time.time()
+            if now - _last_heartbeat >= _hb_interval:
+                elapsed = int(now - t_start)
+                total_calls = sum(tools.values())
+                print(f"  [{agent}] {elapsed}s | thinking... (tools: {total_calls})", flush=True)
+                _last_heartbeat = now
 
             # 타임아웃 체크
             if time.time() > deadline:
