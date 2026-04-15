@@ -18,9 +18,10 @@
 | 2026-04-15 | Circuit Breaker (시간 윈도우 120초 내 동일 fail_type 2회 → 조기 에스컬레이션) | harness_framework 참고. 기존 max 3 attempts와 독립 동작 |
 | 2026-04-15 | `impl_loop.py` fallback import 블록에 `HUD`, `generate_handoff`, `write_handoff` 누락 수정 | `except ImportError` 경로에서 HUD 미import → `NameError: name 'HUD' is not defined` 크래시. try 블록과 동기화 |
 | 2026-04-15 | `core.py` HUD.cleanup() 삭제 대신 완료 상태 기록으로 변경 | cleanup()이 HARNESS_DONE 직전에 hud.json 삭제 → harness-monitor가 최종 상태를 못 읽음. 삭제 대신 `status: "done"` 기록 후 파일 유지 |
-| 2026-04-15 | Second Reviewer — 외부 AI(Gemini/GPT) 병렬 리뷰 | pr-reviewer와 동시 실행, LGTM 시 findings → POLISH 합산. config.second_reviewer로 on/off. CLI 미설치 시 자동 스킵 |
+| 2026-04-15 | Second Reviewer v1 → v3 전환 — 파일별 분할 + providers.py 어댑터 | v1(전체 diff stdin, 타임아웃)을 제거. v3: 파일별 patch + threading 병렬 + 2단계 프롬프트(NEED_FULL_FILE). providers.py에 BaseProvider/GeminiProvider 어댑터 패턴 |
 | 2026-04-15 | Handoff 전 파이프라인 확장 — architect→validator→engineer→pr-reviewer | 기존 handoff는 engineer→test-engineer, SPEC_GAP만 커버. simple 모드 전체 체인에 handoff 추가. JSONL에 handoff 이벤트 로깅. harness-review.py가 handoff 유무에 따라 WASTE_DUPLICATE_READ 심각도/fix 분기 |
 | 2026-04-15 | HUD 전체 라이프사이클 커버 — run_impl() 진입 시 생성 | 기존: run_simple/run_std 내부에서만 HUD 생성 → architect/plan-validation 사각지대. 변경: run_impl()에서 depth="auto"로 HUD 생성, preamble(architect+plan-validation) 포함, set_depth()로 depth별 에이전트 확장. run_simple/run_std/run_deep에 hud 파라미터 전달 |
 | 2026-04-15 | `core.py` agent_call() active 플래그 경로 `/tmp/` → `state_dir`로 수정 | 훅(agent-boundary/issue-gate)은 `.claude/harness-state/`에서 탐색, agent_call은 `/tmp/`에 생성 → 경로 불일치로 에이전트를 메인 Claude로 오판 → src/** Edit·이슈 생성 차단 |
 | 2026-04-15 | `harness-review.py` INFRA_EXCLUSIONS에 `handoff` 추가 | handoff 파일은 에이전트 간 인수인계 문서로 의도된 Read인데 `.claude/` 경로 포함으로 WASTE_INFRA_READ 오탐 |
 | 2026-04-15 | HUD `_write_json` 진단 강화 + fallback 경로 | `_hud_path`가 None일 때 cwd 기반 fallback 추론, `except OSError: pass` → 에러 메시지 출력, 첫 agent_start 시 one-time 진단 로그 |
+| 2026-04-15 | `harness-router.py` 대폭 간소화 — 7카테고리 → 3카테고리(BUG/UI/IMPL) | Haiku 폴백 90% 타임아웃, Adaptive Interview 0.2% 성공률, GREETING/QUESTION/GENERIC/AMBIGUOUS 전부 동일 동작(sys.exit). Haiku·Interview·extract_intent·socrates 에이전트 전부 제거. 스킬(/qa /ux /product-plan)이 정밀 라우팅 담당 |

@@ -618,17 +618,34 @@ class TestExtractPolishItems(unittest.TestCase):
         self.assertEqual(extract_polish_items("/nonexistent"), "")
 
 
-class TestSecondReview(unittest.TestCase):
-    def test_start_returns_none_when_cli_missing(self):
-        from harness.core import start_second_review
-        # 존재하지 않는 CLI
-        result = start_second_review("diff", "nonexistent_ai_cli_xyz")
+class TestSecondReviewV3(unittest.TestCase):
+    def test_get_provider_missing_cli(self):
+        from harness.providers import get_provider
+        result = get_provider("nonexistent_ai_cli_xyz")
         self.assertIsNone(result)
 
-    def test_collect_returns_empty_on_none(self):
-        from harness.core import collect_second_review
-        result = collect_second_review(None)
+    def test_get_provider_gemini_available(self):
+        """gemini CLI가 있으면 GeminiProvider 반환."""
+        import shutil
+        from harness.providers import get_provider
+        if shutil.which("gemini"):
+            provider = get_provider("gemini")
+            self.assertIsNotNone(provider)
+            self.assertEqual(provider.name, "gemini")
+        else:
+            self.skipTest("gemini CLI not installed")
+
+    def test_run_review_batch_missing_provider(self):
+        from harness.providers import run_review_batch
+        result = run_review_batch(["test.py"], "nonexistent_cli")
         self.assertEqual(result, "")
+
+    def test_review_result_dataclass(self):
+        from harness.providers import ReviewResult
+        r = ReviewResult("gemini", "test.py", "some finding", 5.0)
+        self.assertEqual(r.provider, "gemini")
+        self.assertEqual(r.findings, "some finding")
+        self.assertEqual(r.error, "")
 
     def test_config_second_reviewer_fields(self):
         from harness.config import HarnessConfig

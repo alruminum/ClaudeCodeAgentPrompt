@@ -24,7 +24,6 @@ try:
         collect_changed_files,
         build_smart_context, build_validator_context, explore_instruction,
         generate_handoff, write_handoff,
-        start_second_review, collect_second_review,
         prune_history, kill_check, detect_depth,
     )
     from .helpers import (
@@ -34,6 +33,7 @@ try:
         setup_hlog, log_decision, log_phase,
         extract_acceptance_criteria, extract_polish_items,
     )
+    from .providers import run_review_batch
 except ImportError:
     from config import HarnessConfig, load_config
     from core import (
@@ -43,7 +43,6 @@ except ImportError:
         collect_changed_files,
         build_smart_context, build_validator_context, explore_instruction,
         generate_handoff, write_handoff,
-        start_second_review, collect_second_review,
         prune_history, kill_check, detect_depth,
     )
     from helpers import (
@@ -53,6 +52,7 @@ except ImportError:
         setup_hlog, log_decision, log_phase,
         extract_acceptance_criteria, extract_polish_items,
     )
+    from providers import run_review_batch
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -448,13 +448,23 @@ def run_simple(
         )
         src_files = " ".join(r_names.stdout.strip().splitlines()) if r_names.returncode == 0 else ""
 
-        # second reviewer 비동기 발사 (pr-reviewer와 병렬)
-        _second_proc = None
+        # second reviewer v3: 파일별 분할 + threading 병렬
+        import threading as _threading
+        _second_result = [""]
+        _second_thread = None
         if config.second_reviewer:
-            _diff_for_2nd = diff_out or r.stdout[:15000]
-            _second_proc = start_second_review(_diff_for_2nd, config.second_reviewer, config.second_reviewer_model)
-            if _second_proc:
-                hlog_fn(f"second reviewer ({config.second_reviewer}) 비동기 시작")
+            _changed_for_2nd = [
+                line.strip() for line in r_names.stdout.strip().splitlines()
+                if line.strip()
+            ] if r_names.returncode == 0 else []
+            if _changed_for_2nd:
+                def _bg_review():
+                    _second_result[0] = run_review_batch(
+                        _changed_for_2nd, config.second_reviewer, config.second_reviewer_model,
+                    )
+                _second_thread = _threading.Thread(target=_bg_review, daemon=True)
+                _second_thread.start()
+                hlog_fn(f"second reviewer v3 ({config.second_reviewer}) 파일별 병렬 시작 ({len(_changed_for_2nd)}개)")
 
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
         _pr_t0 = time.time()
@@ -504,12 +514,13 @@ def run_simple(
         state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
         print("[HARNESS] LGTM")
 
-        # second reviewer 결과 수집
+        # second reviewer v3 결과 수집
         _second_findings = ""
-        if _second_proc:
-            _second_findings = collect_second_review(_second_proc)
+        if _second_thread:
+            _second_thread.join(timeout=300)
+            _second_findings = _second_result[0]
             if _second_findings:
-                hlog_fn(f"second reviewer findings: {len(_second_findings)} chars")
+                hlog_fn(f"second reviewer v3 findings: {len(_second_findings)} chars")
                 if run_logger:
                     run_logger.log_event({
                         "event": "second_review",
@@ -1121,13 +1132,23 @@ def _run_std_deep(
         r_names = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
         src_files = " ".join(r_names.stdout.strip().splitlines()) if r_names.returncode == 0 else ""
 
-        # second reviewer 비동기 발사
-        _second_proc = None
+        # second reviewer v3: 파일별 분할 + threading 병렬
+        import threading as _threading
+        _second_result = [""]
+        _second_thread = None
         if config.second_reviewer:
-            _diff_for_2nd = diff_out or r.stdout[:15000]
-            _second_proc = start_second_review(_diff_for_2nd, config.second_reviewer, config.second_reviewer_model)
-            if _second_proc:
-                hlog_fn(f"second reviewer ({config.second_reviewer}) 비동기 시작")
+            _changed_for_2nd = [
+                line.strip() for line in r_names.stdout.strip().splitlines()
+                if line.strip()
+            ] if r_names.returncode == 0 else []
+            if _changed_for_2nd:
+                def _bg_review():
+                    _second_result[0] = run_review_batch(
+                        _changed_for_2nd, config.second_reviewer, config.second_reviewer_model,
+                    )
+                _second_thread = _threading.Thread(target=_bg_review, daemon=True)
+                _second_thread.start()
+                hlog_fn(f"second reviewer v3 ({config.second_reviewer}) 파일별 병렬 시작 ({len(_changed_for_2nd)}개)")
 
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
         agent_exit = agent_call(
@@ -1168,12 +1189,13 @@ def _run_std_deep(
         state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
         print("[HARNESS] LGTM")
 
-        # second reviewer 결과 수집
+        # second reviewer v3 결과 수집
         _second_findings = ""
-        if _second_proc:
-            _second_findings = collect_second_review(_second_proc)
+        if _second_thread:
+            _second_thread.join(timeout=300)
+            _second_findings = _second_result[0]
             if _second_findings:
-                hlog_fn(f"second reviewer findings: {len(_second_findings)} chars")
+                hlog_fn(f"second reviewer v3 findings: {len(_second_findings)} chars")
                 if run_logger:
                     run_logger.log_event({
                         "event": "second_review",
