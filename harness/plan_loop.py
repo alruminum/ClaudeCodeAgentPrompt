@@ -15,14 +15,14 @@ from typing import Optional
 try:
     from .config import HarnessConfig
     from .core import (
-        RunLogger, StateDir,
+        RunLogger, StateDir, HUD,
         agent_call, parse_marker, kill_check,
         build_loop_context, run_design_validation, run_plan_validation,
     )
 except ImportError:
     from config import HarnessConfig
     from core import (
-        RunLogger, StateDir,
+        RunLogger, StateDir, HUD,
         agent_call, parse_marker, kill_check,
         build_loop_context, run_design_validation, run_plan_validation,
     )
@@ -62,8 +62,13 @@ def run_plan(
     if lc:
         context = f"{lc}\n{context}"
 
+    # ── HUD 초기화 ──
+    hud = HUD("plan", prefix, issue_num, 1, config.max_total_cost, state_dir)
+
     # ── product-planner ──
     print("[HARNESS] product-planner 기획")
+    _pp_t0 = time.time()
+    hud.agent_start("product-planner")
     pp_out_file = str(state_dir.path / f"{prefix}_pp_out.txt")
     agent_call(
         "product-planner", 600,
@@ -71,49 +76,68 @@ def run_plan(
         pp_out_file, run_logger, config,
     )
     pp_out = Path(pp_out_file).read_text(encoding="utf-8", errors="replace")
+    _pp_cost = 0.0
+    try:
+        _pp_cost_file = Path(str(pp_out_file).replace(".txt", "_cost.txt"))
+        _pp_cost = float(_pp_cost_file.read_text() or "0") if _pp_cost_file.exists() else 0.0
+    except (ValueError, OSError):
+        pass
+    hud.agent_done("product-planner", int(time.time() - _pp_t0), _pp_cost)
     kill_check(state_dir)
 
     pp_marker = parse_marker(pp_out_file, "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED|CLARITY_INSUFFICIENT")
 
     if pp_marker == "CLARITY_INSUFFICIENT":
-        # 에스컬레이션: 부족 항목을 메인 Claude에 전달하여 유저 추가 질문 유도
         os.environ["HARNESS_RESULT"] = "CLARITY_INSUFFICIENT"
-        print("CLARITY_INSUFFICIENT")
-        print(pp_out)  # 부족 항목 + 질문 제안 + PRD 초안 경로
-        run_logger.write_run_end("CLARITY_INSUFFICIENT", "", issue_num)
-        return "CLARITY_INSUFFICIENT"
-
-    if pp_marker not in ("PRODUCT_PLAN_READY", "PRODUCT_PLAN_UPDATED"):
-        # 마커 누락 또는 예상 외 값 — 유저 인터랙션 필요로 간주
-        os.environ["HARNESS_RESULT"] = "CLARITY_INSUFFICIENT"
-        print(f"CLARITY_INSUFFICIENT (마커 감지 실패: {pp_marker})")
+        print(f"[HARNESS] product-planner → CLARITY_INSUFFICIENT (유저 답변 필요)")
         print(pp_out)
         run_logger.write_run_end("CLARITY_INSUFFICIENT", "", issue_num)
         return "CLARITY_INSUFFICIENT"
 
+    if pp_marker not in ("PRODUCT_PLAN_READY", "PRODUCT_PLAN_UPDATED"):
+        os.environ["HARNESS_RESULT"] = "CLARITY_INSUFFICIENT"
+        print(f"[HARNESS] product-planner → 마커 감지 실패 ({pp_marker}) — CLARITY_INSUFFICIENT 처리")
+        print(pp_out)
+        run_logger.write_run_end("CLARITY_INSUFFICIENT", "", issue_num)
+        return "CLARITY_INSUFFICIENT"
+
+    print(f"[HARNESS] product-planner → {pp_marker}")
+
     # ── architect System Design ──
     print("[HARNESS] architect System Design 작성")
+    _asd_t0 = time.time()
+    hud.agent_start("architect-sd")
     arch_sd_out = str(state_dir.path / f"{prefix}_arch_sd_out.txt")
     agent_call(
         "architect", 900,
         f"@MODE:ARCHITECT:SYSTEM_DESIGN\n{pp_out} issue: #{issue_num}",
         arch_sd_out, run_logger, config,
     )
+    _asd_cost = 0.0
+    try:
+        _asd_cost_file = Path(str(arch_sd_out).replace(".txt", "_cost.txt"))
+        _asd_cost = float(_asd_cost_file.read_text() or "0") if _asd_cost_file.exists() else 0.0
+    except (ValueError, OSError):
+        pass
     kill_check(state_dir)
 
     arch_sd_marker = parse_marker(arch_sd_out, "SYSTEM_DESIGN_READY|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
     if arch_sd_marker == "PRODUCT_PLANNER_ESCALATION_NEEDED":
+        hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost, "fail")
         os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
-        print("PRODUCT_PLANNER_ESCALATION_NEEDED")
+        print("[HARNESS] architect-sd → PRODUCT_PLANNER_ESCALATION_NEEDED")
         run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", "", issue_num)
         return "PRODUCT_PLANNER_ESCALATION_NEEDED"
     if arch_sd_marker not in ("SYSTEM_DESIGN_READY",):
+        hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost, "fail")
         os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
-        print(f"SPEC_GAP_ESCALATE: architect System Design 마커 감지 실패 ({arch_sd_marker})")
+        print(f"[HARNESS] architect-sd → 마커 감지 실패 ({arch_sd_marker}) — SPEC_GAP_ESCALATE")
         arch_sd_content = Path(arch_sd_out).read_text(encoding="utf-8", errors="replace") if Path(arch_sd_out).exists() else ""
         print(arch_sd_content[-500:] if len(arch_sd_content) > 500 else arch_sd_content)
         run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
         return "SPEC_GAP_ESCALATE"
+    hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost)
+    print(f"[HARNESS] architect-sd → {arch_sd_marker}")
 
     # design_doc 경로 추출
     design_doc = ""
@@ -127,40 +151,56 @@ def run_plan(
 
     # ── Design Validation ──
     if design_doc and Path(design_doc).exists():
-        print("[HARNESS] Design Validation")
+        print(f"[HARNESS] Design Validation (design_doc: {design_doc})")
+        _dv_t0 = time.time()
+        hud.agent_start("design-validation")
         if not run_design_validation(design_doc, issue_num, prefix, 1, state_dir, run_logger, config):
+            hud.agent_done("design-validation", int(time.time() - _dv_t0), 0.0, "fail")
             os.environ["HARNESS_RESULT"] = "DESIGN_REVIEW_ESCALATE"
-            print("DESIGN_REVIEW_ESCALATE")
-            print(f"issue: #{issue_num}")
+            print(f"[HARNESS] design-validation → DESIGN_REVIEW_ESCALATE")
             print(f"design_doc: {design_doc}")
             run_logger.write_run_end("DESIGN_REVIEW_ESCALATE", "", issue_num)
             return "DESIGN_REVIEW_ESCALATE"
-        print("[HARNESS] Design Validation PASS")
+        hud.agent_done("design-validation", int(time.time() - _dv_t0), 0.0)
+        print("[HARNESS] design-validation → PASS")
     else:
-        print("[HARNESS] design_doc 경로 미감지 — Design Validation 스킵")
+        hud.agent_skip("design-validation", "design_doc 미감지")
+        print("[HARNESS] design-validation 스킵 (design_doc 경로 미감지)")
     kill_check(state_dir)
 
     # ── architect Module Plan ──
     print("[HARNESS] architect Module Plan 작성")
+    _amp_t0 = time.time()
+    hud.agent_start("architect-mp")
     arch_mp_out = str(state_dir.path / f"{prefix}_arch_mp_out.txt")
     agent_call(
         "architect", 900,
         f"@MODE:ARCHITECT:MODULE_PLAN\ndesign_doc: {design_doc or 'N/A'} issue: #{issue_num}",
         arch_mp_out, run_logger, config,
     )
+    _amp_cost = 0.0
+    try:
+        _amp_cost_file = Path(str(arch_mp_out).replace(".txt", "_cost.txt"))
+        _amp_cost = float(_amp_cost_file.read_text() or "0") if _amp_cost_file.exists() else 0.0
+    except (ValueError, OSError):
+        pass
     kill_check(state_dir)
 
     arch_mp_marker = parse_marker(arch_mp_out, "READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
     if arch_mp_marker == "PRODUCT_PLANNER_ESCALATION_NEEDED":
+        hud.agent_done("architect-mp", int(time.time() - _amp_t0), _amp_cost, "fail")
         os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
-        print("PRODUCT_PLANNER_ESCALATION_NEEDED")
+        print("[HARNESS] architect-mp → PRODUCT_PLANNER_ESCALATION_NEEDED")
         run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", "", issue_num)
         return "PRODUCT_PLANNER_ESCALATION_NEEDED"
     if arch_mp_marker not in ("READY_FOR_IMPL",):
+        hud.agent_done("architect-mp", int(time.time() - _amp_t0), _amp_cost, "fail")
         os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
-        print(f"SPEC_GAP_ESCALATE: architect Module Plan 마커 감지 실패 ({arch_mp_marker})")
+        print(f"[HARNESS] architect-mp → 마커 감지 실패 ({arch_mp_marker}) — SPEC_GAP_ESCALATE")
         run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
         return "SPEC_GAP_ESCALATE"
+    hud.agent_done("architect-mp", int(time.time() - _amp_t0), _amp_cost)
+    print(f"[HARNESS] architect-mp → {arch_mp_marker}")
 
     impl_file = ""
     try:
@@ -179,22 +219,25 @@ def run_plan(
         return "SPEC_GAP_ESCALATE"
 
     # ── Plan Validation ──
-    print("[HARNESS] Plan Validation")
+    print(f"[HARNESS] Plan Validation (impl: {impl_file})")
+    _pv_t0 = time.time()
+    hud.agent_start("plan-validation")
     if not run_plan_validation(impl_file, issue_num, prefix, 1, state_dir, run_logger, config):
+        hud.agent_done("plan-validation", int(time.time() - _pv_t0), 0.0, "fail")
         os.environ["HARNESS_RESULT"] = "PLAN_VALIDATION_ESCALATE"
-        print("PLAN_VALIDATION_ESCALATE")
+        print(f"[HARNESS] plan-validation → FAIL — PLAN_VALIDATION_ESCALATE")
         print(f"impl: {impl_file}")
-        print(f"issue: #{issue_num}")
         run_logger.write_run_end("PLAN_VALIDATION_ESCALATE", "", issue_num)
         return "PLAN_VALIDATION_ESCALATE"
+    hud.agent_done("plan-validation", int(time.time() - _pv_t0), 0.0)
 
     # ── 완료 ──
     (state_dir.path / f"{prefix}_impl_path").write_text(impl_file, encoding="utf-8")
     os.environ["HARNESS_RESULT"] = "PLAN_VALIDATION_PASS"
-    print("PLAN_VALIDATION_PASS")
-    print(f"impl: {impl_file}")
-    print(f"design_doc: {design_doc or 'N/A'}")
-    print(f"issue: #{issue_num}")
-    print("필요 조치: 계획 확인 후 mode:impl 로 재호출")
+    print(f"[HARNESS] ✅ PLAN_VALIDATION_PASS")
+    print(f"  impl: {impl_file}")
+    print(f"  design_doc: {design_doc or 'N/A'}")
+    print(f"  issue: #{issue_num}")
+    print("  → 계획 확인 후 mode:impl 로 재호출")
     run_logger.write_run_end("PLAN_VALIDATION_PASS", "", issue_num)
     return "PLAN_VALIDATION_PASS"

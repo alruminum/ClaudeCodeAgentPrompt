@@ -135,6 +135,7 @@ class HUD:
         "simple": ["engineer", "pr-reviewer", "merge"],
         "std": ["engineer", "test-engineer", "validator", "pr-reviewer", "merge"],
         "deep": ["engineer", "test-engineer", "validator", "security-reviewer", "pr-reviewer", "merge"],
+        "plan": ["product-planner", "architect-sd", "design-validation", "architect-mp", "plan-validation"],
     }
 
     def __init__(
@@ -158,6 +159,8 @@ class HUD:
         if depth == "auto":
             # run_impl 진입: preamble만 — depth 확정 후 set_depth()로 확장
             self.agents = list(self.PREAMBLE_AGENTS)
+        elif depth == "plan":
+            self.agents = list(self.DEPTH_AGENTS["plan"])
         else:
             self.agents = list(self.DEPTH_AGENTS.get(depth, self.DEPTH_AGENTS["std"]))
         self.agent_status: Dict[str, Dict[str, Any]] = {

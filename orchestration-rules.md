@@ -72,8 +72,9 @@
 - `harness-review.py`: handoff 이벤트 존재 시 WASTE_DUPLICATE_READ 심각도 LOW로 하향
 
 ### HUD Statusline (진행 상태 시각화)
-impl 전체 라이프사이클의 진행 상태를 stdout에 시각적으로 표시.
+impl/plan 전체 라이프사이클의 진행 상태를 stdout에 시각적으로 표시.
 - `run_impl()` 진입 시 HUD 생성 (depth="auto", preamble: architect + plan-validation)
+- `run_plan()` 진입 시 HUD 생성 (depth="plan", agents: product-planner → architect-sd → design-validation → architect-mp → plan-validation)
 - depth 확정 후 `set_depth()`로 depth별 에이전트 목록 확장
 - run_simple/run_std/run_deep에 `hud` 파라미터 전달 — 외부 HUD가 있으면 재사용, 없으면 자체 생성
 - 재진입 경로(plan_validation_passed 플래그): preamble 없이 depth 루프가 자체 HUD 생성

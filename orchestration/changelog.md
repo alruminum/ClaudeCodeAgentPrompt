@@ -29,3 +29,5 @@
 | 2026-04-15 | QA 이슈 본문에 유저 원문 인용 필수 | #106에서 architect가 QA 요약을 과잉 해석하여 3회 재작업. 유저 원문이 이슈 → impl → engineer까지 전달되면 architect의 자체 해석 방지 |
 | 2026-04-15 | `plan_loop.py` product-planner 타임아웃 300s → 600s | MCP 문서 검색(apps-in-toss)에 시간 소모되어 PRD 작성 전 타임아웃. 코인 시스템 기획에서 발생 |
 | 2026-04-15 | Marker Safety 규칙 추가 — UNKNOWN 마커 시 진행 금지 | product-planner가 마커 없이 Q1/Q2 질문 → UNKNOWN → plan_loop가 architect까지 폭주. 전체 parse_marker 감사 후 진행 게이트 4곳 수정: plan_loop(pp/arch_sd/arch_mp) + impl_router(arch). orchestration-rules.md에 Marker Safety 원칙 추가, product-planner.md에 마커 필수 경고 추가 |
+| 2026-04-15 | Plan 루프 HUD 추가 + 로그 보강 | plan_loop.py에 HUD 없어서 진행 상태 파악 불가. HUD depth="plan" 추가 (agents: product-planner→architect-sd→design-validation→architect-mp→plan-validation). 각 단계 마커 결과를 `[HARNESS] agent → MARKER` 형식으로 출력 |
+| 2026-04-15 | drift-check에 스크립트→orchestration 상세 문서 역매핑 추가 | plan_loop.py 변경 시 orchestration/plan.md 동기화 누락 방지 |
