@@ -11,6 +11,7 @@ flowchart TD
 
     PPR{"PRODUCT_PLAN_READY"}
     PPU{"PRODUCT_PLAN_UPDATED"}
+    CI["CLARITY_INSUFFICIENT\n(마커 누락 포함)"]:::escalation
 
     SCOPE{{"메인 Claude 판단:\n전체 구조 변경?"}}
 
@@ -45,15 +46,19 @@ flowchart TD
     USER_APPROVE{{"유저 승인 대기"}}
     IMPL_ENTRY["→ 구현 루프 진입"]
 
-    PP_NEW -->|"idea, constraints?"| PPR
-    PP_CHG -->|"plan_doc, change_request"| PPU
+    PP_NEW -->|"PRODUCT_PLAN_READY"| PPR
+    PP_NEW -->|"CLARITY_INSUFFICIENT\n또는 마커 없음"| CI
+    PP_CHG -->|"PRODUCT_PLAN_UPDATED"| PPU
+
+    CI -->|"유저 답변 후 재실행"| PP_NEW
 
     PPR --> ARC_SD
     PPU --> SCOPE
     SCOPE -->|YES| ARC_SD
     SCOPE -->|NO| ARC_MP_SKIP
 
-    ARC_SD -->|"plan_doc, selected_option"| SDR
+    ARC_SD -->|"SYSTEM_DESIGN_READY"| SDR
+    ARC_SD -->|"마커 없음"| SGE_SD["SPEC_GAP_ESCALATE"]:::escalation
     ARC_MP_SKIP -->|"design_doc, module"| IMPL_GATE
 
     SDR --> VAL_DV
@@ -68,8 +73,9 @@ flowchart TD
     EPIC -->|YES| ARC_TD
     EPIC -->|NO| ARC_MP
 
-    ARC_TD -->|"stories_doc, design_doc"| IMPL_GATE
-    ARC_MP -->|"design_doc, module"| IMPL_GATE
+    ARC_TD -->|"READY_FOR_IMPL"| IMPL_GATE
+    ARC_MP -->|"READY_FOR_IMPL"| IMPL_GATE
+    ARC_MP -->|"마커 없음"| SGE_MP["SPEC_GAP_ESCALATE"]:::escalation
 
     IMPL_GATE --> VAL_PV
     VAL_PV -->|"impl_path"| PVF
@@ -108,7 +114,10 @@ flowchart TD
 |------|-----------|-----------|
 | `PRODUCT_PLAN_READY` | product-planner | architect System Design |
 | `PRODUCT_PLAN_UPDATED` | product-planner | 메인 Claude 범위 판단 → System Design or Module Plan |
+| `CLARITY_INSUFFICIENT` | product-planner (또는 마커 누락 시 자동) | 유저에게 부족 항목 질문 → 답변 후 plan 루프 재실행 |
 | `SYSTEM_DESIGN_READY` | architect | validator Design Validation |
+| `SPEC_GAP_ESCALATE` | plan_loop (architect 마커 누락 시 자동) | 메인 Claude 보고 후 대기 |
+| `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect | product-planner 에스컬레이션 |
 | `DESIGN_REVIEW_PASS` | validator | 에픽 규모 판단 → Task Decompose or Module Plan |
 | `DESIGN_REVIEW_FAIL` | validator | architect 재설계 (max 1회) |
 | `DESIGN_REVIEW_ESCALATE` | validator | 메인 Claude 보고 후 대기 |

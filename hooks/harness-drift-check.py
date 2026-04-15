@@ -22,6 +22,7 @@ BYPASS_TTL = 300  # 5분 내 재시도만 허용
 
 # 규칙/에이전트 → 연동 스크립트 매핑
 DRIFT_MAP = {
+    # ── 규칙/에이전트 → 스크립트 ──
     'orchestration-rules.md': [
         'harness/executor.py',
         'harness/impl_router.py', 'harness/impl_loop.py',
@@ -38,9 +39,16 @@ DRIFT_MAP = {
     # designer/design-critic는 하네스 루프 밖 (v4). ux 스킬이 직접 호출.
     'agents/designer.md': ['commands/ux.md'],
     'agents/design-critic.md': ['orchestration/design.md'],
-    'agents/product-planner.md': ['harness/plan_loop.py'],
+    'agents/product-planner.md': ['harness/plan_loop.py', 'orchestration/plan.md'],
     'agents/pr-reviewer.md': ['harness/impl_loop.py'],
     'agents/security-reviewer.md': ['harness/impl_loop.py'],
+    # ── 스크립트 → orchestration 상세 문서 ──
+    'harness/plan_loop.py': ['orchestration/plan.md'],
+    'harness/impl_router.py': ['orchestration/impl.md'],
+    'harness/impl_loop.py': [
+        'orchestration/impl_simple.md', 'orchestration/impl_std.md',
+        'orchestration/impl_deep.md',
+    ],
 }
 
 
