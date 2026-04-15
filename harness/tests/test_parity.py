@@ -591,5 +591,30 @@ class TestHUD(unittest.TestCase):
         self.assertEqual(len(hud_deep.agents), 6)    # +test-engineer, validator, security-reviewer
 
 
+class TestExtractPolishItems(unittest.TestCase):
+    def test_extract_nice_to_have(self):
+        from harness.helpers import extract_polish_items
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("## 리뷰 결과\nLGTM\n\n## NICE TO HAVE\n- 불필요한 주석 삭제 (line 42)\n- console.log 제거\n\n## 끝\n")
+            f.flush()
+            items = extract_polish_items(f.name)
+        os.unlink(f.name)
+        self.assertIn("불필요한 주석 삭제", items)
+        self.assertIn("console.log 제거", items)
+
+    def test_no_items(self):
+        from harness.helpers import extract_polish_items
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("LGTM\n코드 품질 우수.\n")
+            f.flush()
+            items = extract_polish_items(f.name)
+        os.unlink(f.name)
+        self.assertEqual(items, "")
+
+    def test_missing_file(self):
+        from harness.helpers import extract_polish_items
+        self.assertEqual(extract_polish_items("/nonexistent"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

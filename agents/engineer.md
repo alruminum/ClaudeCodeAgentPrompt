@@ -18,6 +18,7 @@ model: sonnet
 | 인풋 마커 | 모드 | 아웃풋 마커 |
 |---|---|---|
 | `@MODE:ENGINEER:IMPL` | 코드 구현 | `SPEC_GAP_FOUND` (갭 발견 시) / 구현 완료 보고 |
+| `@MODE:ENGINEER:POLISH` | 코드 다듬기 (LGTM 후 경량 정리) | 정리 완료 보고 |
 
 ### @PARAMS 스키마
 
@@ -25,6 +26,10 @@ model: sonnet
 @MODE:ENGINEER:IMPL
 @PARAMS: { "impl_path": "impl 계획 파일 경로", "fail_type?": "재시도 시 실패 유형 (test_fail/validator_fail/pr_fail/security_fail)", "fail_context?": "실패 컨텍스트", "spec_gap_count?": "SPEC_GAP 사이클 횟수 (max 2)" }
 @OUTPUT: { "marker": "구현 완료 보고 / SPEC_GAP_FOUND", "src_files?": "생성/수정된 소스 파일 경로 목록 (구현 완료 시)", "gap_list?": "불명확 항목 목록 (SPEC_GAP 시)" }
+
+@MODE:ENGINEER:POLISH
+@PARAMS: { "polish_items": "pr-reviewer가 출력한 정리 항목 목록" }
+@OUTPUT: { "marker": "없음 (정리 완료 시 변경 파일 목록만 보고)" }
 ```
 
 ---
@@ -179,6 +184,46 @@ SPEC_GAP_FOUND
 
 다음 단계: test-engineer → validator 에이전트 순서로 호출 권장
 ```
+
+---
+
+## @MODE:ENGINEER:POLISH — 코드 다듬기
+
+pr-reviewer가 LGTM 판정 후 출력한 "NICE TO HAVE" 항목을 정리하는 경량 모드.
+기능 구현이 아닌 **표면 정리**만 수행한다. 180초 타임아웃.
+
+### 절대 금지
+
+- 로직/분기/반환값 변경
+- 새 파일 생성
+- 새 import 추가
+- export된 변수/함수 이름 변경
+- 기존 테스트가 의존하는 인터페이스 변경
+- 에러 핸들링 구조 변경 (try-catch 제거 포함)
+
+### 허용
+
+- 불필요한 주석 삭제
+- console.log / debug 코드 제거
+- 사용하지 않는 변수/import 제거
+- export 안 된 변수명 개선
+- 호출부 1개인 래퍼 함수 인라인화
+- 불필요한 타입 단언(as) 제거 (타입이 이미 추론 가능한 경우)
+
+### 완료 보고
+
+```
+POLISH 완료:
+
+정리 항목:
+- [파일]: [한 줄 설명]
+- ...
+
+건드리지 않은 항목:
+- [항목]: [이유 — 금지 규칙에 해당]
+```
+
+---
 
 ## 프로젝트 특화 지침
 

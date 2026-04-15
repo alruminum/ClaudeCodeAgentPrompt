@@ -31,7 +31,7 @@ try:
         rollback_attempt, check_agent_output, run_automated_checks,
         budget_check, generate_pr_body, save_impl_meta,
         setup_hlog, log_decision, log_phase,
-        extract_acceptance_criteria,
+        extract_acceptance_criteria, extract_polish_items,
     )
 except ImportError:
     from config import HarnessConfig, load_config
@@ -458,6 +458,54 @@ def run_simple(
         # LGTM
         state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
         print("[HARNESS] LGTM")
+
+        # ── POLISH: 코드 다듬기 (LGTM 후, merge 전) ──────────────
+        polish_items = extract_polish_items(pr_out)
+        if polish_items:
+            hlog_fn("POLISH 항목 감지 — engineer POLISH 모드 실행")
+            print("[HARNESS] POLISH: 코드 다듬기")
+            _polish_out = str(state_dir.path / f"{prefix}_polish_out.txt")
+            _pre_polish_hash = subprocess.run(
+                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            agent_call(
+                "engineer", 180,
+                f"@MODE:ENGINEER:POLISH\n정리 항목:\n{polish_items}",
+                _polish_out, run_logger, config,
+            )
+            # regression check (하네스 직접 실행, 에이전트 X)
+            _reg_ok = True
+            if config.lint_command:
+                _lint_r = subprocess.run(
+                    config.lint_command, shell=True, capture_output=True, timeout=60,
+                )
+                if _lint_r.returncode != 0:
+                    _reg_ok = False
+                    hlog_fn(f"POLISH regression FAIL: lint ({config.lint_command})")
+            if _reg_ok and config.test_command:
+                _test_r = subprocess.run(
+                    config.test_command, shell=True, capture_output=True, timeout=300,
+                )
+                if _test_r.returncode != 0:
+                    _reg_ok = False
+                    hlog_fn(f"POLISH regression FAIL: test ({config.test_command})")
+            if not _reg_ok:
+                hlog_fn("POLISH revert — 원본 코드로 복원")
+                print("[HARNESS] POLISH regression 실패 — 원본으로 복원")
+                subprocess.run(["git", "reset", "--hard", _pre_polish_hash], capture_output=True, timeout=10)
+            else:
+                # polish 변경 커밋
+                _changed = collect_changed_files()
+                if _changed:
+                    subprocess.run(["git", "add", "--"] + _changed, capture_output=True, timeout=10)
+                    subprocess.run(
+                        ["git", "commit", "-m", f"polish: code cleanup (#{issue_num})"],
+                        capture_output=True, timeout=10,
+                    )
+                    hlog_fn("POLISH 커밋 완료")
+                print("[HARNESS] POLISH 완료")
+        else:
+            hlog_fn("POLISH 항목 없음 — 스킵")
 
         # simple: test-engineer, validator, security-reviewer 스킵
         state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
@@ -1042,6 +1090,48 @@ def _run_std_deep(
             continue
         state_dir.flag_touch(Flag.PR_REVIEWER_LGTM)
         print("[HARNESS] LGTM")
+
+        # ── POLISH: 코드 다듬기 (LGTM 후, security/merge 전) ─────
+        polish_items = extract_polish_items(str(state_dir.path / f"{prefix}_pr_out.txt"))
+        if polish_items:
+            hlog_fn("POLISH 항목 감지 — engineer POLISH 모드 실행")
+            print("[HARNESS] POLISH: 코드 다듬기")
+            _polish_out = str(state_dir.path / f"{prefix}_polish_out.txt")
+            _pre_polish_hash = subprocess.run(
+                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            agent_call(
+                "engineer", 180,
+                f"@MODE:ENGINEER:POLISH\n정리 항목:\n{polish_items}",
+                _polish_out, run_logger, config,
+            )
+            _reg_ok = True
+            if config.lint_command:
+                _lint_r = subprocess.run(config.lint_command, shell=True, capture_output=True, timeout=60)
+                if _lint_r.returncode != 0:
+                    _reg_ok = False
+                    hlog_fn(f"POLISH regression FAIL: lint ({config.lint_command})")
+            if _reg_ok and config.test_command:
+                _test_r = subprocess.run(config.test_command, shell=True, capture_output=True, timeout=300)
+                if _test_r.returncode != 0:
+                    _reg_ok = False
+                    hlog_fn(f"POLISH regression FAIL: test ({config.test_command})")
+            if not _reg_ok:
+                hlog_fn("POLISH revert — 원본 코드로 복원")
+                print("[HARNESS] POLISH regression 실패 — 원본으로 복원")
+                subprocess.run(["git", "reset", "--hard", _pre_polish_hash], capture_output=True, timeout=10)
+            else:
+                _changed = collect_changed_files()
+                if _changed:
+                    subprocess.run(["git", "add", "--"] + _changed, capture_output=True, timeout=10)
+                    subprocess.run(
+                        ["git", "commit", "-m", f"polish: code cleanup (#{issue_num})"],
+                        capture_output=True, timeout=10,
+                    )
+                    hlog_fn("POLISH 커밋 완료")
+                print("[HARNESS] POLISH 완료")
+        else:
+            hlog_fn("POLISH 항목 없음 — 스킵")
 
         # ── 워커 5: security-reviewer (deep only) ─────────────────
         if depth == "deep":

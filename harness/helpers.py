@@ -668,3 +668,40 @@ def extract_acceptance_criteria(impl_file: str) -> list:
             if stripped.startswith(("- ", "* ", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.")):
                 criteria.append(stripped.lstrip("- *0123456789. "))
     return criteria[:15]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 15. extract_polish_items — pr-reviewer 출력에서 NICE TO HAVE 항목 추출
+# ═══════════════════════════════════════════════════════════════════════
+
+def extract_polish_items(pr_out_file: str) -> str:
+    """pr-reviewer 출력에서 NICE TO HAVE / 권고사항 / 개선 제안 항목을 추출.
+
+    빈 문자열이면 polish 불필요.
+    """
+    try:
+        content = Path(pr_out_file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+    items: list = []
+    in_section = False
+    for line in content.splitlines():
+        lower = line.lower().strip()
+        # 섹션 시작 감지
+        if any(kw in lower for kw in (
+            "nice to have", "권고사항", "개선 제안", "cosmetic",
+            "polish", "optional", "제안", "선택적",
+        )):
+            in_section = True
+            continue
+        # 섹션 종료 감지
+        if in_section and (lower.startswith("## ") or lower.startswith("---")):
+            break
+        # 항목 수집
+        if in_section and line.strip().startswith(("-", "*", "•")):
+            items.append(line.strip())
+            if len(items) >= 10:
+                break
+
+    return "\n".join(items)
