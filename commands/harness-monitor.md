@@ -5,62 +5,123 @@ argument-hint: ""
 
 # /harness-monitor
 
-하네스 루프 디버그 로그를 실시간으로 모니터링한다.
+별도 Claude Code 세션에서 실행하여 하네스 진행 상태를 실시간 모니터링한다.
 
-## PREFIX 자동 감지
+## 사용법
 
-아래 순서로 현재 활성 PREFIX를 감지한다:
-
-```bash
-# 1순위: 활성 harness lock 파일
-PREFIX=$(ls /tmp/*_harness_active 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/_harness_active//')
-
-# 2순위: 최신 debug log 파일
-if [ -z "$PREFIX" ]; then
-  PREFIX=$(ls -t /tmp/*-harness-debug.log 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/-harness-debug\.log//')
-fi
-
-# 3순위: 기본값
-if [ -z "$PREFIX" ]; then
-  PREFIX="mb"
-fi
-
-echo "PREFIX: $PREFIX"
+```
+터미널 1: claude → 하네스 실행 중 (executor.py 포어그라운드)
+터미널 2: claude → /harness-monitor (이 스킬)
 ```
 
 ## 실행
 
-감지된 PREFIX로 로그 파일 상태를 확인하고 모니터링을 시작한다:
+아래 스크립트를 Bash로 실행한다:
 
 ```bash
-LOG="/tmp/${PREFIX}-harness-debug.log"
+# PREFIX 자동 감지
+PREFIX=$(python3 -c "
+import json
+from pathlib import Path
+cp = Path.cwd() / '.claude' / 'harness.config.json'
+if cp.exists():
+    print(json.load(open(cp)).get('prefix', 'proj'))
+else:
+    import re
+    raw = Path.cwd().name.lower()
+    print(re.sub(r'[^a-z0-9]', '', raw)[:8] or 'proj')
+" 2>/dev/null || echo "proj")
 
-if [ ! -f "$LOG" ]; then
-  echo "⚠️  하네스가 아직 실행되지 않았습니다."
-  echo "   로그 파일 없음: $LOG"
+HUD_DIR=".claude/harness-state"
+HUD_FILE="${HUD_DIR}/${PREFIX}_hud.json"
+
+echo "📡 하네스 HUD 모니터 (PREFIX=${PREFIX})"
+echo "   HUD 파일: ${HUD_FILE}"
+echo "   종료: Ctrl+C"
+echo ""
+
+if [ ! -f "$HUD_FILE" ]; then
+  echo "⏳ 하네스가 아직 시작되지 않았습니다. HUD 파일 대기 중..."
   echo ""
-  echo "하네스가 시작되면 아래 명령어로 모니터링하세요:"
-  echo "   tail -f $LOG"
-else
-  echo "📡 하네스 로그 모니터링 시작 (PREFIX=$PREFIX)"
-  echo "   파일: $LOG"
-  echo "   종료: Ctrl+C"
-  echo ""
-  tail -f "$LOG"
 fi
+
+# 1초마다 HUD JSON을 읽어 시각적으로 렌더링
+python3 -c "
+import json, time, sys
+from pathlib import Path
+
+hud_file = Path('${HUD_FILE}')
+prev = ''
+
+while True:
+    try:
+        if not hud_file.exists():
+            time.sleep(1)
+            continue
+
+        raw = hud_file.read_text()
+        if raw == prev:
+            time.sleep(1)
+            continue
+        prev = raw
+
+        d = json.loads(raw)
+        depth = d.get('depth', '?')
+        attempt = d.get('attempt', 0) + 1
+        max_att = d.get('max_attempts', 3)
+        cost = d.get('cost', 0)
+        budget = d.get('budget', 20)
+        elapsed = d.get('elapsed', 0)
+        m, s = divmod(elapsed, 60)
+        agents = d.get('agents', [])
+        total = len(agents)
+        done = sum(1 for a in agents if a.get('status') in ('done', 'skip'))
+        pct = int(done / total * 100) if total else 0
+
+        # 클리어 + 렌더
+        print('\033[2J\033[H', end='')  # 화면 클리어
+        print(f'━━━ 📊 depth={depth} | attempt {attempt}/{max_att} | \${cost:.2f}/\${budget:.0f} | {m}m{s:02d}s | {pct}% ━━━')
+        print()
+        for i, ag in enumerate(agents, 1):
+            name = ag.get('name', '?')
+            status = ag.get('status', 'pending')
+            ag_elapsed = ag.get('elapsed', 0)
+            ag_cost = ag.get('cost', 0)
+
+            if status == 'done':
+                bar = '▓' * 20 + ' ✅'
+                detail = f' {ag_elapsed}s \${ag_cost:.2f}'
+            elif status == 'fail':
+                bar = '▓' * 20 + ' ❌'
+                detail = f' {ag_elapsed}s'
+            elif status == 'skip':
+                bar = '░' * 20 + ' ⏭'
+                detail = f' {ag.get(\"reason\", \"\")}'
+            elif status == 'running':
+                bar = '▓' * 10 + '░' * 10 + ' ⏳'
+                detail = f' {ag_elapsed}s...'
+            else:
+                bar = '░' * 20 + '   '
+                detail = ''
+
+            print(f' [{i}/{total}] {name:<20s} {bar}{detail}')
+
+        print()
+        print('━' * 60)
+        time.sleep(1)
+
+    except KeyboardInterrupt:
+        print('\n모니터링 종료.')
+        break
+    except Exception:
+        time.sleep(1)
+"
 ```
 
 ## 유저에게 안내
 
-위 스크립트를 실행한 결과를 유저에게 보여준다.
+위 스크립트 실행 결과가 대화창에 실시간으로 표시된다.
 
-로그 파일이 없으면:
-- PREFIX와 예상 로그 경로를 알려준다
-- 하네스가 시작된 후 아래 명령어를 직접 실행하도록 안내한다:
-  ```bash
-  tail -f /tmp/${PREFIX}-harness-debug.log
-  ```
+하네스가 실행 중이 아니면 "HUD 파일 대기 중..." 메시지를 보여주고, 하네스가 시작되면 자동으로 모니터링이 시작된다.
 
-로그 파일이 있으면:
-- `tail -f`를 실행해 실시간 스트리밍을 시작한다
-- 유저가 Ctrl+C로 종료할 수 있음을 안내한다
+하네스가 완료되면 HUD 파일이 삭제되므로 모니터링이 자동 종료된다.
