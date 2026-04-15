@@ -183,6 +183,9 @@ class HUD:
         self.attempt = n
 
     def agent_start(self, agent: str) -> None:
+        if not hasattr(self, "_hud_diag_done"):
+            self._hud_diag_done = True
+            print(f"[HUD] path={self._hud_path} prefix={self.prefix} depth={self.depth}")
         if agent in self.agent_status:
             self.agent_status[agent] = {
                 "status": "running",
@@ -258,7 +261,14 @@ class HUD:
 
     def _write_json(self) -> None:
         if not self._hud_path:
-            return
+            # fallback: prefix 기반 경로 추론
+            if self.prefix:
+                _fb = Path.cwd() / ".claude" / "harness-state"
+                if _fb.is_dir():
+                    self._hud_path = _fb / f"{self.prefix}_hud.json"
+                    print(f"[HUD] _hud_path fallback: {self._hud_path}")
+            if not self._hud_path:
+                return
         data = {
             "depth": self.depth,
             "attempt": self.attempt,
@@ -277,8 +287,8 @@ class HUD:
                 json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"[HUD] _write_json 실패: {e} (path={self._hud_path})")
 
     def cleanup(self) -> None:
         """하네스 종료 시 HUD에 완료 상태 기록 (파일 유지)."""
@@ -662,8 +672,21 @@ def agent_call(
     if run_logger:
         run_logger.log_agent_start(agent, len(prompt))
 
-    # 에이전트별 active 플래그
-    active_flag = Path(f"/tmp/{prefix_for_flag}_{agent}_active")
+    # 에이전트별 active 플래그 — 훅(agent-boundary/issue-gate)이 state_dir에서 탐색하므로 동일 경로 사용
+    from pathlib import Path as _P
+    _state = _P(os.getcwd())
+    while _state != _state.parent:
+        _sd = _state / ".claude" / "harness-state"
+        if _sd.is_dir():
+            break
+        _claude = _state / ".claude"
+        if _claude.is_dir():
+            _sd.mkdir(parents=True, exist_ok=True)
+            break
+        _state = _state.parent
+    else:
+        _sd = _P("/tmp")
+    active_flag = _sd / f"{prefix_for_flag}_{agent}_active"
     active_flag.touch()
 
     # 공통 프리앰블 주입

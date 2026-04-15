@@ -21,3 +21,6 @@
 | 2026-04-15 | Second Reviewer — 외부 AI(Gemini/GPT) 병렬 리뷰 | pr-reviewer와 동시 실행, LGTM 시 findings → POLISH 합산. config.second_reviewer로 on/off. CLI 미설치 시 자동 스킵 |
 | 2026-04-15 | Handoff 전 파이프라인 확장 — architect→validator→engineer→pr-reviewer | 기존 handoff는 engineer→test-engineer, SPEC_GAP만 커버. simple 모드 전체 체인에 handoff 추가. JSONL에 handoff 이벤트 로깅. harness-review.py가 handoff 유무에 따라 WASTE_DUPLICATE_READ 심각도/fix 분기 |
 | 2026-04-15 | HUD 전체 라이프사이클 커버 — run_impl() 진입 시 생성 | 기존: run_simple/run_std 내부에서만 HUD 생성 → architect/plan-validation 사각지대. 변경: run_impl()에서 depth="auto"로 HUD 생성, preamble(architect+plan-validation) 포함, set_depth()로 depth별 에이전트 확장. run_simple/run_std/run_deep에 hud 파라미터 전달 |
+| 2026-04-15 | `core.py` agent_call() active 플래그 경로 `/tmp/` → `state_dir`로 수정 | 훅(agent-boundary/issue-gate)은 `.claude/harness-state/`에서 탐색, agent_call은 `/tmp/`에 생성 → 경로 불일치로 에이전트를 메인 Claude로 오판 → src/** Edit·이슈 생성 차단 |
+| 2026-04-15 | `harness-review.py` INFRA_EXCLUSIONS에 `handoff` 추가 | handoff 파일은 에이전트 간 인수인계 문서로 의도된 Read인데 `.claude/` 경로 포함으로 WASTE_INFRA_READ 오탐 |
+| 2026-04-15 | HUD `_write_json` 진단 강화 + fallback 경로 | `_hud_path`가 None일 때 cwd 기반 fallback 추론, `except OSError: pass` → 에러 메시지 출력, 첫 agent_start 시 one-time 진단 로그 |
