@@ -31,11 +31,12 @@ else:
     print(re.sub(r'[^a-z0-9]', '', raw)[:8] or 'proj')
 " 2>/dev/null || echo "proj")
 
-HUD_DIR=".claude/harness-state"
+HUD_DIR="$(pwd)/.claude/harness-state"
 HUD_FILE="${HUD_DIR}/${PREFIX}_hud.json"
 
 echo "📡 하네스 HUD 모니터 (PREFIX=${PREFIX})"
 echo "   HUD 파일: ${HUD_FILE}"
+echo "   cwd: $(pwd)"
 echo "   모드: 전용 세션 (무한 대기, Ctrl+C로 종료)"
 echo ""
 
