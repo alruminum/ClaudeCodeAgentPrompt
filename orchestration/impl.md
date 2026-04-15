@@ -79,3 +79,48 @@ bash ~/.claude/harness/executor.sh impl \
 # impl 파일 없이 (QA/DESIGN_HANDOFF): architect가 LIGHT_PLAN으로 impl 생성
 bash ~/.claude/harness/executor.sh impl --issue <N> [--prefix <P>]
 ```
+
+---
+
+## harness.config.json 설정 가이드
+
+프로젝트 루트의 `.claude/harness.config.json`에서 하네스 동작을 커스텀한다.
+
+```jsonc
+{
+  // 필수
+  "prefix": "mb",                    // 프로젝트 식별자 (플래그/로그 네이밍)
+
+  // 테스트/린트 (빈 문자열이면 해당 단계 스킵)
+  "test_command": "npx vitest run",  // depth=std/deep에서 ground-truth 테스트 실행
+  "lint_command": "npx tsc --noEmit", // automated_checks + POLISH regression
+
+  // 비용 제어
+  "max_total_cost": 20.0,            // 전체 루프 USD 상한 (초과 시 HARNESS_BUDGET_EXCEEDED)
+  "token_budget": {                   // 도메인별 토큰 예산 (85% 경고)
+    "frontend": 180000,
+    "backend": 280000,
+    "default": 250000
+  },
+
+  // 격리
+  "isolation": "",                    // "" (없음) 또는 "worktree" (agent_call에 isolation 옵션)
+
+  // Second Reviewer — 외부 AI 병렬 리뷰
+  "second_reviewer": "gemini",        // "gemini", "gpt", "" (비활성)
+  "second_reviewer_model": "gemini-2.5-flash"  // 모델 지정 (빈 문자열이면 기본값)
+}
+```
+
+### Second Reviewer 설정
+
+pr-reviewer(Claude)와 동시에 외부 AI를 비동기로 병렬 실행.
+
+| 설정 | 값 | 동작 |
+|------|-----|------|
+| `"second_reviewer": ""` | 비활성 (기본값) | 기존 동작 그대로 |
+| `"second_reviewer": "gemini"` | Gemini CLI | `gemini -m {model} {diff}` 실행 |
+| `"second_reviewer": "gpt"` | OpenAI CLI | `gpt -m {model} {diff}` 실행 |
+
+**폴백**: CLI 미설치 / 타임아웃(120초) / 인증 에러 → 조용히 스킵. 하네스 루프 영향 0.
+**결과 합산**: LGTM 시 findings → POLISH 항목에 append. CHANGES_REQUESTED 시 무시.
