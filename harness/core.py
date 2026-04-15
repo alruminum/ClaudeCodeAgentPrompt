@@ -297,23 +297,26 @@ class HUD:
                 for a in self.agents
             ],
         }
+        if not hasattr(self, "_write_count"):
+            self._write_count = 0
+        self._write_count += 1
         try:
             self._hud_path.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            if not hasattr(self, "_write_ok_logged") and _dbg:
-                self._write_ok_logged = True
+            exists_after = self._hud_path.exists()
+            if _dbg:
                 try:
                     with open(_dbg, "a") as f:
-                        f.write(f"write OK: {self._hud_path}\n")
+                        f.write(f"#{self._write_count} write OK exists={exists_after} path={self._hud_path}\n")
                 except OSError:
                     pass
         except OSError as e:
             if _dbg:
                 try:
                     with open(_dbg, "a") as f:
-                        f.write(f"write FAIL: {e} path={self._hud_path}\n")
+                        f.write(f"#{self._write_count} write FAIL: {e} path={self._hud_path}\n")
                 except OSError:
                     pass
 
