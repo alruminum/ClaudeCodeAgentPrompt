@@ -966,8 +966,8 @@ def build_validator_context(impl_file: str | Path) -> str:
     return ctx[:20000]
 
 
-def explore_instruction(out_dir: str, hint_file: str = "") -> str:
-    """에이전트 자율 탐색 지시 템플릿."""
+def explore_instruction(out_dir: str, hint_file: str = "", handoff_path: str = "") -> str:
+    """에이전트 자율 탐색 지시 템플릿. handoff_path가 있으면 인수인계 문서 우선."""
     instr = (
         f"이전 시도의 출력 파일이 아래 경로에 있다:\n"
         f"  {out_dir}/\n"
@@ -977,7 +977,146 @@ def explore_instruction(out_dir: str, hint_file: str = "") -> str:
     )
     if hint_file:
         instr += f"\n힌트: {hint_file} 에 직접적인 실패 정보가 있다."
+    if handoff_path:
+        instr = (
+            f"인수인계 문서를 먼저 읽어라:\n"
+            f"  {handoff_path}\n"
+            f"이 문서에 변경 요약, 결정 사항, 확인할 것이 정리돼 있다.\n"
+            f"상세 로그가 필요하면 {out_dir}/ 참조.\n"
+            f"[탐색 예산] 최대 5개 파일, 합계 100KB 이내."
+        )
     return instr
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 8.5 Handoff 문서 생성 — 에이전트 간 구조화된 인수인계
+# ═══════════════════════════════════════════════════════════════════════
+
+def generate_handoff(
+    from_agent: str,
+    to_agent: str,
+    agent_output: str,
+    impl_file: str,
+    attempt: int,
+    issue_num: str | int = "",
+    changed_files: Optional[List[str]] = None,
+    acceptance_criteria: Optional[List[str]] = None,
+) -> str:
+    """에이전트 출력 + git diff에서 handoff 문서 자동 생성.
+
+    에이전트가 직접 작성하지 않음 — 하네스가 자동 생성.
+    """
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+
+    # 변경 파일 목록 (미제공 시 git diff에서 추출)
+    if changed_files is None:
+        r = _git("diff", "HEAD~1", "--stat")
+        if r.returncode == 0 and r.stdout.strip():
+            changed_files = [
+                line.split("|")[0].strip()
+                for line in r.stdout.strip().splitlines()[:-1]  # 마지막 summary 줄 제외
+                if "|" in line
+            ]
+        else:
+            changed_files = []
+
+    # 결정 사항 추출 (에이전트 출력에서 키워드 주변 문장)
+    decisions: List[str] = []
+    cautions: List[str] = []
+    for line in agent_output.splitlines():
+        line_lower = line.lower().strip()
+        if not line_lower:
+            continue
+        # 결정 키워드
+        if any(kw in line_lower for kw in ("결정:", "선택:", "트레이드오프:", "이유:", "decision:", "chose")):
+            decisions.append(f"- {line.strip()}")
+        # 주의 키워드
+        if any(kw in line_lower for kw in ("주의:", "warning:", "caution:", "주의사항", "변경 금지", "삭제 금지")):
+            cautions.append(f"- {line.strip()}")
+
+    # SPEC_GAP 갭 목록 추출
+    gaps: List[str] = []
+    in_gap = False
+    for line in agent_output.splitlines():
+        if "SPEC_GAP_FOUND" in line:
+            in_gap = True
+            continue
+        if in_gap:
+            stripped = line.strip()
+            if stripped.startswith(("1.", "2.", "3.", "4.", "5.", "-", "*")):
+                gaps.append(f"- {stripped.lstrip('0123456789.-* ')}")
+            elif stripped.startswith("요청:") or stripped.startswith("request:"):
+                break
+            elif not stripped:
+                if gaps:
+                    break
+
+    # 문서 조립
+    sections: List[str] = []
+    sections.append(f"# Handoff: {from_agent} → {to_agent}")
+    sections.append(f"attempt: {attempt}")
+    sections.append(f"timestamp: {ts}")
+    if impl_file:
+        sections.append(f"impl: {impl_file}")
+    if issue_num:
+        sections.append(f"issue: #{issue_num}")
+    sections.append("")
+
+    # 변경 요약
+    sections.append("## 변경 요약")
+    if changed_files:
+        for f in changed_files[:10]:
+            sections.append(f"- {f}")
+    else:
+        sections.append("- (변경 파일 정보 없음)")
+    sections.append("")
+
+    # 결정 사항
+    if decisions:
+        sections.append("## 결정 사항")
+        sections.extend(decisions[:5])
+        sections.append("")
+
+    # 주의 사항
+    if cautions:
+        sections.append("## 주의 사항")
+        sections.extend(cautions[:5])
+        sections.append("")
+
+    # SPEC_GAP 갭 목록
+    if gaps:
+        sections.append("## SPEC_GAP 항목")
+        sections.extend(gaps[:5])
+        sections.append("")
+
+    # 다음 단계에서 확인할 것 (수용 기준 기반)
+    sections.append("## 다음 단계에서 확인할 것")
+    if acceptance_criteria:
+        for ac in acceptance_criteria[:8]:
+            sections.append(f"- {ac}")
+    elif changed_files:
+        sections.append(f"- 변경된 파일({len(changed_files)}개)의 기능이 정상 동작하는지 확인")
+    else:
+        sections.append("- (수용 기준 정보 없음 — impl 파일 참조)")
+
+    return "\n".join(sections) + "\n"
+
+
+def write_handoff(
+    state_dir: "StateDir",
+    prefix: str,
+    attempt: int,
+    from_agent: str,
+    to_agent: str,
+    content: str,
+) -> Path:
+    """handoff 문서를 파일로 저장하고 경로 반환."""
+    handoff_dir = state_dir.path / f"{prefix}_handoffs" / f"attempt-{attempt}"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{from_agent}-to-{to_agent}.md"
+    path = handoff_dir / filename
+    path.write_text(content, encoding="utf-8")
+    return path
 
 
 # ═══════════════════════════════════════════════════════════════════════

@@ -468,5 +468,84 @@ class TestCircuitBreaker(unittest.TestCase):
         self.assertFalse(r)
 
 
+class TestGenerateHandoff(unittest.TestCase):
+    def test_basic_handoff(self):
+        from harness.core import generate_handoff
+        content = generate_handoff(
+            "engineer", "test-engineer",
+            "구현 완료: auth module\n결정: JWT 사용 (보안 우선)\n주의: 기존 세션 삭제 금지",
+            "docs/impl/01-auth.md", 0, "42",
+            changed_files=["src/auth/login.ts", "src/auth/types.ts"],
+            acceptance_criteria=["JWT 만료 시 자동 갱신", "잘못된 토큰 거부"],
+        )
+        self.assertIn("engineer → test-engineer", content)
+        self.assertIn("src/auth/login.ts", content)
+        self.assertIn("JWT 만료 시 자동 갱신", content)
+        self.assertIn("결정:", content.lower() or content)
+
+    def test_specgap_handoff(self):
+        from harness.core import generate_handoff
+        content = generate_handoff(
+            "engineer", "architect",
+            "SPEC_GAP_FOUND\n갭 목록:\n1. Props 타입 미정의\n2. 에러 처리 미결정\n요청: architect에게 보강 요청",
+            "docs/impl/02-ui.md", 1, "43",
+        )
+        self.assertIn("SPEC_GAP 항목", content)
+        self.assertIn("Props 타입 미정의", content)
+
+    def test_with_acceptance_criteria(self):
+        from harness.core import generate_handoff
+        content = generate_handoff(
+            "engineer", "test-engineer", "구현 완료",
+            "test.md", 0, "1",
+            acceptance_criteria=["로그인 성공 시 토큰 반환 (TEST)", "실패 시 401 응답 (TEST)"],
+        )
+        self.assertIn("로그인 성공 시 토큰 반환", content)
+        self.assertIn("실패 시 401 응답", content)
+
+
+class TestWriteHandoff(unittest.TestCase):
+    def test_write_and_read(self):
+        from harness.core import StateDir, write_handoff
+        with tempfile.TemporaryDirectory() as d:
+            sd = StateDir(Path(d), "test")
+            path = write_handoff(sd, "test", 0, "engineer", "test-engineer", "# Handoff\ntest content")
+            self.assertTrue(path.exists())
+            self.assertIn("engineer-to-test-engineer.md", path.name)
+            self.assertEqual(path.read_text(), "# Handoff\ntest content")
+
+
+class TestExploreInstructionHandoff(unittest.TestCase):
+    def test_with_handoff_path(self):
+        from harness.core import explore_instruction
+        result = explore_instruction("/tmp/hist", "", "/tmp/handoff.md")
+        self.assertIn("인수인계 문서를 먼저 읽어라", result)
+        self.assertIn("/tmp/handoff.md", result)
+
+    def test_without_handoff_backward_compat(self):
+        from harness.core import explore_instruction
+        result = explore_instruction("/tmp/hist", "hint.log")
+        self.assertIn("이전 시도의 출력 파일", result)
+        self.assertIn("hint.log", result)
+        self.assertNotIn("인수인계", result)
+
+
+class TestExtractAcceptanceCriteria(unittest.TestCase):
+    def test_extract(self):
+        from harness.helpers import extract_acceptance_criteria
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("# Impl\n\n## 수용 기준\n- JWT 만료 시 갱신 (TEST)\n- 잘못된 토큰 거부 (TEST)\n\n## 다음 섹션\n")
+            f.flush()
+            criteria = extract_acceptance_criteria(f.name)
+        os.unlink(f.name)
+        self.assertEqual(len(criteria), 2)
+        self.assertIn("JWT 만료 시 갱신 (TEST)", criteria[0])
+
+    def test_missing_file(self):
+        from harness.helpers import extract_acceptance_criteria
+        result = extract_acceptance_criteria("/nonexistent/file.md")
+        self.assertEqual(result, [])
+
+
 if __name__ == "__main__":
     unittest.main()

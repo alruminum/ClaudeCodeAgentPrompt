@@ -23,6 +23,7 @@ try:
         create_feature_branch, merge_to_main, generate_commit_msg,
         collect_changed_files,
         build_smart_context, build_validator_context, explore_instruction,
+        generate_handoff, write_handoff,
         prune_history, kill_check, detect_depth,
     )
     from .helpers import (
@@ -30,6 +31,7 @@ try:
         rollback_attempt, check_agent_output, run_automated_checks,
         budget_check, generate_pr_body, save_impl_meta,
         setup_hlog, log_decision, log_phase,
+        extract_acceptance_criteria,
     )
 except ImportError:
     from config import HarnessConfig, load_config
@@ -276,6 +278,13 @@ def run_simple(
                 run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
                 return "IMPLEMENTATION_ESCALATE"
 
+            # handoff: engineer → architect (SPEC_GAP)
+            _sg_handoff = generate_handoff(
+                "engineer", "architect", eng_content,
+                impl_file, attempt, issue_num,
+            )
+            _sg_handoff_path = write_handoff(state_dir, prefix, attempt, "engineer", "architect-specgap", _sg_handoff)
+
             # architect SPEC_GAP 처리
             log_phase("architect-spec-gap", run_logger, attempt)
             print("[HARNESS] SPEC_GAP → architect (depth 재판정 포함)")
@@ -285,6 +294,7 @@ def run_simple(
                 "architect", 900,
                 f"@MODE:ARCHITECT:SPEC_GAP\n"
                 f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                f"인수인계 문서: {_sg_handoff_path}\n"
                 f"현재 depth: simple\nengineer 보고:\n{spec_gap_context}\n"
                 f"[지시] SPEC_GAP 해결 후 depth 재판정. frontmatter depth: 필드를 재선언하라. "
                 f"상향만 허용(simple→std→deep).",
@@ -693,6 +703,13 @@ def _run_std_deep(
                 run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
                 return "IMPLEMENTATION_ESCALATE"
 
+            # handoff: engineer → architect (SPEC_GAP) — std/deep
+            _sg_handoff2 = generate_handoff(
+                "engineer", "architect", eng_content,
+                impl_file, attempt, issue_num,
+            )
+            _sg_handoff_path2 = write_handoff(state_dir, prefix, attempt, "engineer", "architect-specgap", _sg_handoff2)
+
             log_phase("architect-spec-gap", run_logger, attempt)
             print("[HARNESS] SPEC_GAP → architect (depth 재판정 포함)")
             spec_gap_ctx = "\n".join(eng_content.splitlines()[-50:])
@@ -701,6 +718,7 @@ def _run_std_deep(
                 sg_prompt = (
                     f"@MODE:ARCHITECT:SPEC_GAP\n"
                     f"engineer가 SPEC_GAP_FOUND 보고. impl: {impl_file} issue: #{issue_num}\n"
+                    f"인수인계 문서: {_sg_handoff_path2}\n"
                     f"현재 depth: deep (최고 depth — 하향 없음)\n"
                     f"engineer 보고:\n{spec_gap_ctx}\n"
                     f"[지시] SPEC_GAP 해결. depth는 이미 deep이므로 재판정 불필요."
@@ -778,6 +796,19 @@ def _run_std_deep(
             early_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
             run_logger.log_event({"event": "commit", "hash": early_commit, "attempt": attempt + 1, "t": int(time.time())})
             hlog_fn(f"early commit: {early_commit} (attempt={attempt + 1})")
+
+        # ── handoff: engineer → test-engineer ─────────────────────
+        _eng_output = ""
+        try:
+            _eng_output = Path(str(state_dir.path / f"{prefix}_eng_out.txt")).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+        _handoff_content = generate_handoff(
+            "engineer", "test-engineer", _eng_output,
+            impl_file, attempt, issue_num,
+            acceptance_criteria=extract_acceptance_criteria(impl_file),
+        )
+        _handoff_path = write_handoff(state_dir, prefix, attempt, "engineer", "test-engineer", _handoff_content)
 
         # ── 워커 2: test-engineer ─────────────────────────────────
         r_changed = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)

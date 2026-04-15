@@ -638,3 +638,33 @@ def _write_reflection(mem_local: Path, impl_name: str, date_str: str, reflection
     entry = f"- {date_str} | {impl_name} | {reflection}\n"
     with open(mem_local, "a", encoding="utf-8") as f:
         f.write(entry)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 14. extract_acceptance_criteria — impl 파일에서 수용 기준 추출
+# ═══════════════════════════════════════════════════════════════════════
+
+def extract_acceptance_criteria(impl_file: str) -> list:
+    """impl 파일의 ## 수용 기준 섹션에서 항목 추출.
+
+    (TEST), (BROWSER:DOM), (MANUAL) 태그가 있는 행을 파싱.
+    태그 없는 항목도 포함 (handoff에는 전부 필요).
+    """
+    try:
+        content = Path(impl_file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+
+    criteria = []
+    in_section = False
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## 수용 기준") or stripped.startswith("## Acceptance Criteria"):
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("## "):
+                break
+            if stripped.startswith(("- ", "* ", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.")):
+                criteria.append(stripped.lstrip("- *0123456789. "))
+    return criteria[:15]
