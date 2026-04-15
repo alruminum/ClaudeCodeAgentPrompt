@@ -50,6 +50,34 @@
 
 ---
 
+## 구현 루프 내부 기능
+
+### Handoff 문서 (에이전트 간 인수인계)
+에이전트 전환 시 하네스가 자동으로 구조화된 인수인계 문서를 생성한다 (에이전트 프롬프트 변경 없음).
+- 저장: `.claude/harness-state/{prefix}_handoffs/attempt-{N}/{from}-to-{to}.md`
+- 적용 지점: engineer→test-engineer, SPEC_GAP engineer→architect
+- `explore_instruction()`에 `handoff_path` 파라미터 추가 — handoff 우선, 상세 로그는 필요 시만
+
+### HUD Statusline (진행 상태 시각화)
+impl 루프 실행 중 depth별 에이전트 체인의 진행 상태를 stdout에 시각적으로 표시.
+- 실시간 JSON: `.claude/harness-state/{prefix}_hud.json`
+- `/harness-monitor` 스킬: 별도 세션에서 HUD를 실시간 모니터링 (전용 세션, 무한 대기)
+- 하네스 완료 시 HUD 파일 자동 삭제
+
+### POLISH 모드 (LGTM 후 경량 코드 다듬기)
+pr-reviewer LGTM 후, merge 전에 NICE TO HAVE 항목을 경량 정리한다.
+- engineer `@MODE:ENGINEER:POLISH` (180초, 기능 변경 금지)
+- regression check: 하네스가 `config.lint_command` + `config.test_command` 직접 실행 (에이전트 호출 없음)
+- regression 실패 → `git reset --hard`로 revert, 원본 코드로 merge (slop 있는 채로)
+- NICE TO HAVE 없으면 스킵
+
+### Circuit Breaker (시간 윈도우 반복 실패 감지)
+동일 fail_type이 120초 내 2회 반복되면 attempt를 소진하지 않고 즉시 IMPLEMENTATION_ESCALATE.
+- JSONL에 `circuit_breaker` 이벤트 기록
+- 기존 max 3 attempts와 독립 동작 (시간 기반 조기 탈출)
+
+---
+
 ## 상세 문서
 
 | 문서 | 내용 |

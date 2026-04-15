@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 현행 상태
 
-> 최종 업데이트: 2026-04-12
+> 최종 업데이트: 2026-04-15
 > 하네스 수정 후 마지막 단계로 갱신한다 (백로그 → 수정 → **이 파일**).
 
 ---
@@ -116,6 +116,9 @@ Claude Code 위에서 Python 코어 + Bash 래퍼 + Python 훅으로 동작 (외
 | `{p}_memory_candidate.md` | impl 루프 (FAIL 시) | 메인 Claude (유저 승인) | 실패 패턴 초안 |
 | `{p}_harness_kill` | 사용자 (`/harness-kill`) | `kill_check()` | 킬 스위치 |
 | `{p}_{agent}_cost.txt` | `_agent_call()` | `budget_check()` | 에이전트별 비용 (USD) |
+| `{p}_hud.json` | HUD 클래스 | `/harness-monitor`, 외부 watch | 실시간 진행 상태 (depth, attempt, agents) |
+| `{p}_handoffs/attempt-N/` | `write_handoff()` | 다음 에이전트 (explore_instruction) | 구조화된 인수인계 문서 |
+| `{p}_polish_out.txt` | engineer POLISH | impl 루프 | POLISH 모드 출력 |
 
 **생명주기**: SessionStart → `harness-session-start.py`가 플래그 전체 삭제 → 루프 진행 중 생성 → HARNESS_DONE 후 정리
 
@@ -126,7 +129,8 @@ Claude Code 위에서 Python 코어 + Bash 래퍼 + Python 훅으로 동작 (외
 ### 게이트 / 안전장치
 
 - **Depth 자동 선택**: impl 파일의 `(TEST)/(BROWSER:DOM)/(MANUAL)` 태그 + 컨텍스트 기반으로 simple/std/deep 자동 감지. architect가 판단 질문으로 depth 추천하며, 수동 `--depth` 오버라이드 가능. frontmatter 누락 시 std 폴백.
-- **비용 제어**: 에이전트별 `--max-budget-usd 2.00` 상한 + 전체 루프 `$10` 상한 (`budget_check()`). ISO 타임스탬프 + 타이밍 요약으로 비용/시간 추적.
+- **비용 제어**: 에이전트별 `--max-budget-usd 2.00` 상한 + 전체 루프 `$10` 상한 (`budget_check()`). 도메인별 토큰 예산 (`config.token_budget` dict, 85% 경고). ISO 타임스탬프 + 타이밍 요약.
+- **Circuit Breaker**: 동일 fail_type 120초 내 2회 반복 → attempt 소진 없이 즉시 IMPLEMENTATION_ESCALATE. JSONL `circuit_breaker` 이벤트 기록.
 - **킬 스위치**: `/harness-kill` 커맨드로 다음 에이전트 호출 전 즉시 루프 중단.
 - **에이전트 timeout**: 역할별 차등 timeout (architect/engineer=900s, validator 등=300~600s). exit 124 감지 시 자동 스킵. 타임아웃 watchdog + SIGTERM 핸들러로 좀비 프로세스 방지.
 - **모호한 요청 차단**: AMBIGUOUS 감지 시 루프 진입 금지. Adaptive Interview로 Haiku Q&A(max 4턴) 후 명확화. 완료 시 product-planner 호출 힌트 주입.
@@ -136,7 +140,10 @@ Claude Code 위에서 Python 코어 + Bash 래퍼 + Python 훅으로 동작 (외
 ### 관측성 / 로깅
 
 - **JSONL 아카이브**: 전 에이전트 stream-json 실시간 기록 → `~/.claude/harness-logs/{prefix}/run_*.jsonl`. FIFO 10-run 보존. 에이전트 I/O 원문 전량 보존 + 히스토리 루프별 격리.
-- **디버그 로그**: `hlog()` 함수 — `[HH:MM:SS] [attempt=N]` 형식. 루프 시작/종료, 에이전트 전후, vitest 전후 기록.
+- **디버그 로그**: `hlog()` 함수 — `[HH:MM:SS] [attempt=N]` 형식. 루프 시작/종료, 에이전트 전후, 테스트 전후 기록.
+- **HUD Statusline**: depth별 에이전트 체인 진행 상태를 stdout 진행 바로 표시. `.claude/harness-state/{prefix}_hud.json`에 실시간 상태 저장. `/harness-monitor` 스킬로 별도 세션 실시간 모니터링 (전용 세션, 무한 대기, 루프 자동 감지).
+- **Handoff 문서**: 에이전트 전환 시 하네스가 구조화된 인수인계 문서 자동 생성 (변경요약/결정사항/주의사항/확인항목). `explore_instruction(handoff_path=)` 우선 전달. `.claude/harness-state/{prefix}_handoffs/attempt-N/`.
+- **REFLECTION (성공 학습)**: HARNESS_DONE 시 engineer 출력에서 성공 패턴 자동 추출 → `harness-memory.md` Success Patterns 섹션. 실패 auto-promotion과 대칭.
 - **harness-review**: JSONL 파서 기반 자동 진단 시스템.
   - **WASTE 패턴 8종**: 낭비 감지 (CONTEXT_EXCESS, SPARSE_PROMPT, DUPLICATE_READ, INFRA_READ 등)
   - **흐름 진단 4패턴**: ABNORMAL_END, EARLY_EXIT, MISSING_PHASE, ROUTING_MISMATCH
@@ -155,9 +162,12 @@ Claude Code 위에서 Python 코어 + Bash 래퍼 + Python 훅으로 동작 (외
 
 ### 구현 루프 (impl)
 
-- **3단계 depth**: simple (engineer → pr-reviewer → merge), std (+ test-engineer → vitest → validator), deep (+ security-reviewer). engineer 직후 feature branch 즉시 커밋.
+- **3단계 depth**: simple (engineer → pr-reviewer → POLISH → merge), std (+ test-engineer → validator → POLISH), deep (+ security-reviewer). engineer 직후 feature branch 즉시 커밋.
+- **POLISH 모드**: pr-reviewer LGTM 후 NICE TO HAVE 항목을 engineer `@MODE:ENGINEER:POLISH` (180초)로 경량 정리. regression 실패 시 `git reset --hard` revert → 원본으로 merge.
+- **test/lint command 설정화**: `config.test_command` / `config.lint_command`로 프레임워크 비종속 (vitest 하드코딩 제거).
 - **SPEC_GAP 핸들링**: SPEC_GAP_FOUND → architect SPEC_GAP → 3-way 분기 (RESOLVED/PP_ESCALATION/TECH_CONSTRAINT). `spec_gap_count` 동결 카운터 (max 2).
-- **plan.sh**: 6단계 흐름 (product-planner → architect SD → validator DV → architect MP → validator PV → PLAN_VALIDATION_PASS).
+- **plan.sh**: 6단계 흐름 (product-planner → architect SD → validator DV → architect MP → validator PV → PLAN_VALIDATION_PASS). product-planner가 CLARITY_INSUFFICIENT 에스컬레이션 시 메인 Claude가 유저에게 추가 질문 후 재실행 (max 2회).
+- **모호성 정량화**: product-plan 스킬이 5차원 모호성 점수(Goal/User/Scope/Constraints/Success)로 인터뷰. 20% 미만 도달 시 plan 루프 진입.
 - **Smart Context**: impl 명시 경로 우선, attempt별 에러 트레이스 carry-forward. 소스파일 3KB캡, 전체 30KB캡.
 - **실패 복구**: `rollback_attempt()` — 실패 시 `git stash push --include-untracked`로 오염 코드 격리. `check_agent_output()` — 빈 출력 graceful retry.
 - **Phase C/D**: `build_loop_context()`로 루프별 진입 컨텍스트 prepend (8KB 캡). review-agent가 완료 후 Haiku 로그 분석.

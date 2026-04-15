@@ -45,7 +45,7 @@ class FLAGS:
 # 변경 시 이 파일만 수정 → 모든 훅에 즉시 반영.
 
 # 하네스(executor.sh) 경유 필수 에이전트 — 직접 Agent 호출 금지
-HARNESS_ONLY_AGENTS = ("engineer", "architect")
+HARNESS_ONLY_AGENTS = ("engineer",)
 
 # 이슈 생성 가능 에이전트 — issue-gate.py에서 harness_active 없이도 허용
 ISSUE_CREATORS = ("qa", "designer")

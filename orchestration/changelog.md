@@ -11,3 +11,8 @@
 | 2026-04-11 | `harness-review.py` EXPECTED_SEQUENCE에 `simple` 키 추가 | depth=simple에서 test-engineer/validator 스킵은 정상인데 MISSING_PHASE로 오탐 |
 | 2026-04-15 | UI 디자인 게이트: 키워드 스캔 → opt-in frontmatter(`design: required`) 전환 | impl 텍스트에 "컴포넌트/디자인" 등 포함 시 무조건 UI_DESIGN_REQUIRED 트리거 → dead code 삭제 같은 비시각적 작업도 차단. "스크린샷이 달라지는가?"는 단어로 판단 불가하므로 명시적 opt-in으로 전환 |
 | 2026-04-15 | `agent-boundaries.md`에 인프라 파일 접근 금지 규칙 추가 | engineer, pr-reviewer의 WASTE_INFRA_READ 반복 — `.claude/harness-*` 경로 Read/Glob 금지 명시 |
+| 2026-04-15 | 모호성 정량화 (product-plan 스킬 + CLARITY_INSUFFICIENT 마커) | OMC deep-interview 참고. 5차원 모호성 점수 + 라운드 기반 인터뷰 + product-planner 에스컬레이션 |
+| 2026-04-15 | Handoff 문서 패턴 (generate_handoff + write_handoff + explore_instruction 확장) | OMC handoff 참고. 에이전트 간 구조화된 인수인계 자동 생성. 에이전트 프롬프트 변경 없음 |
+| 2026-04-15 | HUD Statusline (HUD 클래스 + hud.json + harness-monitor 전용 세션) | 진행 바 시각화 + 별도 세션 실시간 모니터링. Osmani 기사 참고 |
+| 2026-04-15 | POLISH 모드 (@MODE:ENGINEER:POLISH + regression revert) | pr-reviewer LGTM 후 NICE TO HAVE 경량 정리. regression 실패 시 revert. OMC ai-slop-cleaner 참고 |
+| 2026-04-15 | Circuit Breaker (시간 윈도우 120초 내 동일 fail_type 2회 → 조기 에스컬레이션) | harness_framework 참고. 기존 max 3 attempts와 독립 동작 |
