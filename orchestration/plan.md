@@ -52,7 +52,7 @@ flowchart TD
 
     CI -->|"유저 답변 후 재실행"| PP_NEW
 
-    PPR --> ARC_SD
+    PPR -->|"prd.md 경로 전달\n(전문 X)"| ARC_SD
     PPU --> SCOPE
     SCOPE -->|YES| ARC_SD
     SCOPE -->|NO| ARC_MP_SKIP

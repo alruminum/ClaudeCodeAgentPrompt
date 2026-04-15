@@ -103,14 +103,25 @@ def run_plan(
 
     print(f"[HARNESS] product-planner → {pp_marker}")
 
+    # prd.md 경로 추출 (product-planner가 저장한 파일)
+    prd_path = ""
+    prd_m = re.search(r"(prd[^ ]*\.md)", pp_out)
+    if prd_m:
+        prd_path = prd_m.group(1)
+    if not prd_path or not Path(prd_path).exists():
+        if Path("prd.md").exists():
+            prd_path = "prd.md"
+    print(f"[HARNESS] prd_path: {prd_path or 'N/A'}")
+
     # ── architect System Design ──
     print("[HARNESS] architect System Design 작성")
     _asd_t0 = time.time()
     hud.agent_start("architect-sd")
     arch_sd_out = str(state_dir.path / f"{prefix}_arch_sd_out.txt")
+    # pp_out 전문이 아닌 prd.md 경로만 전달 — architect가 직접 Read
     agent_call(
         "architect", 900,
-        f"@MODE:ARCHITECT:SYSTEM_DESIGN\n{pp_out} issue: #{issue_num}",
+        f"@MODE:ARCHITECT:SYSTEM_DESIGN\nplan_doc: {prd_path}\nissue: #{issue_num}",
         arch_sd_out, run_logger, config,
     )
     _asd_cost = 0.0
