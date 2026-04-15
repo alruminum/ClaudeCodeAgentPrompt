@@ -16,7 +16,7 @@ from typing import Optional
 try:
     from .config import HarnessConfig
     from .core import (
-        Flag, RunLogger, StateDir,
+        Flag, RunLogger, StateDir, HUD,
         agent_call, parse_marker, detect_depth,
         run_plan_validation,
         generate_handoff, write_handoff,
@@ -25,7 +25,7 @@ try:
 except ImportError:
     from config import HarnessConfig
     from core import (
-        Flag, RunLogger, StateDir,
+        Flag, RunLogger, StateDir, HUD,
         agent_call, parse_marker, detect_depth,
         run_plan_validation,
         generate_handoff, write_handoff,
@@ -149,7 +149,7 @@ def run_impl(
     if state_dir is None:
         state_dir = StateDir(Path.cwd(), prefix)
 
-    # ── 재진입 감지 ──
+    # ── 재진입 감지 ── (preamble 스킵 — depth 루프가 자체 HUD 생성)
     if (state_dir.flag_exists(Flag.PLAN_VALIDATION_PASSED)
             and impl_file and Path(impl_file).exists()):
         print("[HARNESS] 재진입: plan_validation_passed + impl 존재 → engineer 루프 직접 진입")
@@ -189,6 +189,9 @@ def run_impl(
     impl_run_dir = hist_dir / "impl" / f"run_{run_ts}"
     impl_run_dir.mkdir(parents=True, exist_ok=True)
     os.environ["HARNESS_HIST_DIR"] = str(impl_run_dir)
+
+    # ── HUD 초기화 (전체 라이프사이클 커버) ──
+    hud = HUD("auto", prefix, issue_num, 3, config.max_total_cost, state_dir)
 
     # ── impl 파일 없으면 architect 호출 ──
     arch_content = ""
@@ -247,6 +250,9 @@ def run_impl(
 
         arch_out = str(state_dir.path / f"{prefix}_arch_out.txt")
 
+        _arch_t0 = time.time()
+        hud.agent_start("architect")
+
         if arch_mode == "LIGHT_PLAN":
             # depth 힌트
             depth_hint = ""
@@ -264,7 +270,7 @@ def run_impl(
             )
 
             print(f"[HARNESS] architect LIGHT_PLAN 작성 (issue #{issue_num}, depth_hint={depth_hint or 'none'})")
-            agent_call(
+            arch_exit = agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:LIGHT_PLAN\n"
                 f"issue #{issue_num}\n"
@@ -282,12 +288,17 @@ def run_impl(
             )
         else:
             print("[HARNESS] architect Module Plan 작성")
-            agent_call(
+            arch_exit = agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:MODULE_PLAN\n"
                 f"issue #{issue_num} impl 계획 작성. context: {context}",
                 arch_out, run_logger, config,
             )
+
+        _arch_cost_file = Path(f"{arch_out[:-4]}_cost.txt")
+        _arch_cost = float(_arch_cost_file.read_text() or "0") if _arch_cost_file.exists() else 0.0
+        hud.agent_done("architect", int(time.time() - _arch_t0), _arch_cost,
+                        "done" if arch_exit == 0 else "fail")
 
         # architect 결과 마커
         arch_marker = parse_marker(
@@ -318,6 +329,10 @@ def run_impl(
         print("SPEC_GAP_ESCALATE: architect가 impl 파일을 생성하지 못했다.")
         return "SPEC_GAP_ESCALATE"
 
+    # architect 미호출 시 (impl_file 이미 존재) HUD에서 스킵 처리
+    if not arch_out:
+        hud.agent_skip("architect", "impl 파일 이미 존재")
+
     # ── Handoff: architect → validator ──
     _arch_handoff_path = None
     if arch_out:
@@ -342,8 +357,14 @@ def run_impl(
 
     # ── Plan Validation ──
     print("[HARNESS] Plan Validation")
-    if run_plan_validation(impl_file, issue_num, prefix, 1, state_dir, run_logger, config,
-                           handoff_path=str(_arch_handoff_path) if _arch_handoff_path else None):
+    _pv_t0 = time.time()
+    hud.agent_start("plan-validation")
+    pv_passed = run_plan_validation(impl_file, issue_num, prefix, 1, state_dir, run_logger, config,
+                                     handoff_path=str(_arch_handoff_path) if _arch_handoff_path else None)
+    hud.agent_done("plan-validation", int(time.time() - _pv_t0), 0.0,
+                    "done" if pv_passed else "fail")
+
+    if pv_passed:
         (state_dir.path / f"{prefix}_impl_path").write_text(impl_file, encoding="utf-8")
         print("PLAN_VALIDATION_PASS")
         print(f"impl: {impl_file}")
@@ -352,7 +373,7 @@ def run_impl(
         if depth == "auto":
             depth = detect_depth(impl_file)
         print(f"[HARNESS] depth: {depth}")
-        return _dispatch_depth(depth, impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger)
+        return _dispatch_depth(depth, impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger, hud)
 
     os.environ["HARNESS_RESULT"] = "PLAN_VALIDATION_ESCALATE"
     print("PLAN_VALIDATION_ESCALATE")
@@ -368,6 +389,7 @@ def _dispatch_depth(
     prefix: str,
     branch_type: str,
     run_logger: Optional[RunLogger],
+    hud: Optional[HUD] = None,
 ) -> str:
     """depth별 루프 함수 디스패치."""
     runners = {
@@ -376,4 +398,4 @@ def _dispatch_depth(
         "deep": run_deep,
     }
     runner = runners.get(depth, run_std)
-    return runner(impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger)
+    return runner(impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger, hud)

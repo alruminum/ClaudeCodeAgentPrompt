@@ -130,6 +130,7 @@ class HUD:
       (/harness-monitor에서 watch 가능)
     """
 
+    PREAMBLE_AGENTS = ["architect", "plan-validation"]
     DEPTH_AGENTS = {
         "simple": ["engineer", "pr-reviewer", "merge"],
         "std": ["engineer", "test-engineer", "validator", "pr-reviewer", "merge"],
@@ -154,7 +155,11 @@ class HUD:
         self.attempt = 0
         self.total_cost = 0.0
 
-        self.agents = self.DEPTH_AGENTS.get(depth, self.DEPTH_AGENTS["std"])
+        if depth == "auto":
+            # run_impl 진입: preamble만 — depth 확정 후 set_depth()로 확장
+            self.agents = list(self.PREAMBLE_AGENTS)
+        else:
+            self.agents = list(self.DEPTH_AGENTS.get(depth, self.DEPTH_AGENTS["std"]))
         self.agent_status: Dict[str, Dict[str, Any]] = {
             a: {"status": "pending", "elapsed": 0, "cost": 0.0}
             for a in self.agents
@@ -163,6 +168,16 @@ class HUD:
         self._hud_path: Optional[Path] = None
         if state_dir:
             self._hud_path = state_dir.path / f"{prefix}_hud.json"
+
+    def set_depth(self, depth: str) -> None:
+        """depth 확정 후 에이전트 목록 확장."""
+        self.depth = depth
+        new_agents = self.DEPTH_AGENTS.get(depth, self.DEPTH_AGENTS["std"])
+        for a in new_agents:
+            if a not in self.agent_status:
+                self.agents.append(a)
+                self.agent_status[a] = {"status": "pending", "elapsed": 0, "cost": 0.0}
+        self._write_json()
 
     def set_attempt(self, n: int) -> None:
         self.attempt = n

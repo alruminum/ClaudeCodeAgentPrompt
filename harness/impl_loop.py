@@ -123,6 +123,7 @@ def run_simple(
     prefix: str,
     branch_type: str = "feat",
     run_logger: Optional[RunLogger] = None,
+    hud: Optional[HUD] = None,
 ) -> str:
     """simple depth 구현 루프. impl_simple.sh와 동일한 흐름.
 
@@ -170,8 +171,11 @@ def run_simple(
 
     hlog_fn(f"=== 하네스 루프 시작 (depth=simple, max_retries={MAX}) ===")
 
-    # HUD 초기화
-    hud = HUD(depth, prefix, issue_num, MAX, config.max_total_cost, state_dir)
+    # HUD 초기화 (외부 전달 시 set_depth로 확장, 없으면 자체 생성)
+    if hud is not None:
+        hud.set_depth(depth)
+    else:
+        hud = HUD(depth, prefix, issue_num, MAX, config.max_total_cost, state_dir)
 
     # 히스토리 디렉토리
     hist_dir = state_dir.path / f"{prefix}_history"
@@ -331,7 +335,7 @@ def run_simple(
                 if new_depth != "simple" and new_depth in ("std", "deep"):
                     hlog_fn(f"depth 상향: simple → {new_depth}. Python 함수로 직접 전환")
                     runner = run_std if new_depth == "std" else run_deep
-                    return runner(impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger)
+                    return runner(impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger, hud)
                 hlog_fn("SPEC_GAP_RESOLVED → engineer 재시도 (depth=simple 유지, attempt 동결)")
                 error_trace = ""
                 fail_type = ""
@@ -667,6 +671,7 @@ def _run_std_deep(
     depth: str,  # "std" or "deep"
     branch_type: str = "feat",
     run_logger: Optional[RunLogger] = None,
+    hud: Optional[HUD] = None,
 ) -> str:
     """std/deep depth 공통 구현 루프.
 
@@ -706,8 +711,11 @@ def _run_std_deep(
 
     hlog_fn(f"=== 하네스 루프 시작 (depth={depth}, max_retries={MAX}) ===")
 
-    # HUD 초기화
-    hud = HUD(depth, prefix, issue_num, MAX, config.max_total_cost, state_dir)
+    # HUD 초기화 (외부 전달 시 set_depth로 확장, 없으면 자체 생성)
+    if hud is not None:
+        hud.set_depth(depth)
+    else:
+        hud = HUD(depth, prefix, issue_num, MAX, config.max_total_cost, state_dir)
 
     hist_dir = state_dir.path / f"{prefix}_history"
     run_ts = os.environ.get("HARNESS_RUN_TS", time.strftime("%Y%m%d_%H%M%S"))
@@ -1370,19 +1378,19 @@ def _run_std_deep(
 def run_std(
     impl_file: str, issue_num: str | int, config: HarnessConfig,
     state_dir: StateDir, prefix: str, branch_type: str = "feat",
-    run_logger: Optional[RunLogger] = None,
+    run_logger: Optional[RunLogger] = None, hud: Optional[HUD] = None,
 ) -> str:
     """std depth 구현 루프. impl_std.sh 대체."""
-    return _run_std_deep(impl_file, issue_num, config, state_dir, prefix, "std", branch_type, run_logger)
+    return _run_std_deep(impl_file, issue_num, config, state_dir, prefix, "std", branch_type, run_logger, hud)
 
 
 def run_deep(
     impl_file: str, issue_num: str | int, config: HarnessConfig,
     state_dir: StateDir, prefix: str, branch_type: str = "feat",
-    run_logger: Optional[RunLogger] = None,
+    run_logger: Optional[RunLogger] = None, hud: Optional[HUD] = None,
 ) -> str:
     """deep depth 구현 루프. impl_deep.sh 대체."""
-    return _run_std_deep(impl_file, issue_num, config, state_dir, prefix, "deep", branch_type, run_logger)
+    return _run_std_deep(impl_file, issue_num, config, state_dir, prefix, "deep", branch_type, run_logger, hud)
 
 
 # ═══════════════════════════════════════════════════════════════════════

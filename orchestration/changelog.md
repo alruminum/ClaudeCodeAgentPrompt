@@ -20,3 +20,4 @@
 | 2026-04-15 | `core.py` HUD.cleanup() 삭제 대신 완료 상태 기록으로 변경 | cleanup()이 HARNESS_DONE 직전에 hud.json 삭제 → harness-monitor가 최종 상태를 못 읽음. 삭제 대신 `status: "done"` 기록 후 파일 유지 |
 | 2026-04-15 | Second Reviewer — 외부 AI(Gemini/GPT) 병렬 리뷰 | pr-reviewer와 동시 실행, LGTM 시 findings → POLISH 합산. config.second_reviewer로 on/off. CLI 미설치 시 자동 스킵 |
 | 2026-04-15 | Handoff 전 파이프라인 확장 — architect→validator→engineer→pr-reviewer | 기존 handoff는 engineer→test-engineer, SPEC_GAP만 커버. simple 모드 전체 체인에 handoff 추가. JSONL에 handoff 이벤트 로깅. harness-review.py가 handoff 유무에 따라 WASTE_DUPLICATE_READ 심각도/fix 분기 |
+| 2026-04-15 | HUD 전체 라이프사이클 커버 — run_impl() 진입 시 생성 | 기존: run_simple/run_std 내부에서만 HUD 생성 → architect/plan-validation 사각지대. 변경: run_impl()에서 depth="auto"로 HUD 생성, preamble(architect+plan-validation) 포함, set_depth()로 depth별 에이전트 확장. run_simple/run_std/run_deep에 hud 파라미터 전달 |

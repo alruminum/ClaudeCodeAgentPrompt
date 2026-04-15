@@ -55,11 +55,17 @@
 ### Handoff 문서 (에이전트 간 인수인계)
 에이전트 전환 시 하네스가 자동으로 구조화된 인수인계 문서를 생성한다 (에이전트 프롬프트 변경 없음).
 - 저장: `.claude/harness-state/{prefix}_handoffs/attempt-{N}/{from}-to-{to}.md`
-- 적용 지점: engineer→test-engineer, SPEC_GAP engineer→architect
+- 적용 지점: architect→validator, validator→engineer, engineer→pr-reviewer, engineer→test-engineer, SPEC_GAP engineer→architect
+- JSONL에 `{"event": "handoff", "from": ..., "to": ...}` 이벤트 로깅
 - `explore_instruction()`에 `handoff_path` 파라미터 추가 — handoff 우선, 상세 로그는 필요 시만
+- `harness-review.py`: handoff 이벤트 존재 시 WASTE_DUPLICATE_READ 심각도 LOW로 하향
 
 ### HUD Statusline (진행 상태 시각화)
-impl 루프 실행 중 depth별 에이전트 체인의 진행 상태를 stdout에 시각적으로 표시.
+impl 전체 라이프사이클의 진행 상태를 stdout에 시각적으로 표시.
+- `run_impl()` 진입 시 HUD 생성 (depth="auto", preamble: architect + plan-validation)
+- depth 확정 후 `set_depth()`로 depth별 에이전트 목록 확장
+- run_simple/run_std/run_deep에 `hud` 파라미터 전달 — 외부 HUD가 있으면 재사용, 없으면 자체 생성
+- 재진입 경로(plan_validation_passed 플래그): preamble 없이 depth 루프가 자체 HUD 생성
 - 실시간 JSON: `.claude/harness-state/{prefix}_hud.json`
 - `/harness-monitor` 스킬: 별도 세션에서 HUD를 실시간 모니터링 (전용 세션, 무한 대기)
 - 하네스 완료 시 HUD 파일 유지 (`"status": "done"` 필드 추가), 다음 루프 시작 시 덮어쓰기
