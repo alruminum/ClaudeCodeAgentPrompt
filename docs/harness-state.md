@@ -165,7 +165,7 @@ Claude Code 위에서 Python 코어 + Bash 래퍼 + Python 훅으로 동작 (외
 - **3단계 depth**: simple (engineer → pr-reviewer → POLISH → merge), std (+ test-engineer → validator → POLISH), deep (+ security-reviewer). engineer 직후 feature branch 즉시 커밋.
 - **POLISH 모드**: pr-reviewer LGTM 후 NICE TO HAVE 항목을 engineer `@MODE:ENGINEER:POLISH` (180초)로 경량 정리. regression 실패 시 `git reset --hard` revert → 원본으로 merge.
 - **test/lint command 설정화**: `config.test_command` / `config.lint_command`로 프레임워크 비종속 (vitest 하드코딩 제거).
-- **Second Reviewer v3**: `harness/providers.py`의 어댑터 패턴으로 외부 AI 파일별 리뷰. pr-reviewer와 threading 병렬. `git diff HEAD~1 -- {file}`로 파일별 patch 추출 → stdin pipe로 gemini 호출 (파일당 60초). 2단계 프롬프트(1차 diff만, NEED_FULL_FILE 시 2차 전체 파일). LGTM 시 findings → POLISH 합산. CLI 미설치/에러 → 자동 스킵.
+- **Second Reviewer v3**: `harness/providers.py`의 어댑터 패턴으로 외부 AI 파일별 리뷰. 지원 프로바이더: Gemini (`gemini` CLI, stdin pipe), Codex (`codex exec`, OMC 참고). pr-reviewer와 threading 병렬. `git diff HEAD~1 -- {file}`로 파일별 patch 추출 (파일당 60초). 2단계 프롬프트(1차 diff만, NEED_FULL_FILE 시 2차 전체 파일). LGTM 시 findings → POLISH 합산. CLI 미설치/에러 → 자동 스킵. 새 프로바이더 추가: providers.py에 클래스 + PROVIDERS dict 등록만.
 - **SPEC_GAP 핸들링**: SPEC_GAP_FOUND → architect SPEC_GAP → 3-way 분기 (RESOLVED/PP_ESCALATION/TECH_CONSTRAINT). `spec_gap_count` 동결 카운터 (max 2).
 - **plan.sh**: 6단계 흐름 (product-planner → architect SD → validator DV → architect MP → validator PV → PLAN_VALIDATION_PASS). product-planner가 CLARITY_INSUFFICIENT 에스컬레이션 시 메인 Claude가 유저에게 추가 질문 후 재실행 (max 2회).
 - **모호성 정량화**: product-plan 스킬이 5차원 모호성 점수(Goal/User/Scope/Constraints/Success)로 인터뷰. 20% 미만 도달 시 plan 루프 진입.

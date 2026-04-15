@@ -140,11 +140,57 @@ class GeminiProvider(BaseProvider):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# CodexProvider (OpenAI Codex CLI)
+# ═══════════════════════════════════════════════════════════════════════
+
+class CodexProvider(BaseProvider):
+    """OpenAI Codex CLI: `codex exec` 명령. OMC 참고."""
+    name = "codex"
+    cli_name = "codex"
+
+    def _call_cli(self, prompt: str, model: str, timeout: int = 60) -> str:
+        """codex exec: stdin pipe로 프롬프트 전달."""
+        cmd = ["codex", "exec"]
+        if model:
+            cmd.extend(["--model", model])
+        # OMC 방식: 500자 초과 시 stdin pipe
+        if len(prompt) > 500 or "\n" in prompt:
+            proc = subprocess.Popen(
+                cmd + ["-"],  # "-" = stdin에서 읽기
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        else:
+            proc = subprocess.Popen(
+                cmd + [prompt],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            prompt = None  # positional arg로 전달했으므로 stdin 불필요
+
+        try:
+            stdout, stderr = proc.communicate(input=prompt, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise TimeoutError(f"codex timeout ({timeout}s)")
+
+        if proc.returncode != 0:
+            raise RuntimeError(f"codex exit {proc.returncode}: {stderr[:200]}")
+
+        return stdout.strip()
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 프로바이더 레지스트리 + 배치 실행
 # ═══════════════════════════════════════════════════════════════════════
 
 PROVIDERS = {
     "gemini": GeminiProvider,
+    "codex": CodexProvider,
 }
 
 

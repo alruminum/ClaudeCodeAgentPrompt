@@ -658,6 +658,24 @@ class TestSecondReviewV3(unittest.TestCase):
         cfg = HarnessConfig()
         self.assertEqual(cfg.second_reviewer, "")
 
+    def test_codex_provider_not_installed(self):
+        from harness.providers import get_provider
+        import shutil
+        if shutil.which("codex"):
+            self.skipTest("codex is installed")
+        result = get_provider("codex")
+        self.assertIsNone(result)
+
+    def test_provider_registry_has_all(self):
+        from harness.providers import PROVIDERS
+        self.assertIn("gemini", PROVIDERS)
+        self.assertIn("codex", PROVIDERS)
+
+    def test_base_provider_interface(self):
+        from harness.providers import BaseProvider
+        p = BaseProvider()
+        self.assertFalse(p.is_available())  # cli_name 없으므로
+
 
 if __name__ == "__main__":
     unittest.main()
