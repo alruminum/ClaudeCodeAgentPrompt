@@ -313,16 +313,19 @@ def start_second_review(
     )
 
     if reviewer == "gemini":
-        cmd = ["gemini", "-m", model or "gemini-2.5-flash", prompt]
+        cmd = ["gemini", "--model", model or "gemini-2.5-flash"]
     elif reviewer == "gpt":
-        cmd = ["gpt", "-m", model or "gpt-4o-mini", prompt]
+        cmd = ["gpt", "-m", model or "gpt-4o-mini"]
     else:
-        cmd = [cli_name, prompt]
+        cmd = [cli_name]
 
     try:
-        return subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        # Popen + _prompt 속성으로 프롬프트 보존 → collect_second_review에서 communicate(input=)로 전달
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
+        proc._review_prompt = prompt  # type: ignore[attr-defined]
+        return proc
     except OSError as e:
         print(f"[HARNESS] second_reviewer 실행 실패: {e}")
         return None
@@ -333,7 +336,9 @@ def collect_second_review(proc: Optional[subprocess.Popen], timeout: int = 120) 
     if proc is None:
         return ""
     try:
-        stdout, stderr = proc.communicate(timeout=timeout)
+        # start_second_review에서 _review_prompt에 보존한 프롬프트를 stdin으로 전달
+        prompt_input = getattr(proc, "_review_prompt", None)
+        stdout, stderr = proc.communicate(input=prompt_input, timeout=timeout)
         if proc.returncode != 0:
             if stderr and any(kw in stderr.lower() for kw in ("auth", "unauthorized", "api key")):
                 print(f"[HARNESS] second_reviewer 인증 에러 — 스킵")

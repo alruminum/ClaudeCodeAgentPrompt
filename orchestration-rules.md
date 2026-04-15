@@ -79,7 +79,7 @@ pr-reviewer LGTM 후, merge 전에 NICE TO HAVE 항목을 경량 정리한다.
 ### Second Reviewer (외부 AI 병렬 리뷰)
 pr-reviewer(Claude) 실행과 동시에 외부 AI(Gemini/GPT)를 비동기로 병렬 실행. 추가 대기 시간 0.
 - 설정: `harness.config.json`의 `second_reviewer` (예: `"gemini"`, `"gpt"`, `""` = 비활성)
-- 실행: pr-reviewer `agent_call` 직전에 `subprocess.Popen`으로 비동기 발사, 완료 후 결과 수집
+- 실행: pr-reviewer `agent_call` 직전에 `subprocess.Popen`으로 비동기 발사 (stdin으로 프롬프트 전달), 완료 후 결과 수집
 - 결과 합산: LGTM 시 findings → POLISH 항목에 append (기존 POLISH 파이프라인 재활용)
 - CHANGES_REQUESTED 시 gemini 결과 무시 (기능 수정 우선)
 - 폴백: CLI 미설치/타임아웃/에러 → 조용히 스킵, 기존 파이프라인 영향 0

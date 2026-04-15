@@ -19,6 +19,7 @@ try:
         Flag, RunLogger, StateDir,
         agent_call, parse_marker, detect_depth,
         run_plan_validation,
+        generate_handoff, write_handoff,
     )
     from .impl_loop import run_simple, run_std, run_deep
 except ImportError:
@@ -27,6 +28,7 @@ except ImportError:
         Flag, RunLogger, StateDir,
         agent_call, parse_marker, detect_depth,
         run_plan_validation,
+        generate_handoff, write_handoff,
     )
     from impl_loop import run_simple, run_std, run_deep
 
@@ -189,6 +191,8 @@ def run_impl(
     os.environ["HARNESS_HIST_DIR"] = str(impl_run_dir)
 
     # ── impl 파일 없으면 architect 호출 ──
+    arch_content = ""
+    arch_out = ""
     if not impl_file or not Path(impl_file).exists():
         issue_labels = ""
         issue_summary = ""
@@ -305,6 +309,7 @@ def run_impl(
             m = re.search(r"docs/[^ ]+\.md", arch_content)
             impl_file = m.group(0) if m else ""
         except OSError:
+            arch_content = ""
             impl_file = ""
         print(f"[HARNESS] impl: {impl_file}")
 
@@ -313,12 +318,32 @@ def run_impl(
         print("SPEC_GAP_ESCALATE: architect가 impl 파일을 생성하지 못했다.")
         return "SPEC_GAP_ESCALATE"
 
+    # ── Handoff: architect → validator ──
+    _arch_handoff_path = None
+    if arch_out:
+        try:
+            if not arch_content:
+                arch_content = Path(arch_out).read_text(encoding="utf-8", errors="replace")
+            _arch_handoff = generate_handoff(
+                "architect", "validator", arch_content,
+                impl_file, 0, issue_num,
+            )
+            _arch_handoff_path = write_handoff(state_dir, prefix, 0, "architect", "validator", _arch_handoff)
+            if run_logger:
+                run_logger.log_event({
+                    "event": "handoff", "from": "architect", "to": "validator",
+                    "path": str(_arch_handoff_path), "t": int(time.time()),
+                })
+        except OSError:
+            pass
+
     # ── depth frontmatter 강제 검증 ──
     ensure_depth_frontmatter(impl_file, issue_num, prefix, state_dir, run_logger, config)
 
     # ── Plan Validation ──
     print("[HARNESS] Plan Validation")
-    if run_plan_validation(impl_file, issue_num, prefix, 1, state_dir, run_logger, config):
+    if run_plan_validation(impl_file, issue_num, prefix, 1, state_dir, run_logger, config,
+                           handoff_path=str(_arch_handoff_path) if _arch_handoff_path else None):
         (state_dir.path / f"{prefix}_impl_path").write_text(impl_file, encoding="utf-8")
         print("PLAN_VALIDATION_PASS")
         print(f"impl: {impl_file}")

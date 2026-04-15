@@ -278,8 +278,15 @@ def extract_contexts(events):
 
 # ── 낭비 패턴 탐지 ──────────────────────────────────────────────────
 
-def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
+def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions, events=None):
     patterns = []
+
+    # 핸드오프 이벤트에서 커버된 에이전트 쌍 추출
+    handoff_pairs = set()
+    if events:
+        for e in events:
+            if e.get("event") == "handoff":
+                handoff_pairs.add((e.get("from", ""), e.get("to", "")))
 
     # 에이전트별 파일 목록 (new format 우선, 없으면 stream 파싱)
     all_files = {}
@@ -457,13 +464,29 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions):
                 file_readers[f].append(agent)
     for filepath, readers in file_readers.items():
         if len(readers) >= 3:
-            patterns.append({
-                "type": "WASTE_DUPLICATE_READ",
-                "severity": "MEDIUM",
-                "agent": readers[0],
-                "detail": f"`{os.path.basename(filepath)}` {len(readers)}개 에이전트가 중복 읽기: {', '.join(readers)}",
-                "fix": "이전 에이전트 출력에 파일 내용 요약을 포함해 후속 에이전트의 재읽기 제거",
-            })
+            # 핸드오프가 커버하는 에이전트 쌍인지 확인
+            has_handoff = False
+            if handoff_pairs:
+                for i in range(len(readers) - 1):
+                    if (readers[i], readers[i + 1]) in handoff_pairs:
+                        has_handoff = True
+                        break
+            if has_handoff:
+                patterns.append({
+                    "type": "WASTE_DUPLICATE_READ",
+                    "severity": "LOW",
+                    "agent": readers[0],
+                    "detail": f"`{os.path.basename(filepath)}` {len(readers)}개 에이전트가 중복 읽기: {', '.join(readers)} (핸드오프 있음)",
+                    "fix": "에이전트 프롬프트에서 핸드오프 문서 우선 참조 지시 강화",
+                })
+            else:
+                patterns.append({
+                    "type": "WASTE_DUPLICATE_READ",
+                    "severity": "MEDIUM",
+                    "agent": readers[0],
+                    "detail": f"`{os.path.basename(filepath)}` {len(readers)}개 에이전트가 중복 읽기: {', '.join(readers)}",
+                    "fix": "generate_handoff 추가하여 에이전트 간 인수인계 문서 전달",
+                })
 
     return patterns
 
@@ -1035,7 +1058,7 @@ def analyze_file(filepath, session_jsonl=None):
     else:
         stream_tools, stream_files = {}, []
 
-    waste = detect_waste(timeline, agent_stats_data, stream_tools, stream_files, decisions)
+    waste = detect_waste(timeline, agent_stats_data, stream_tools, stream_files, decisions, events)
     waste = detect_waste_with_context(waste, run_info, config, events)
     flow_issues = detect_flow_issues(run_info, timeline, events)
 
