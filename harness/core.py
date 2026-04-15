@@ -166,8 +166,9 @@ class HUD:
         }
 
         self._hud_path: Optional[Path] = None
-        if state_dir:
-            self._hud_path = state_dir.path / f"{prefix}_hud.json"
+        if prefix:
+            # /tmp에 저장 — harness-state에 두면 Claude CLI 에이전트 세션이 삭제함
+            self._hud_path = Path(f"/tmp/{prefix}_hud.json")
 
     def set_depth(self, depth: str) -> None:
         """depth 확정 후 에이전트 목록 확장."""
@@ -265,12 +266,10 @@ class HUD:
         except OSError:
             _dbg = None
         if not self._hud_path:
-            # fallback: prefix 기반 경로 추론
+            # fallback: /tmp 기반
             if self.prefix:
-                _fb = Path.cwd() / ".claude" / "harness-state"
-                if _fb.is_dir():
-                    self._hud_path = _fb / f"{self.prefix}_hud.json"
-                    if _dbg:
+                self._hud_path = Path(f"/tmp/{self.prefix}_hud.json")
+                if _dbg:
                         try:
                             with open(_dbg, "a") as f:
                                 f.write(f"fallback: {self._hud_path}\n")

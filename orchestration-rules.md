@@ -70,6 +70,7 @@ impl 전체 라이프사이클의 진행 상태를 stdout에 시각적으로 표
 - `/harness-monitor` 스킬: 별도 세션에서 HUD를 실시간 모니터링 (전용 세션, 무한 대기)
 - 하네스 완료 시 HUD 파일 유지 (`"status": "done"` 필드 추가), 다음 루프 시작 시 덮어쓰기
 - `_write_json` 디버그: `_hud_debug.log`에 파일 기반 진단 로그 (stdout 버퍼링 우회)
+- HUD 파일 경로: `/tmp/{prefix}_hud.json` (harness-state에 쓰면 Claude CLI 에이전트 세션이 삭제함)
 
 ### POLISH 모드 (LGTM 후 경량 코드 다듬기)
 pr-reviewer LGTM 후, merge 전에 NICE TO HAVE 항목을 경량 정리한다.

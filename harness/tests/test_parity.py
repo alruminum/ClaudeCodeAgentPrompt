@@ -572,8 +572,8 @@ class TestHUD(unittest.TestCase):
             hud.agent_skip("security-reviewer", "depth=std")
             self.assertEqual(hud.agent_status.get("security-reviewer", {}).get("status"), None)  # std에 없음
 
-            # HUD JSON 파일 생성 확인
-            hud_path = sd.path / "test_hud.json"
+            # HUD JSON 파일 생성 확인 (/tmp에 저장)
+            hud_path = Path("/tmp/test_hud.json")
             self.assertTrue(hud_path.exists())
             data = json.loads(hud_path.read_text())
             self.assertEqual(data["depth"], "std")
@@ -584,6 +584,9 @@ class TestHUD(unittest.TestCase):
             self.assertTrue(hud_path.exists())  # 파일은 유지됨
             cleanup_data = json.loads(hud_path.read_text())
             self.assertIn("status", cleanup_data)  # 완료 상태 기록
+
+            # 정리
+            hud_path.unlink(missing_ok=True)
 
     def test_hud_depth_agents(self):
         from harness.core import HUD
