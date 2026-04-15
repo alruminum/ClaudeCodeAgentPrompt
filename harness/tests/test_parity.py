@@ -677,5 +677,34 @@ class TestSecondReviewV3(unittest.TestCase):
         self.assertFalse(p.is_available())  # cli_name 없으므로
 
 
+class TestImplScopeGuard(unittest.TestCase):
+    def test_extract_allowed_files(self):
+        """impl 파일에서 수정 파일 목록을 추출하는지 검증."""
+        import re
+        content = """# Fix
+## 수정 파일
+- `src/pages/ResultPage.tsx` (수정)
+- `src/components/ComboIndicator.tsx` (수정)
+
+## 다음 섹션
+"""
+        allowed = []
+        in_section = False
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("## 수정 파일"):
+                in_section = True
+                continue
+            if in_section:
+                if stripped.startswith("## "):
+                    break
+                m = re.search(r"`([^`]+)`", stripped)
+                if m:
+                    allowed.append(m.group(1))
+        self.assertEqual(len(allowed), 2)
+        self.assertIn("src/pages/ResultPage.tsx", allowed)
+        self.assertIn("src/components/ComboIndicator.tsx", allowed)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -317,6 +317,47 @@ def run_automated_checks(
             print(f"AUTOMATED_CHECKS_FAIL: file_unchanged ({pf})")
             return False, msg
 
+    # 4. Impl Scope Guard: impl 파일의 수정 대상 외 파일 변경 감지
+    try:
+        impl_content = Path(impl_file).read_text(encoding="utf-8")
+        # "## 수정 파일" 섹션에서 파일 목록 추출
+        allowed_files: list = []
+        in_section = False
+        for line in impl_content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("## 수정 파일") or stripped.startswith("## Modified Files"):
+                in_section = True
+                continue
+            if in_section:
+                if stripped.startswith("## ") or stripped.startswith("---"):
+                    break
+                # "- `src/pages/ResultPage.tsx` (수정)" 같은 형식
+                m = re.search(r"`([^`]+)`|(\S+\.(?:tsx?|jsx?|py|css|json|md))", stripped)
+                if m:
+                    allowed_files.append(m.group(1) or m.group(2))
+
+        if allowed_files:
+            # 실제 변경된 src 파일 (인프라 파일 제외)
+            r_diff = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            changed = [
+                f.strip() for f in r_diff.stdout.splitlines()
+                if f.strip()
+                and not f.strip().startswith(".claude/")
+                and not f.strip().startswith("CLAUDE")
+                and f.strip() != "package.json"
+            ]
+            out_of_scope = [f for f in changed if not any(f.endswith(a) or a in f for a in allowed_files)]
+            if out_of_scope:
+                msg = f"scope_violation: impl에 없는 파일 변경됨: {', '.join(out_of_scope[:5])}"
+                out_file.write_text(msg, encoding="utf-8")
+                print(f"AUTOMATED_CHECKS_FAIL: scope_violation ({', '.join(out_of_scope[:3])})")
+                return False, msg
+    except OSError:
+        pass  # impl 파일 읽기 실패 시 스킵 (체크 불가)
+
     print("AUTOMATED_CHECKS_PASS")
     return True, ""
 
