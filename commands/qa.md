@@ -83,8 +83,9 @@ QA 분석 결과에서 depth를 추천한다. 기준: **이 버그 수정이 기
 - `std`: 새 처리 경로 신설 — 기존에 없던 에러 핸들링·재시도 로직·상태·모듈 추가 필요
 - `deep`: 보안·결제·인증 관련
 
+⚠️ **Bash 도구 호출 시 반드시 `timeout: 1800000` (30분) 파라미터를 포함한다.** impl 루프는 최대 20분+ 소요.
+
 ```bash
-# PREFIX: .claude/harness.config.json 있으면 읽고, 없으면 생략
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
 python3 ~/.claude/harness/executor.py impl \

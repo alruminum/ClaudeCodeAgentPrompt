@@ -93,17 +93,19 @@ description: 기능 추가/변경 요청을 명확히 정의한 뒤 하네스 pl
 
 ### 3단계: 하네스 plan 루프 실행
 
-Bash 호출 시 **반드시 timeout 3600000 (60분)을 명시**한다. plan 루프 에이전트 합산 시간이 기본 Bash timeout(20분)을 초과한다.
+⚠️ **CRITICAL: Bash 도구 호출 시 반드시 `timeout: 3600000` 파라미터를 포함한다.**
+plan 루프는 에이전트 5개가 순차 실행되어 최대 40분 소요. Bash 기본 timeout(20분)으로는 완주 불가.
 
-```bash
-PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
-PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
-python3 ~/.claude/harness/executor.py plan \
-  --context "[준비도 리포트 전문 + 5차원 수집 내용]" \
-  $PREFIX_FLAG
+Bash 도구 호출 형식 (timeout 필수):
 ```
-
-**Bash 도구 호출 시 timeout 파라미터 예시**: `timeout: 3600000`
+command: |
+  PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
+  PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
+  python3 ~/.claude/harness/executor.py plan \
+    --context "[준비도 리포트 전문 + 5차원 수집 내용]" \
+    $PREFIX_FLAG
+timeout: 3600000
+```
 
 GitHub 이슈 번호를 유저가 언급했으면 `--issue <N>` 추가.
 
@@ -114,11 +116,13 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
 1. product-planner가 제시한 **"질문 제안"**을 유저에게 전달
 2. 유저 답변 수집
 3. 준비도 리포트의 해당 차원 점수 갱신
-4. plan 루프 재실행 (**timeout 3600000 필수**):
-   ```bash
-   python3 ~/.claude/harness/executor.py plan \
-     --context "[갱신된 리포트 + 추가 답변 + PRD 초안: prd-draft.md]" \
-     $PREFIX_FLAG
+4. plan 루프 재실행 (**timeout: 3600000 필수**):
+   ```
+   command: |
+     python3 ~/.claude/harness/executor.py plan \
+       --context "[갱신된 리포트 + 추가 답변 + PRD 초안: prd-draft.md]" \
+       $PREFIX_FLAG
+   timeout: 3600000
    ```
 5. **최대 2회 반복**. 3회째 CLARITY_INSUFFICIENT가 오면:
    "product-planner가 여전히 정보 부족을 보고합니다. 현재 상태로 강제 진행할까요?"
