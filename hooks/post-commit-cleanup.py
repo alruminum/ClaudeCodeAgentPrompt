@@ -41,6 +41,16 @@ def main():
             except Exception:
                 pass
 
+    # orch-rules-first 플래그 리셋 — 커밋 단위로 강제
+    # orchestration-rules.md 수정 → 스크립트 수정 → 커밋 = 하나의 단위
+    # 다음 기능은 orchestration-rules.md를 다시 먼저 수정해야 함
+    orch_flag = "/tmp/_orch_rules_touched"
+    if os.path.exists(orch_flag):
+        try:
+            os.remove(orch_flag)
+        except Exception:
+            pass
+
     sys.exit(0)
 
 
