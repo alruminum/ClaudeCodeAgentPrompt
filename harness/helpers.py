@@ -371,16 +371,31 @@ def run_automated_checks(
     except OSError:
         pass  # impl 파일 읽기 실패 시 스킵 (체크 불가)
 
-    # 5. lint check (config.lint_command 있으면 실행)
+    # 5. lint check (config.lint_command 있으면 실행 — 변경 파일 스코프 우선)
     if config and getattr(config, "lint_command", "") and config.lint_command:
+        # 변경된 lintable 파일 추출
+        _diff_r = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        _lintable_exts = ('.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs')
+        _changed_src = [
+            f.strip() for f in _diff_r.stdout.splitlines()
+            if f.strip() and any(f.strip().endswith(e) for e in _lintable_exts)
+        ]
+        if _changed_src:
+            # 변경 파일만 lint (pre-existing 에러 회피)
+            _lint_cmd = f"{config.lint_command} {' '.join(_changed_src)}"
+        else:
+            _lint_cmd = config.lint_command
         _lint_r = subprocess.run(
-            config.lint_command, shell=True, capture_output=True, text=True, timeout=60,
+            _lint_cmd, shell=True, capture_output=True, text=True, timeout=60,
         )
         if _lint_r.returncode != 0:
             _lint_err = _lint_r.stdout[:500] + _lint_r.stderr[:500]
-            msg = f"lint_fail: {config.lint_command} 실패\n{_lint_err}"
+            msg = f"lint_fail: {_lint_cmd} 실패\n{_lint_err}"
             out_file.write_text(msg, encoding="utf-8")
-            print(f"AUTOMATED_CHECKS_FAIL: lint ({config.lint_command})")
+            print(f"AUTOMATED_CHECKS_FAIL: lint ({_lint_cmd})")
             return False, msg
 
     # 6. build / type-check (config.build_command 있으면 실행)

@@ -167,6 +167,18 @@ engineer 구현 후 automated_checks에서 impl 파일의 `## 수정 파일` 목
 - `.claude/` 등 인프라 파일은 제외 (harness가 자동 수정하는 파일)
 - engineer가 impl 범위 밖을 자의적으로 수정하는 "과잉 수정" 패턴 방지
 
+### Autocheck 실패 피드백 (engineer 재시도 시 에러 전달)
+autocheck_fail 재시도 시 engineer에게 에러 내용(error_trace)을 task에 포함한다.
+- `fail_type == "autocheck_fail"` 분기 추가 → `{prefix}_autocheck_fail.txt` 내용을 task에 삽입
+- engineer가 "무엇이 실패했는지" 알아야 고칠 수 있다. 에러 없이 재시도하면 동일 실패 반복 → 서킷 브레이커.
+- `pr_fail` 분기와 동일 패턴: 에러 로그 경로를 `explore_instruction()`에 전달.
+
+### Lint/Build Scope 필터 (pre-existing 에러 구분)
+automated_checks lint/build 실패 시 engineer가 수정한 파일만 검사하는 옵션.
+- `git diff --name-only HEAD` 결과에서 src/ 파일 추출 → 해당 파일만 lint 대상으로 축소.
+- lint_command에 파일 목록 전달 가능한 경우 (eslint 등): 변경 파일만 전달.
+- 전체 린트가 필요한 경우: 변경 파일과 무관한 에러는 경고만 출력하고 PASS 처리.
+
 ### Build Gate (빌드/타입체크 자동 검증)
 engineer 구현 후 automated_checks에서 `config.build_command`를 실행.
 - 설정: `harness.config.json`의 `build_command` (예: `"npx tsc --noEmit"`, `""` = 비활성)
