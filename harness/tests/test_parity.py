@@ -364,6 +364,32 @@ class TestConfigTestCommand(unittest.TestCase):
             self.assertEqual(cfg.test_command, "npm test")
 
 
+class TestConfigBuildCommand(unittest.TestCase):
+    def test_empty_build_command_means_skip(self):
+        cfg = HarnessConfig(build_command="")
+        self.assertEqual(cfg.build_command, "")
+
+    def test_custom_build_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            config_dir = Path(td) / ".claude"
+            config_dir.mkdir()
+            (config_dir / "harness.config.json").write_text(
+                '{"prefix": "x", "build_command": "npx tsc --noEmit"}'
+            )
+            cfg = load_config(Path(td))
+            self.assertEqual(cfg.build_command, "npx tsc --noEmit")
+
+    def test_backward_compat_no_build_command(self):
+        with tempfile.TemporaryDirectory() as td:
+            config_dir = Path(td) / ".claude"
+            config_dir.mkdir()
+            (config_dir / "harness.config.json").write_text(
+                '{"prefix": "old", "lint_command": "eslint ."}'
+            )
+            cfg = load_config(Path(td))
+            self.assertEqual(cfg.build_command, "")
+
+
 class TestAppendSuccessReflection(unittest.TestCase):
     def test_reflection_extracted(self):
         with tempfile.TemporaryDirectory() as td:

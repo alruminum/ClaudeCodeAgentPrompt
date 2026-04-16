@@ -42,6 +42,12 @@ DRIFT_MAP = {
     'agents/product-planner.md': ['harness/plan_loop.py', 'orchestration/plan.md'],
     'agents/pr-reviewer.md': ['harness/impl_loop.py'],
     'agents/security-reviewer.md': ['harness/impl_loop.py'],
+    # ── config 필드 추가 → 테스트/문서/템플릿 ──
+    'harness/config.py': [
+        'harness/tests/test_parity.py',
+        'orchestration/changelog.md',
+        'setup-harness.sh',
+    ],
     # ── 스크립트 → orchestration 상세 문서 ──
     'harness/plan_loop.py': ['orchestration/plan.md'],
     'harness/impl_router.py': ['orchestration/impl.md'],
