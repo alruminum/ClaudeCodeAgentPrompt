@@ -45,6 +45,8 @@
 ## 브랜치 정리
 | 결과 | 처리 |
 |---|---|
-| HARNESS_DONE | PR merge 시 `--delete-branch`로 remote 삭제, 로컬은 `git branch -d` |
-| IMPLEMENTATION_ESCALATE | 브랜치 보존 (remote + 로컬 모두) |
+| HARNESS_DONE | 브랜치 보존 (remote + 로컬 모두). 주기적 수동 정리. |
+| IMPLEMENTATION_ESCALATE | 브랜치 보존 |
 | MERGE_CONFLICT_ESCALATE | 브랜치 보존 |
+
+merge 후에도 브랜치를 삭제하지 않는다. GitHub에서 브랜치 이력 확인용.

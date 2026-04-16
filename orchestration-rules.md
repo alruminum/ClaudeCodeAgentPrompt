@@ -67,8 +67,8 @@
 
 ### merge_to_main — GitHub PR 경유
 - 로컬 `git merge --no-ff` 대신 **GitHub PR**을 통해 merge.
-- 순서: `git push -u origin {branch}` → `gh pr create` → `gh pr merge --merge --delete-branch`
-- 이유: feature branch 이력이 remote에 남고, PR 번호로 변경 추적 가능.
+- 순서: `git push -u origin {branch}` → `gh pr create` → `gh pr merge --merge`
+- merge 후 브랜치 보존 (로컬 + remote 모두). `--delete-branch` 사용 금지.
 - `gh pr merge` 실패 시 `MERGE_CONFLICT_ESCALATE`.
 
 ### watchdog 프로세스 정리

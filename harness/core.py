@@ -1031,20 +1031,18 @@ def merge_to_main(
             return False
         print("[HARNESS] PR이 이미 존재 — merge 진행")
 
-    # 3. PR merge (--merge = no-ff와 동일)
+    # 3. PR merge (브랜치 보존)
     r_merge = subprocess.run(
-        ["gh", "pr", "merge", branch,
-         "--merge", "--delete-branch"],
+        ["gh", "pr", "merge", branch, "--merge"],
         capture_output=True, text=True, timeout=30,
     )
     if r_merge.returncode != 0:
         print(f"MERGE_CONFLICT_ESCALATE\n{r_merge.stderr[:200]}")
         return False
 
-    # 4. 로컬 동기화
+    # 4. 로컬 동기화 (브랜치 보존 — 로컬/리모트 모두)
     _git("checkout", default)
     _git("pull")
-    _git("branch", "-d", branch)
     print(f"[HARNESS] PR merged: {branch} → {default}")
     return True
 
