@@ -74,6 +74,14 @@
 ### budget_check 예외 처리
 - budget_check에서 sys.exit(1) 대신 BudgetExceeded 예외 발생. impl_loop에서 catch하여 HUD/브랜치 정리 후 반환.
 
+### POLISH revert 안전성
+- POLISH regression 실패 시 `git reset --hard` 대신 **POLISH이 수정한 파일만 `git checkout HEAD~1 -- <files>`**로 선택적 복원 후 커밋. 전체 reset은 merge conflict 원인.
+- POLISH이 파일을 수정하지 않았으면(collect_changed_files 빈) revert 불필요.
+
+### automated_checks no_changes 감지 범위
+- `git status --short` (미커밋 변경만)이 아닌 `git diff HEAD~1 --name-only` 또는 `git diff {default_branch}..HEAD --name-only` (커밋된 변경 포함)로 확대.
+- SPEC_GAP 후 engineer 재시도 시 이전 attempt의 early commit이 있으면 `git status`가 비어서 "no_changes" 오탐.
+
 ### plan 루프 architect-mp 호출 규칙
 - architect System Design 출력에서 `design_doc` 추출 시 `docs/architecture*.md` 패턴 우선 매칭. `docs/sdk.md` 등 보조 문서가 먼저 매칭되는 문제 방지.
 - architect Module Plan 호출 시 `module` 파라미터 필수. design_doc에서 stories.md 경로를 추출하고, stories.md 첫 번째 미완료 모듈을 `module`로 전달.

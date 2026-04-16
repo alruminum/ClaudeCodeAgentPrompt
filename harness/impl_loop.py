@@ -431,7 +431,7 @@ def run_simple(
 
         # ── 워커 2: pr-reviewer + second reviewer (병렬) ─────────
         log_phase("pr-reviewer", run_logger, attempt)
-        hlog_fn("pr-reviewer 시작 (depth=simple, timeout=240s)")
+        hlog_fn("pr-reviewer 시작 (depth=simple, timeout=360s)")
         kill_check(state_dir)
         hud.agent_start("pr-reviewer")
 
@@ -475,7 +475,7 @@ def run_simple(
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
         _pr_t0 = time.time()
         agent_exit = agent_call(
-            "pr-reviewer", 240,
+            "pr-reviewer", 360,
             f'@MODE:PR_REVIEWER:REVIEW\n'
             f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
             f"변경 diff:\n{diff_out}{_eng_handoff_hint}",
@@ -569,9 +569,20 @@ def run_simple(
                     _reg_ok = False
                     hlog_fn(f"POLISH regression FAIL: test ({config.test_command})")
             if not _reg_ok:
-                hlog_fn("POLISH revert — 원본 코드로 복원")
-                print("[HARNESS] POLISH regression 실패 — 원본으로 복원")
-                subprocess.run(["git", "reset", "--hard", _pre_polish_hash], capture_output=True, timeout=10)
+                hlog_fn("POLISH revert — 변경 파일만 선택적 복원")
+                print("[HARNESS] POLISH regression 실패 — 변경 파일만 복원")
+                _polish_changed = collect_changed_files()
+                if _polish_changed:
+                    subprocess.run(
+                        ["git", "checkout", _pre_polish_hash, "--"] + _polish_changed,
+                        capture_output=True, timeout=10,
+                    )
+                    subprocess.run(["git", "add", "--"] + _polish_changed, capture_output=True, timeout=10)
+                    subprocess.run(
+                        ["git", "commit", "-m", f"revert: polish regression (#{issue_num})"],
+                        capture_output=True, timeout=10,
+                    )
+                    hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
             else:
                 # polish 변경 커밋
                 _changed = collect_changed_files()
@@ -1161,7 +1172,7 @@ def _run_std_deep(
 
         # ── ��커 4: pr-reviewer + second reviewer (병렬) ─────────
         log_phase("pr-reviewer", run_logger, attempt)
-        hlog_fn(f"pr-reviewer 시작 (depth={depth}, timeout=240s)")
+        hlog_fn(f"pr-reviewer 시작 (depth={depth}, timeout=360s)")
         hud.agent_start("pr-reviewer")
         kill_check(state_dir)
 
@@ -1192,7 +1203,7 @@ def _run_std_deep(
 
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
         agent_exit = agent_call(
-            "pr-reviewer", 240,
+            "pr-reviewer", 360,
             f'@MODE:PR_REVIEWER:REVIEW\n'
             f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
             f"변경 diff:\n{diff_out}{_eng_handoff_hint_sd}",
@@ -1272,9 +1283,20 @@ def _run_std_deep(
                     _reg_ok = False
                     hlog_fn(f"POLISH regression FAIL: test ({config.test_command})")
             if not _reg_ok:
-                hlog_fn("POLISH revert — 원본 코드로 복원")
-                print("[HARNESS] POLISH regression 실패 — 원본으로 복원")
-                subprocess.run(["git", "reset", "--hard", _pre_polish_hash], capture_output=True, timeout=10)
+                hlog_fn("POLISH revert — 변경 파일만 선택적 복원")
+                print("[HARNESS] POLISH regression 실패 — 변경 파일만 복원")
+                _polish_changed = collect_changed_files()
+                if _polish_changed:
+                    subprocess.run(
+                        ["git", "checkout", _pre_polish_hash, "--"] + _polish_changed,
+                        capture_output=True, timeout=10,
+                    )
+                    subprocess.run(["git", "add", "--"] + _polish_changed, capture_output=True, timeout=10)
+                    subprocess.run(
+                        ["git", "commit", "-m", f"revert: polish regression (#{issue_num})"],
+                        capture_output=True, timeout=10,
+                    )
+                    hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
             else:
                 _changed = collect_changed_files()
                 if _changed:

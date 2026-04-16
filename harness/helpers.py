@@ -270,14 +270,25 @@ def run_automated_checks(
     out_file = state_dir.path / f"{prefix}_autocheck_fail.txt"
     out_file.unlink(missing_ok=True)
 
-    # 1. 변경 파일 확인 (bash: git status --short | grep -qE "^ M|^M |^A ")
+    # 1. 변경 파일 확인
+    # (a) 미커밋 변경: git status --short
     r = subprocess.run(
         ["git", "status", "--short"],
         capture_output=True, text=True, timeout=10,
     )
-    has_changes = bool(re.search(r"^ M|^M |^A ", r.stdout, re.MULTILINE))
+    has_uncommitted = bool(re.search(r"^ M|^M |^A ", r.stdout, re.MULTILINE))
 
-    if not has_changes:
+    # (b) 커밋된 변경: git diff main..HEAD (SPEC_GAP 후 early commit 감지)
+    has_committed = False
+    if not has_uncommitted:
+        r_diff = subprocess.run(
+            ["git", "diff", "main..HEAD", "--name-only", "--", "src/"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r_diff.returncode == 0 and r_diff.stdout.strip():
+            has_committed = True
+
+    if not has_uncommitted and not has_committed:
         msg = "no_changes: engineer가 아무 파일도 수정하지 않음"
         out_file.write_text(msg, encoding="utf-8")
         print("AUTOMATED_CHECKS_FAIL: no_changes")
@@ -359,6 +370,18 @@ def run_automated_checks(
                 return False, msg
     except OSError:
         pass  # impl 파일 읽기 실패 시 스킵 (체크 불가)
+
+    # 5. lint check (config.lint_command 있으면 실행)
+    if config and getattr(config, "lint_command", "") and config.lint_command:
+        _lint_r = subprocess.run(
+            config.lint_command, shell=True, capture_output=True, text=True, timeout=60,
+        )
+        if _lint_r.returncode != 0:
+            _lint_err = _lint_r.stdout[:500] + _lint_r.stderr[:500]
+            msg = f"lint_fail: {config.lint_command} 실패\n{_lint_err}"
+            out_file.write_text(msg, encoding="utf-8")
+            print(f"AUTOMATED_CHECKS_FAIL: lint ({config.lint_command})")
+            return False, msg
 
     print("AUTOMATED_CHECKS_PASS")
     return True, ""
