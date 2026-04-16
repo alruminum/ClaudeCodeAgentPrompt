@@ -65,11 +65,12 @@
 ### SPEC_GAP 피드백 추출
 - engineer 출력에서 SPEC_GAP_FOUND 마커 이후 ~ 출력 끝까지 추출. 기존 50줄 하드캡 제거.
 
-### merge_to_main — GitHub PR 경유
-- 로컬 `git merge --no-ff` 대신 **GitHub PR**을 통해 merge.
-- 순서: `git push -u origin {branch}` → `gh pr create` → `gh pr merge --merge`
-- merge 후 브랜치 보존 (로컬 + remote 모두). `--delete-branch` 사용 금지.
-- `gh pr merge` 실패 시 `MERGE_CONFLICT_ESCALATE`.
+### GitHub PR 워크플로우
+- 매 커밋 직후 `push_and_ensure_pr()`를 호출하여 push + 최초 PR 생성.
+- PR이 이미 열려있으면 push만 (GitHub이 PR에 자동 반영).
+- PR body는 `generate_pr_body()` 재사용.
+- LGTM 후 `merge_to_main()`이 `gh pr merge --squash`로 커밋 1개로 합쳐서 main에 merge.
+- merge 후 브랜치 보존 (로컬 + remote 모두).
 
 ### watchdog 프로세스 정리
 - watchdog에서 proc.kill() 후 proc.stdout.close() 추가. stdout 파이프 교착 방지.
