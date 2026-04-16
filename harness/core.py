@@ -185,6 +185,21 @@ class HUD:
     def set_attempt(self, n: int) -> None:
         self.attempt = n
 
+    def _event(self, msg: str) -> None:
+        """이벤트 로그 파일에 한 줄 append (tail -f 용)."""
+        if not hasattr(self, "_event_path"):
+            if self._hud_path:
+                self._event_path = self._hud_path.parent / f".{self.prefix}_events"
+            else:
+                self._event_path = None
+        if self._event_path:
+            try:
+                ts = time.strftime("%H:%M:%S")
+                with open(self._event_path, "a") as f:
+                    f.write(f"[{ts}] {msg}\n")
+            except OSError:
+                pass
+
     def log(self, msg: str) -> None:
         """로그 메시지를 링 버퍼에 추가하고 JSON에 반영."""
         if not hasattr(self, "_log_lines"):
@@ -192,12 +207,10 @@ class HUD:
         self._log_lines.append(msg)
         if len(self._log_lines) > 8:
             self._log_lines = self._log_lines[-8:]
+        self._event(msg)
         self._write_json()
 
     def agent_start(self, agent: str) -> None:
-        if not hasattr(self, "_hud_diag_done"):
-            self._hud_diag_done = True
-            print(f"[HUD] path={self._hud_path} prefix={self.prefix} depth={self.depth}")
         if agent in self.agent_status:
             self.agent_status[agent] = {
                 "status": "running",
@@ -205,17 +218,20 @@ class HUD:
                 "elapsed": 0,
                 "cost": 0.0,
             }
+        self._event(f"{agent} 시작")
         self._write_json()
         self._print_block()
 
     def agent_done(self, agent: str, elapsed: int, cost: float, result: str = "done") -> None:
         if agent in self.agent_status:
             self.agent_status[agent] = {
-                "status": result,  # "done", "fail", "skip"
+                "status": result,
                 "elapsed": elapsed,
                 "cost": cost,
             }
         self.total_cost += cost
+        tag = "완료" if result == "done" else result
+        self._event(f"{agent} {tag} ({elapsed}s, ${cost:.2f})")
         self._write_json()
         self._print_block()
 

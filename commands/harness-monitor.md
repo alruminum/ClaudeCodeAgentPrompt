@@ -1,15 +1,17 @@
 ---
-description: 하네스 HUD 상세 스냅샷 (원샷). 실시간 모니터는 화면 하단 statusline으로 자동 표시됨.
+description: 하네스 이벤트 로그를 실시간으로 표시. 별도 터미널에서 실행하면 에이전트 시작/완료가 주욱 나옴.
 argument-hint: ""
 ---
 
 # /harness-monitor
 
-하네스 HUD 상세 스냅샷을 한 번 출력한다. 실시간 모니터링은 statusline(화면 하단)이 3초마다 자동 갱신.
+하네스 이벤트 로그를 `tail -f`로 스트리밍한다. 별도 터미널에서 실행:
 
-## 실행
+```
+! tail -f .claude/harness-state/.mb_events
+```
 
-**1단계**: 아래 Bash 스크립트를 실행해 현재 HUD 상태를 출력한다.
+또는 prefix 자동 감지:
 
 ```bash
 PREFIX=$(python3 -c "
@@ -24,72 +26,21 @@ else:
     print(re.sub(r'[^a-z0-9]', '', raw)[:8] or 'proj')
 " 2>/dev/null || echo "proj")
 
-HUD_FILE="$(pwd)/.claude/harness-state/.${PREFIX}_hud"
-
-python3 -c "
-import json, sys
-from pathlib import Path
-
-hud_file = Path('${HUD_FILE}')
-if not hud_file.exists():
-    print('⏳ 하네스 미실행 (HUD 파일 없음)')
-    sys.exit(0)
-
-try:
-    d = json.loads(hud_file.read_text())
-except (json.JSONDecodeError, OSError):
-    print('⚠️ HUD 파일 읽기 실패')
-    sys.exit(0)
-
-depth = d.get('depth', '?')
-attempt = d.get('attempt', 0) + 1
-max_att = d.get('max_attempts', 3)
-cost = d.get('cost', 0)
-budget = d.get('budget', 20)
-elapsed = d.get('elapsed', 0)
-m, s = divmod(elapsed, 60)
-agents = d.get('agents', [])
-total = len(agents)
-done = sum(1 for a in agents if a.get('status') in ('done', 'skip'))
-pct = int(done / total * 100) if total else 0
-status = d.get('status', '')
-
-if status == 'done':
-    tag = ' ✅ 완료'
-else:
-    tag = ''
-
-print(f'━━━ 📊 depth={depth} | attempt {attempt}/{max_att} | \${cost:.2f}/\${budget:.0f} | {m}m{s:02d}s | {pct}%{tag} ━━━')
-print()
-for i, ag in enumerate(agents, 1):
-    name = ag.get('name', '?')
-    st = ag.get('status', 'pending')
-    ag_elapsed = ag.get('elapsed', 0)
-    ag_cost = ag.get('cost', 0)
-
-    if st == 'done':
-        bar = '\u2593' * 20 + ' \u2705'
-        detail = f' {ag_elapsed}s \${ag_cost:.2f}'
-    elif st == 'fail':
-        bar = '\u2593' * 20 + ' \u274c'
-        detail = f' {ag_elapsed}s'
-    elif st == 'skip':
-        bar = '\u2591' * 20 + ' \u23ed'
-        detail = f' {ag.get(\"reason\", \"\")}'
-    elif st == 'running':
-        bar = '\u2593' * 10 + '\u2591' * 10 + ' \u23f3'
-        detail = f' {ag_elapsed}s...'
-    else:
-        bar = '\u2591' * 20 + '   '
-        detail = ''
-    print(f' [{i}/{total}] {name:<20s} {bar}{detail}')
-
-log = d.get('log', [])
-if log:
-    print()
-    for l in log[-5:]:
-        print(f'  > {l}')
-"
+echo "📡 하네스 모니터 (PREFIX=${PREFIX})"
+echo "   tail -f .claude/harness-state/.${PREFIX}_events"
+echo ""
+tail -f ".claude/harness-state/.${PREFIX}_events" 2>/dev/null || echo "⏳ 이벤트 파일 없음 — 하네스 시작 후 다시 실행"
 ```
 
-실시간 모니터링은 statusline(화면 하단)이 담당. 이 스킬은 상세 정보가 필요할 때만 수동 호출.
+출력 예시:
+```
+[10:23:15] architect 시작
+[10:25:01] architect → LIGHT_PLAN_READY
+[10:25:01] architect 완료 (97s, $0.30)
+[10:25:02] Plan Validation → PASS
+[10:25:02] depth: simple
+[10:25:03] engineer 시작
+[10:26:20] engineer 완료 (77s, $0.36)
+[10:26:20] pr-reviewer → LGTM
+[10:26:21] HARNESS_DONE (attempt 1)
+```
