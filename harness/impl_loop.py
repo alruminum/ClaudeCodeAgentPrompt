@@ -20,7 +20,7 @@ try:
     from .core import (
         Flag, Marker, RunLogger, StateDir, HUD,
         agent_call, parse_marker,
-        create_feature_branch, merge_to_main, generate_commit_msg,
+        create_feature_branch, merge_to_main, push_and_ensure_pr, generate_commit_msg,
         collect_changed_files,
         build_smart_context, build_validator_context, explore_instruction,
         generate_handoff, write_handoff,
@@ -39,7 +39,7 @@ except ImportError:
     from core import (
         Flag, Marker, RunLogger, StateDir, HUD,
         agent_call, parse_marker,
-        create_feature_branch, merge_to_main, generate_commit_msg,
+        create_feature_branch, merge_to_main, push_and_ensure_pr, generate_commit_msg,
         collect_changed_files,
         build_smart_context, build_validator_context, explore_instruction,
         generate_handoff, write_handoff,
@@ -397,6 +397,7 @@ def run_simple(
                 commit_suffix = f" [attempt-{attempt}-fix]"
             msg = generate_commit_msg(impl_file, issue_num) + commit_suffix
             subprocess.run(["git", "commit", "-m", msg], capture_output=True, timeout=10)
+            push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix)
 
             r = subprocess.run(
                 ["git", "rev-parse", "--short", "HEAD"],
@@ -583,6 +584,7 @@ def run_simple(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix)
             else:
                 # polish 변경 커밋
                 _changed = collect_changed_files()
@@ -593,6 +595,7 @@ def run_simple(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn("POLISH 커밋 완료")
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix)
                 print("[HARNESS] POLISH 완료")
         else:
             hlog_fn("POLISH 항목 없음 — 스킵")
@@ -958,6 +961,7 @@ def _run_std_deep(
                 commit_suffix = f" [attempt-{attempt}-fix]"
             msg = generate_commit_msg(impl_file, issue_num) + commit_suffix
             subprocess.run(["git", "commit", "-m", msg], capture_output=True, timeout=10)
+            push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
             r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
             early_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
             run_logger.log_event({"event": "commit", "hash": early_commit, "attempt": attempt + 1, "t": int(time.time())})
@@ -1297,6 +1301,7 @@ def _run_std_deep(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
             else:
                 _changed = collect_changed_files()
                 if _changed:
@@ -1306,6 +1311,7 @@ def _run_std_deep(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn("POLISH 커밋 완료")
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
                 print("[HARNESS] POLISH 완료")
         else:
             hlog_fn("POLISH 항목 없음 — 스킵")
@@ -1383,6 +1389,7 @@ def _run_std_deep(
                 capture_output=True, timeout=10,
             )
             hlog_fn("test 파일 추가 커밋 완료")
+            push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
 
         r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
         impl_commit = r.stdout.strip() if r.returncode == 0 else "unknown"

@@ -976,6 +976,69 @@ def create_feature_branch(branch_type: str, issue_num: str | int) -> str:
     return branch_name
 
 
+def push_and_ensure_pr(
+    branch: str,
+    issue: str | int,
+    impl_file: str = "",
+    depth: str = "",
+    state_dir: Optional[StateDir] = None,
+    prefix: str = "",
+) -> str:
+    """커밋 후 push + PR 없으면 생성. 반환: PR URL (실패 시 빈 문자열)."""
+    issue = str(issue)
+    default = _default_branch()
+
+    # push
+    r = subprocess.run(
+        ["git", "push", "-u", "origin", branch],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        print(f"[HARNESS] push 실패: {r.stderr[:200]}")
+        return ""
+
+    # PR 존재 확인
+    r_check = subprocess.run(
+        ["gh", "pr", "view", branch, "--json", "url", "-q", ".url"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r_check.returncode == 0 and r_check.stdout.strip():
+        print(f"[HARNESS] pushed → PR 업데이트: {r_check.stdout.strip()}")
+        return r_check.stdout.strip()
+
+    # PR 생성
+    impl_name = Path(impl_file).stem if impl_file else f"issue-{issue}"
+    pr_title = f"feat: {impl_name} (#{issue})"
+
+    # PR body: generate_pr_body 시도 (순환 의존 방지 lazy import), 실패 시 간단 body
+    pr_body = f"## Summary\n- Issue: #{issue}\n- Branch: `{branch}`\n- Depth: {depth}"
+    if impl_file and state_dir and prefix:
+        try:
+            try:
+                from .helpers import generate_pr_body as _gen_body
+            except ImportError:
+                from helpers import generate_pr_body as _gen_body
+            pr_body = _gen_body(impl_file, issue, 0, 3, state_dir, prefix)
+        except Exception:
+            pass  # fallback to simple body
+
+    r_pr = subprocess.run(
+        ["gh", "pr", "create",
+         "--title", pr_title,
+         "--body", pr_body,
+         "--base", default,
+         "--head", branch],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r_pr.returncode == 0:
+        url = r_pr.stdout.strip()
+        print(f"[HARNESS] PR 생성: {url}")
+        return url
+
+    print(f"[HARNESS] PR 생성 실패: {r_pr.stderr[:200]}")
+    return ""
+
+
 def merge_to_main(
     branch: str,
     issue: str | int,
@@ -983,7 +1046,7 @@ def merge_to_main(
     prefix: str,
     state_dir: Optional[StateDir] = None,
 ) -> bool:
-    """Feature branch → main 머지 (GitHub PR 경유). 반환: True=성공."""
+    """LGTM 후 squash merge. 반환: True=성공."""
     default = _default_branch()
 
     if state_dir is None:
@@ -1003,47 +1066,22 @@ def merge_to_main(
             print("[HARNESS] merge 거부: validator_b_passed 없음 (bugfix)")
             return False
 
-    # 1. feature branch를 remote에 push
-    r_push = subprocess.run(
-        ["git", "push", "-u", "origin", branch],
-        capture_output=True, text=True, timeout=30,
-    )
-    if r_push.returncode != 0:
-        print(f"[HARNESS] merge 거부: git push 실패\n{r_push.stderr[:200]}")
-        return False
-    print(f"[HARNESS] branch pushed: {branch}")
+    # 최종 push (미커밋 변경 없는지 확인 + PR에 최신 반영)
+    push_and_ensure_pr(branch, issue, depth=depth, state_dir=state_dir, prefix=prefix)
 
-    # 2. PR 생성
-    pr_title = f"merge: {branch} (#{issue})"
-    pr_body = f"## Summary\n- Issue: #{issue}\n- Branch: {branch}\n- Depth: {depth}"
-    r_pr = subprocess.run(
-        ["gh", "pr", "create",
-         "--title", pr_title,
-         "--body", pr_body,
-         "--base", default,
-         "--head", branch],
-        capture_output=True, text=True, timeout=30,
-    )
-    if r_pr.returncode != 0:
-        # PR이 이미 존재할 수 있음
-        if "already exists" not in r_pr.stderr:
-            print(f"[HARNESS] PR 생성 실패: {r_pr.stderr[:200]}")
-            return False
-        print("[HARNESS] PR이 이미 존재 — merge 진행")
-
-    # 3. PR merge (브랜치 보존)
+    # squash merge
     r_merge = subprocess.run(
-        ["gh", "pr", "merge", branch, "--merge"],
+        ["gh", "pr", "merge", branch, "--squash"],
         capture_output=True, text=True, timeout=30,
     )
     if r_merge.returncode != 0:
         print(f"MERGE_CONFLICT_ESCALATE\n{r_merge.stderr[:200]}")
         return False
 
-    # 4. 로컬 동기화 (브랜치 보존 — 로컬/리모트 모두)
+    # 로컬 동기화 (브랜치 보존)
     _git("checkout", default)
     _git("pull")
-    print(f"[HARNESS] PR merged: {branch} → {default}")
+    print(f"[HARNESS] PR squash merged: {branch} → {default}")
     return True
 
 

@@ -30,15 +30,12 @@
 | deep | pr_reviewer_lgtm + security_review_passed |
 
 ## 머지 흐름 (GitHub PR 경유)
-1. feature branch를 remote에 push: `git push -u origin {branch}`
-2. `gh pr create` 로 PR 생성 (제목: 커밋 메시지, 본문: impl 경로 + 이슈 링크)
-3. `gh pr merge --merge --delete-branch` 로 PR merge (--no-ff와 동일 효과)
-4. `git checkout main && git pull` 로 로컬 동기화
-
-로컬 `git merge --no-ff`를 사용하지 않는다. GitHub PR을 통해 merge해야:
-- remote에 feature branch 이력이 남음
-- PR 번호로 변경 추적 가능
-- GitHub Actions 등 CI 연동 가능
+1. engineer가 커밋할 때마다 `push_and_ensure_pr()` 호출
+   - `git push origin {branch}`
+   - 최초 push 시 `gh pr create` (이후에는 push만)
+2. pr-reviewer LGTM 후 `merge_to_main()` 호출
+   - `gh pr merge {branch} --squash` (커밋 1개로 합쳐서 main에)
+   - `git checkout main && git pull` (로컬 동기화)
 
 충돌 시: `gh pr merge` 실패 → `MERGE_CONFLICT_ESCALATE` → 메인 Claude 보고
 
