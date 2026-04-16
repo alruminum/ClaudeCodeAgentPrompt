@@ -265,6 +265,7 @@ def run_simple(
         )
         _eng_cost = float(Path(f"{eng_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{eng_out[:-4]}_cost.txt").exists() else 0.0
         hud.agent_done("engineer", int(time.time() - _eng_t0), _eng_cost, "done" if agent_exit == 0 else "fail")
+        hud.log(f"engineer {'완료' if agent_exit == 0 else 'FAIL'} ({int(time.time() - _eng_t0)}s, ${_eng_cost:.2f})")
         hlog_fn(f"engineer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("engineer timeout")
@@ -496,6 +497,7 @@ def run_simple(
             continue
 
         pr_result = parse_marker(pr_out, "LGTM|CHANGES_REQUESTED")
+        hud.log(f"pr-reviewer → {pr_result or 'UNKNOWN'}")
         print(f"[HARNESS] pr-reviewer 결과: {pr_result}")
 
         if pr_result != "LGTM":
@@ -629,6 +631,7 @@ def run_simple(
         (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
 
         hud.agent_done("merge", 0, 0.0, "done")
+        hud.log(f"HARNESS_DONE (attempt {attempt + 1})")
         hud.cleanup()
         os.environ["HARNESS_RESULT"] = "HARNESS_DONE"
         hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")
@@ -1355,6 +1358,7 @@ def _run_std_deep(
         (state_dir.path / f"{prefix}_last_issue").write_text(issue_num, encoding="utf-8")
 
         hud.agent_done("merge", 0, 0.0, "done")
+        hud.log(f"HARNESS_DONE (attempt {attempt + 1})")
         hud.cleanup()
         os.environ["HARNESS_RESULT"] = "HARNESS_DONE"
         hlog_fn(f"=== 루프 종료 (HARNESS_DONE, attempt={attempt + 1}) ===")

@@ -88,6 +88,13 @@ def render_hud(d):
             detail = ''
         lines.append(f' [{i}/{total}] {name:<20s} {bar}{detail}')
 
+    # 로그 라인 표시
+    log = d.get('log', [])
+    if log:
+        lines.append('')
+        for l in log[-5:]:
+            lines.append(f'  > {l}')
+
     lines.append('')
     return '\n'.join(lines)
 

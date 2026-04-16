@@ -101,6 +101,7 @@ def run_plan(
         run_logger.write_run_end("CLARITY_INSUFFICIENT", "", issue_num)
         return "CLARITY_INSUFFICIENT"
 
+    hud.log(f"product-planner → {pp_marker}")
     print(f"[HARNESS] product-planner → {pp_marker}")
 
     # prd.md 경로 추출 (product-planner가 저장한 파일)
@@ -148,6 +149,7 @@ def run_plan(
         run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
         return "SPEC_GAP_ESCALATE"
     hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost)
+    hud.log(f"architect-sd → {arch_sd_marker}")
     print(f"[HARNESS] architect-sd → {arch_sd_marker}")
 
     # design_doc 경로 추출
@@ -211,6 +213,7 @@ def run_plan(
         run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
         return "SPEC_GAP_ESCALATE"
     hud.agent_done("architect-mp", int(time.time() - _amp_t0), _amp_cost)
+    hud.log(f"architect-mp → {arch_mp_marker}")
     print(f"[HARNESS] architect-mp → {arch_mp_marker}")
 
     impl_file = ""
@@ -245,6 +248,7 @@ def run_plan(
     # ── 완료 ──
     (state_dir.path / f"{prefix}_impl_path").write_text(impl_file, encoding="utf-8")
     os.environ["HARNESS_RESULT"] = "PLAN_VALIDATION_PASS"
+    hud.log("PLAN_VALIDATION_PASS")
     print(f"[HARNESS] ✅ PLAN_VALIDATION_PASS")
     print(f"  impl: {impl_file}")
     print(f"  design_doc: {design_doc or 'N/A'}")

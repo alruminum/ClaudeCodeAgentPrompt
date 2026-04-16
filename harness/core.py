@@ -185,6 +185,15 @@ class HUD:
     def set_attempt(self, n: int) -> None:
         self.attempt = n
 
+    def log(self, msg: str) -> None:
+        """로그 메시지를 링 버퍼에 추가하고 JSON에 반영."""
+        if not hasattr(self, "_log_lines"):
+            self._log_lines: List[str] = []
+        self._log_lines.append(msg)
+        if len(self._log_lines) > 8:
+            self._log_lines = self._log_lines[-8:]
+        self._write_json()
+
     def agent_start(self, agent: str) -> None:
         if not hasattr(self, "_hud_diag_done"):
             self._hud_diag_done = True
@@ -295,6 +304,7 @@ class HUD:
             "budget": self.budget,
             "elapsed": int(time.time() - self.start_time),
             "issue": self.issue,
+            "log": getattr(self, "_log_lines", []),
             "agents": [
                 {"name": a, **self.agent_status[a]}
                 for a in self.agents

@@ -270,6 +270,7 @@ def run_impl(
             )
 
             print(f"[HARNESS] architect LIGHT_PLAN 작성 (issue #{issue_num}, depth_hint={depth_hint or 'none'})")
+            hud.log(f"architect LIGHT_PLAN (issue #{issue_num})")
             arch_exit = agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:LIGHT_PLAN\n"
@@ -288,6 +289,7 @@ def run_impl(
             )
         else:
             print("[HARNESS] architect Module Plan 작성")
+            hud.log(f"architect Module Plan (issue #{issue_num})")
             arch_exit = agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:MODULE_PLAN\n"
@@ -305,6 +307,7 @@ def run_impl(
             arch_out,
             "LIGHT_PLAN_READY|READY_FOR_IMPL|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT",
         )
+        hud.log(f"architect → {arch_marker or 'UNKNOWN'}")
         if arch_marker == "PRODUCT_PLANNER_ESCALATION_NEEDED":
             os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
             print("PRODUCT_PLANNER_ESCALATION_NEEDED")
@@ -327,6 +330,8 @@ def run_impl(
             arch_content = ""
             impl_file = ""
         print(f"[HARNESS] impl: {impl_file}")
+        if impl_file:
+            hud.log(f"impl: {impl_file}")
 
     if not impl_file or not Path(impl_file).exists():
         os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
@@ -369,6 +374,7 @@ def run_impl(
                     "done" if pv_passed else "fail")
 
     if pv_passed:
+        hud.log("Plan Validation → PASS")
         (state_dir.path / f"{prefix}_impl_path").write_text(impl_file, encoding="utf-8")
         print("PLAN_VALIDATION_PASS")
         print(f"impl: {impl_file}")
@@ -376,6 +382,7 @@ def run_impl(
 
         if depth == "auto":
             depth = detect_depth(impl_file)
+        hud.log(f"depth: {depth}")
         print(f"[HARNESS] depth: {depth}")
         return _dispatch_depth(depth, impl_file, issue_num, config, state_dir, prefix, branch_type, run_logger, hud)
 
