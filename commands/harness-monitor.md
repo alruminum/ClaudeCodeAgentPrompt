@@ -1,15 +1,15 @@
 ---
-description: 하네스 HUD 실시간 모니터. `/loop 5s /harness-monitor`로 반복 실행하면 대시보드처럼 동작한다.
+description: 하네스 HUD 실시간 모니터. 호출 시 원샷 스냅샷을 출력한 뒤 자동으로 `/loop 10s /harness-monitor`를 설정한다.
 argument-hint: ""
 ---
 
 # /harness-monitor
 
-하네스 HUD 스냅샷을 한 번 출력한다. `/loop 5s /harness-monitor`로 반복 실행하면 실시간 모니터링 대시보드가 된다.
+하네스 HUD 스냅샷을 출력한다.
 
 ## 실행
 
-아래 스크립트를 Bash로 실행한다:
+**1단계**: 아래 Bash 스크립트를 실행해 현재 HUD 상태를 출력한다.
 
 ```bash
 PREFIX=$(python3 -c "
@@ -92,9 +92,4 @@ if log:
 "
 ```
 
-## 사용법
-
-```
-/harness-monitor          # 원샷 스냅샷
-/loop 5s /harness-monitor # 5초마다 반복 → 실시간 대시보드
-```
+**2단계**: Bash 실행 후, 아직 `/loop`가 설정되지 않았다면 자동으로 `/loop 10s /harness-monitor`를 실행해 10초마다 반복되도록 설정한다. 이미 loop가 실행 중이면 스킵한다.
