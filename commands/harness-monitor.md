@@ -1,11 +1,11 @@
 ---
-description: 하네스 HUD 실시간 모니터. 호출 시 원샷 스냅샷을 출력한 뒤 자동으로 `/loop 10s /harness-monitor`를 설정한다.
+description: 하네스 HUD 상세 스냅샷 (원샷). 실시간 모니터는 화면 하단 statusline으로 자동 표시됨.
 argument-hint: ""
 ---
 
 # /harness-monitor
 
-하네스 HUD 스냅샷을 출력한다.
+하네스 HUD 상세 스냅샷을 한 번 출력한다. 실시간 모니터링은 statusline(화면 하단)이 3초마다 자동 갱신.
 
 ## 실행
 
@@ -92,4 +92,4 @@ if log:
 "
 ```
 
-**2단계**: Bash 실행 후, 아직 `/loop`가 설정되지 않았다면 자동으로 `/loop 10s /harness-monitor`를 실행해 10초마다 반복되도록 설정한다. 이미 loop가 실행 중이면 스킵한다.
+실시간 모니터링은 statusline(화면 하단)이 담당. 이 스킬은 상세 정보가 필요할 때만 수동 호출.
