@@ -228,6 +228,17 @@ def run_simple(
                     f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'pr.log'))}\n"
                     "MUST FIX 항목만 수정하라. 기능 변경 금지."
                 )
+            elif fail_type == "autocheck_fail":
+                _ac_log = prev_dir / "autocheck.log"
+                _ac_hint = ""
+                if _ac_log.exists():
+                    _ac_hint = _ac_log.read_text(encoding="utf-8")[:1000]
+                task = (
+                    f"[자동 체크 실패] 시도 {attempt}회.\n"
+                    f"이전 실패 원인:\n```\n{_ac_hint}\n```\n"
+                    f"{explore_instruction(str(loop_out_dir))}\n"
+                    "위 에러를 수정하라. 기능 변경 금지."
+                )
             else:
                 task = (
                     f"[재시도] 시도 {attempt}회.\n"
