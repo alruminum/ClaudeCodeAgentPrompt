@@ -572,8 +572,8 @@ class TestHUD(unittest.TestCase):
             hud.agent_skip("security-reviewer", "depth=std")
             self.assertEqual(hud.agent_status.get("security-reviewer", {}).get("status"), None)  # std에 없음
 
-            # HUD JSON 파일 생성 확인
-            hud_path = sd.path / "test_hud.json"
+            # HUD 파일 생성 확인
+            hud_path = sd.path / ".test_hud"
             self.assertTrue(hud_path.exists())
             data = json.loads(hud_path.read_text())
             self.assertEqual(data["depth"], "std")

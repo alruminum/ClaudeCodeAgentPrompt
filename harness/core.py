@@ -170,7 +170,7 @@ class HUD:
 
         self._hud_path: Optional[Path] = None
         if state_dir:
-            self._hud_path = state_dir.path / f"{prefix}_hud.json"
+            self._hud_path = state_dir.path / f".{prefix}_hud"
 
     def set_depth(self, depth: str) -> None:
         """depth 확정 후 에이전트 목록 확장."""
@@ -272,7 +272,7 @@ class HUD:
             if self.prefix:
                 _fb = Path.cwd() / ".claude" / "harness-state"
                 if _fb.is_dir():
-                    self._hud_path = _fb / f"{self.prefix}_hud.json"
+                    self._hud_path = _fb / f".{self.prefix}_hud"
                     if _dbg:
                         try:
                             with open(_dbg, "a") as f:

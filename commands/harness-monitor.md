@@ -32,11 +32,10 @@ else:
 " 2>/dev/null || echo "proj")
 
 HUD_DIR="$(pwd)/.claude/harness-state"
-HUD_FILE="${HUD_DIR}/${PREFIX}_hud.json"
+HUD_FILE="${HUD_DIR}/.${PREFIX}_hud"
 
 echo "📡 하네스 HUD 모니터 (PREFIX=${PREFIX})"
 echo "   HUD 파일: ${HUD_FILE}"
-echo "   cwd: $(pwd)"
 echo "   모드: 전용 세션 (무한 대기, Ctrl+C로 종료)"
 echo ""
 
