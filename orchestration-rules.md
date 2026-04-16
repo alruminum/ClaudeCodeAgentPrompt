@@ -65,8 +65,11 @@
 ### SPEC_GAP 피드백 추출
 - engineer 출력에서 SPEC_GAP_FOUND 마커 이후 ~ 출력 끝까지 추출. 기존 50줄 하드캡 제거.
 
-### merge_to_main 안전 규칙
-- `git checkout default` 실패 시(uncommitted changes 등) 즉시 False 반환. merge 시도 금지.
+### merge_to_main — GitHub PR 경유
+- 로컬 `git merge --no-ff` 대신 **GitHub PR**을 통해 merge.
+- 순서: `git push -u origin {branch}` → `gh pr create` → `gh pr merge --merge --delete-branch`
+- 이유: feature branch 이력이 remote에 남고, PR 번호로 변경 추적 가능.
+- `gh pr merge` 실패 시 `MERGE_CONFLICT_ESCALATE`.
 
 ### watchdog 프로세스 정리
 - watchdog에서 proc.kill() 후 proc.stdout.close() 추가. stdout 파이프 교착 방지.

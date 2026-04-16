@@ -983,15 +983,14 @@ def merge_to_main(
     prefix: str,
     state_dir: Optional[StateDir] = None,
 ) -> bool:
-    """Feature branch → main 머지. 반환: True=성공."""
+    """Feature branch → main 머지 (GitHub PR 경유). 반환: True=성공."""
     default = _default_branch()
 
-    # state_dir 없으면 현재 디렉토리 기준으로 생성
     if state_dir is None:
         state_dir = StateDir(Path.cwd(), prefix)
 
     # 머지 전 게이트 (depth별 분기)
-    if depth in ("fast", "std", "deep"):
+    if depth in ("fast", "simple", "std", "deep"):
         if not state_dir.flag_exists(Flag.PR_REVIEWER_LGTM):
             print(f"[HARNESS] merge 거부: pr_reviewer_lgtm 없음 ({depth})")
             return False
@@ -1004,20 +1003,49 @@ def merge_to_main(
             print("[HARNESS] merge 거부: validator_b_passed 없음 (bugfix)")
             return False
 
-    r_co = _git("checkout", default)
-    if r_co.returncode != 0:
-        print(f"[HARNESS] merge 거부: checkout {default} 실패 (uncommitted changes?)")
+    # 1. feature branch를 remote에 push
+    r_push = subprocess.run(
+        ["git", "push", "-u", "origin", branch],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r_push.returncode != 0:
+        print(f"[HARNESS] merge 거부: git push 실패\n{r_push.stderr[:200]}")
+        return False
+    print(f"[HARNESS] branch pushed: {branch}")
+
+    # 2. PR 생성
+    pr_title = f"merge: {branch} (#{issue})"
+    pr_body = f"## Summary\n- Issue: #{issue}\n- Branch: {branch}\n- Depth: {depth}"
+    r_pr = subprocess.run(
+        ["gh", "pr", "create",
+         "--title", pr_title,
+         "--body", pr_body,
+         "--base", default,
+         "--head", branch],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r_pr.returncode != 0:
+        # PR이 이미 존재할 수 있음
+        if "already exists" not in r_pr.stderr:
+            print(f"[HARNESS] PR 생성 실패: {r_pr.stderr[:200]}")
+            return False
+        print("[HARNESS] PR이 이미 존재 — merge 진행")
+
+    # 3. PR merge (--merge = no-ff와 동일)
+    r_merge = subprocess.run(
+        ["gh", "pr", "merge", branch,
+         "--merge", "--delete-branch"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r_merge.returncode != 0:
+        print(f"MERGE_CONFLICT_ESCALATE\n{r_merge.stderr[:200]}")
         return False
 
-    merge_msg = f"merge: {branch} (#{issue})"
-    r = _git("merge", "--no-ff", "-m", merge_msg, branch)
-    if r.returncode != 0:
-        _git("merge", "--abort")
-        _git("checkout", branch)
-        print("MERGE_CONFLICT_ESCALATE")
-        return False
-
+    # 4. 로컬 동기화
+    _git("checkout", default)
+    _git("pull")
     _git("branch", "-d", branch)
+    print(f"[HARNESS] PR merged: {branch} → {default}")
     return True
 
 

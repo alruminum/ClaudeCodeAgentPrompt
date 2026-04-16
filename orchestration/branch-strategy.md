@@ -29,11 +29,22 @@
 | std | pr_reviewer_lgtm |
 | deep | pr_reviewer_lgtm + security_review_passed |
 
-머지: `git merge --no-ff`, 충돌 시 `MERGE_CONFLICT_ESCALATE` → 메인 Claude 보고
+## 머지 흐름 (GitHub PR 경유)
+1. feature branch를 remote에 push: `git push -u origin {branch}`
+2. `gh pr create` 로 PR 생성 (제목: 커밋 메시지, 본문: impl 경로 + 이슈 링크)
+3. `gh pr merge --merge --delete-branch` 로 PR merge (--no-ff와 동일 효과)
+4. `git checkout main && git pull` 로 로컬 동기화
+
+로컬 `git merge --no-ff`를 사용하지 않는다. GitHub PR을 통해 merge해야:
+- remote에 feature branch 이력이 남음
+- PR 번호로 변경 추적 가능
+- GitHub Actions 등 CI 연동 가능
+
+충돌 시: `gh pr merge` 실패 → `MERGE_CONFLICT_ESCALATE` → 메인 Claude 보고
 
 ## 브랜치 정리
 | 결과 | 처리 |
 |---|---|
-| HARNESS_DONE | 브랜치 삭제 |
-| IMPLEMENTATION_ESCALATE | 브랜치 보존 (디버깅용) |
+| HARNESS_DONE | PR merge 시 `--delete-branch`로 remote 삭제, 로컬은 `git branch -d` |
+| IMPLEMENTATION_ESCALATE | 브랜치 보존 (remote + 로컬 모두) |
 | MERGE_CONFLICT_ESCALATE | 브랜치 보존 |
