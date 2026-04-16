@@ -167,6 +167,14 @@ engineer 구현 후 automated_checks에서 impl 파일의 `## 수정 파일` 목
 - `.claude/` 등 인프라 파일은 제외 (harness가 자동 수정하는 파일)
 - engineer가 impl 범위 밖을 자의적으로 수정하는 "과잉 수정" 패턴 방지
 
+### Build Gate (빌드/타입체크 자동 검증)
+engineer 구현 후 automated_checks에서 `config.build_command`를 실행.
+- 설정: `harness.config.json`의 `build_command` (예: `"npx tsc --noEmit"`, `""` = 비활성)
+- 실행 순서: lint → build → (commit) → test. 빠른 체크 우선.
+- POLISH regression에도 동일 적용 (lint → build → test).
+- empty일 때 스킵 (lint_command과 동일 패턴).
+- 타임아웃: 120초.
+
 ---
 
 ## 상세 문서

@@ -562,6 +562,13 @@ def run_simple(
                 if _lint_r.returncode != 0:
                     _reg_ok = False
                     hlog_fn(f"POLISH regression FAIL: lint ({config.lint_command})")
+            if _reg_ok and config.build_command:
+                _build_r = subprocess.run(
+                    config.build_command, shell=True, capture_output=True, timeout=120,
+                )
+                if _build_r.returncode != 0:
+                    _reg_ok = False
+                    hlog_fn(f"POLISH regression FAIL: build ({config.build_command})")
             if _reg_ok and config.test_command:
                 _test_r = subprocess.run(
                     config.test_command, shell=True, capture_output=True, timeout=300,
@@ -1281,6 +1288,11 @@ def _run_std_deep(
                 if _lint_r.returncode != 0:
                     _reg_ok = False
                     hlog_fn(f"POLISH regression FAIL: lint ({config.lint_command})")
+            if _reg_ok and config.build_command:
+                _build_r = subprocess.run(config.build_command, shell=True, capture_output=True, timeout=120)
+                if _build_r.returncode != 0:
+                    _reg_ok = False
+                    hlog_fn(f"POLISH regression FAIL: build ({config.build_command})")
             if _reg_ok and config.test_command:
                 _test_r = subprocess.run(config.test_command, shell=True, capture_output=True, timeout=300)
                 if _test_r.returncode != 0:

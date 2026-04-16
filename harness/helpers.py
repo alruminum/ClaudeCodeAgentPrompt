@@ -383,6 +383,18 @@ def run_automated_checks(
             print(f"AUTOMATED_CHECKS_FAIL: lint ({config.lint_command})")
             return False, msg
 
+    # 6. build / type-check (config.build_command 있으면 실행)
+    if config and getattr(config, "build_command", "") and config.build_command:
+        _build_r = subprocess.run(
+            config.build_command, shell=True, capture_output=True, text=True, timeout=120,
+        )
+        if _build_r.returncode != 0:
+            _build_err = _build_r.stdout[:500] + _build_r.stderr[:500]
+            msg = f"build_fail: {config.build_command} 실패\n{_build_err}"
+            out_file.write_text(msg, encoding="utf-8")
+            print(f"AUTOMATED_CHECKS_FAIL: build ({config.build_command})")
+            return False, msg
+
     print("AUTOMATED_CHECKS_PASS")
     return True, ""
 

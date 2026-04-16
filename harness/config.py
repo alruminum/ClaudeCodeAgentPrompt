@@ -14,6 +14,7 @@ class HarnessConfig:
     prefix: str = "proj"
     test_command: str = ""
     lint_command: str = ""
+    build_command: str = ""  # 빌드/타입체크 (예: "npx tsc --noEmit")
     max_total_cost: float = 20.0
     token_budget: dict = field(default_factory=dict)
     isolation: str = ""  # "" (없음) 또는 "worktree"
@@ -47,6 +48,7 @@ def load_config(project_root: Path | None = None) -> HarnessConfig:
         prefix=data.get("prefix", "proj"),
         test_command=data.get("test_command", ""),
         lint_command=data.get("lint_command", ""),
+        build_command=data.get("build_command", ""),
         max_total_cost=float(data.get("max_total_cost", 20.0)),
         token_budget=data.get("token_budget", {}) if isinstance(data.get("token_budget", {}), dict) else {},
         isolation=data.get("isolation", ""),
