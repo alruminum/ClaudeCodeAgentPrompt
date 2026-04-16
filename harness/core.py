@@ -303,6 +303,7 @@ class HUD:
             "cost": round(self.total_cost, 4),
             "budget": self.budget,
             "elapsed": int(time.time() - self.start_time),
+            "start_ts": int(self.start_time),
             "issue": self.issue,
             "log": getattr(self, "_log_lines", []),
             "agents": [

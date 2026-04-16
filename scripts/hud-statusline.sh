@@ -38,10 +38,12 @@ try:
 except:
     sys.exit(0)
 
+import time as _t
 depth = d.get('depth', '?')
 cost = d.get('cost', 0)
 budget = d.get('budget', 20)
-elapsed = d.get('elapsed', 0)
+start_ts = d.get('start_ts', 0)
+elapsed = int(_t.time() - start_ts) if start_ts else d.get('elapsed', 0)
 m, s = divmod(elapsed, 60)
 agents = d.get('agents', [])
 total = len(agents)
