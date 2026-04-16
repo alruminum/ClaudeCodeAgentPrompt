@@ -47,6 +47,11 @@
 - `agent_call`에서 에이전트 frontmatter `tools:` 목록 외 도구를 `--disallowedTools`에 추가하여 불필요한 도구 사용 방지 (예: product-planner의 Bash 차단).
 - `agent_call` 내부에서 30초마다 stdout heartbeat 출력 (`[HARNESS] agent 경과 Ns, tool calls: N`). 에이전트 실행 중 부모 Bash가 "조용"해지는 문제 방지.
 
+### plan 루프 architect-mp 호출 규칙
+- architect System Design 출력에서 `design_doc` 추출 시 `docs/architecture*.md` 패턴 우선 매칭. `docs/sdk.md` 등 보조 문서가 먼저 매칭되는 문제 방지.
+- architect Module Plan 호출 시 `module` 파라미터 필수. design_doc에서 stories.md 경로를 추출하고, stories.md 첫 번째 미완료 모듈을 `module`로 전달.
+- 다중 모듈(stories.md에 impl 3개 이상)이면 TASK_DECOMPOSE로 분기. 단일 모듈이면 MODULE_PLAN.
+
 ---
 
 ## 에스컬레이션 마커 — 모두 "메인 Claude 보고 후 대기"

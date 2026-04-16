@@ -152,15 +152,30 @@ def run_plan(
     hud.log(f"architect-sd → {arch_sd_marker}")
     print(f"[HARNESS] architect-sd → {arch_sd_marker}")
 
-    # design_doc 경로 추출
+    # design_doc 경로 추출 (architecture*.md 우선, 보조 문서 오탐 방지)
     design_doc = ""
+    stories_doc = ""
     try:
         content = Path(arch_sd_out).read_text(encoding="utf-8", errors="replace")
-        m = re.search(r"docs/[^ ]+\.md", content)
-        if m:
+        # 1차: architecture*.md 우선 매칭
+        m = re.search(r"docs/(?:milestones/[^ ]*)?architecture[^ ]*\.md", content)
+        if m and Path(m.group(0)).exists():
             design_doc = m.group(0)
+        else:
+            # 2차: docs/*.md 중 sdk/db-schema 제외
+            for match in re.finditer(r"docs/[^ ]+\.md", content):
+                p = match.group(0)
+                if not re.search(r"(sdk|db-schema|test-plan|ait-reference)", p) and Path(p).exists():
+                    design_doc = p
+                    break
+        # stories.md 경로 추출
+        m_stories = re.search(r"docs/[^ ]*stories\.md", content)
+        if m_stories and Path(m_stories.group(0)).exists():
+            stories_doc = m_stories.group(0)
     except OSError:
         pass
+    print(f"[HARNESS] design_doc: {design_doc or 'N/A'}")
+    print(f"[HARNESS] stories_doc: {stories_doc or 'N/A'}")
 
     # ── Design Validation ──
     if design_doc and Path(design_doc).exists():
@@ -181,16 +196,51 @@ def run_plan(
         print("[HARNESS] design-validation 스킵 (design_doc 경로 미감지)")
     kill_check(state_dir)
 
-    # ── architect Module Plan ──
-    print("[HARNESS] architect Module Plan 작성")
+    # ── architect Module Plan / Task Decompose ──
+    # stories.md에서 모듈 수 파악 → 3개 이상이면 TASK_DECOMPOSE
+    _arch_mp_mode = "MODULE_PLAN"
+    _module_hint = ""
+    if stories_doc and Path(stories_doc).exists():
+        try:
+            stories_text = Path(stories_doc).read_text(encoding="utf-8", errors="replace")
+            # impl 항목 카운트 (| NN | 모듈명 | 패턴)
+            impl_lines = re.findall(r"\|\s*\d+\s*\|", stories_text)
+            if len(impl_lines) >= 3:
+                _arch_mp_mode = "TASK_DECOMPOSE"
+            else:
+                # 첫 번째 모듈명 추출
+                m_mod = re.search(r"\|\s*\d+\s*\|\s*([^|]+)", stories_text)
+                if m_mod:
+                    _module_hint = m_mod.group(1).strip()
+        except OSError:
+            pass
+
     _amp_t0 = time.time()
     hud.agent_start("architect-mp")
     arch_mp_out = str(state_dir.path / f"{prefix}_arch_mp_out.txt")
-    agent_call(
-        "architect", 600,
-        f"@MODE:ARCHITECT:MODULE_PLAN\ndesign_doc: {design_doc or 'N/A'} issue: #{issue_num}",
-        arch_mp_out, run_logger, config,
-    )
+
+    if _arch_mp_mode == "TASK_DECOMPOSE":
+        print(f"[HARNESS] architect TASK_DECOMPOSE (stories: {stories_doc})")
+        hud.log(f"TASK_DECOMPOSE ({stories_doc})")
+        agent_call(
+            "architect", 600,
+            f"@MODE:ARCHITECT:TASK_DECOMPOSE\n"
+            f"stories_doc: {stories_doc}\n"
+            f"design_doc: {design_doc or 'N/A'}\n"
+            f"issue: #{issue_num}",
+            arch_mp_out, run_logger, config,
+        )
+    else:
+        print(f"[HARNESS] architect MODULE_PLAN (module: {_module_hint or 'auto'}, design_doc: {design_doc})")
+        hud.log(f"MODULE_PLAN ({_module_hint or 'auto'})")
+        agent_call(
+            "architect", 600,
+            f"@MODE:ARCHITECT:MODULE_PLAN\n"
+            f"design_doc: {design_doc or 'N/A'}\n"
+            f"module: {_module_hint or 'design_doc 참조하여 첫 번째 모듈 계획'}\n"
+            f"issue: #{issue_num}",
+            arch_mp_out, run_logger, config,
+        )
     _amp_cost = 0.0
     try:
         _amp_cost_file = Path(str(arch_mp_out).replace(".txt", "_cost.txt"))

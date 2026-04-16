@@ -70,8 +70,8 @@ flowchart TD
     ARC_REDO -->|PASS| DRP
 
     DRP --> EPIC
-    EPIC -->|YES| ARC_TD
-    EPIC -->|NO| ARC_MP
+    EPIC -->|"stories.md impl 3개+"| ARC_TD
+    EPIC -->|"stories.md impl 1~2개"| ARC_MP
 
     ARC_TD -->|"READY_FOR_IMPL"| IMPL_GATE
     ARC_MP -->|"READY_FOR_IMPL"| IMPL_GATE
