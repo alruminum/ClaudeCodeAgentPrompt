@@ -315,7 +315,12 @@ def run_simple(
             # architect SPEC_GAP 처리
             log_phase("architect-spec-gap", run_logger, attempt)
             print("[HARNESS] SPEC_GAP → architect (depth 재판정 포함)")
-            spec_gap_context = "\n".join(eng_content.splitlines()[-50:])
+            # SPEC_GAP_FOUND 마커 이후 ~ 끝까지 추출 (기존 50줄 하드캡 대신)
+            _sg_idx = eng_content.find("SPEC_GAP_FOUND")
+            if _sg_idx >= 0:
+                spec_gap_context = eng_content[_sg_idx:][:3000]  # 3KB 캡
+            else:
+                spec_gap_context = "\n".join(eng_content.splitlines()[-50:])
             arch_out = str(state_dir.path / f"{prefix}_arch_sg_out.txt")
             agent_call(
                 "architect", 900,
@@ -858,7 +863,11 @@ def _run_std_deep(
 
             log_phase("architect-spec-gap", run_logger, attempt)
             print("[HARNESS] SPEC_GAP → architect (depth 재판정 포함)")
-            spec_gap_ctx = "\n".join(eng_content.splitlines()[-50:])
+            _sg_idx2 = eng_content.find("SPEC_GAP_FOUND")
+            if _sg_idx2 >= 0:
+                spec_gap_ctx = eng_content[_sg_idx2:][:3000]
+            else:
+                spec_gap_ctx = "\n".join(eng_content.splitlines()[-50:])
 
             if depth == "deep":
                 sg_prompt = (
@@ -977,11 +986,13 @@ def _run_std_deep(
         hud.agent_start("test-engineer")
 
         test_cmd_hint = config.test_command or "프로젝트의 테스트 명령어"
+        _te_handoff_hint = f"\n인수인계 문서: {_handoff_path}" if _handoff_path else ""
         if attempt > 0:
             te_prompt = (
                 f"[RETRY 모드] 이전 attempt에서 테스트 파일이 이미 작성됨. 새 테스트 파일 작성 불필요.\n"
                 f"impl: {impl_file}\n수정된 파일: {changed_files_str}\nissue: #{issue_num}\n\n"
                 f"[지시] {test_cmd_hint}를 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
+                f"{_te_handoff_hint}"
             )
         else:
             te_prompt = (
@@ -989,6 +1000,7 @@ def _run_std_deep(
                 f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{changed_files_str}" }}\n\n'
                 f"[지시] 위 src_files 목록이 이번 구현에서 변경된 파일 전체다. 추가 탐색 없이 이 파일들만 테스트하라.\n"
                 f"issue: #{issue_num}"
+                f"{_te_handoff_hint}"
             )
 
         te_out = str(state_dir.path / f"{prefix}_te_out.txt")
@@ -1069,11 +1081,21 @@ def _run_std_deep(
         hud.agent_start("validator")
         kill_check(state_dir)
         val_context = build_validator_context(impl_file)
+        # engineer → validator handoff
+        _eng_val_hint = ""
+        try:
+            _ev_content = Path(eng_out).read_text(encoding="utf-8", errors="replace")
+            _ev_ho = generate_handoff("engineer", "validator", _ev_content, impl_file, attempt, issue_num)
+            _ev_ho_path = write_handoff(state_dir, prefix, attempt, "engineer", "validator", _ev_ho)
+            _eng_val_hint = f"\n인수인계 문서: {_ev_ho_path}"
+            run_logger.log_event({"event": "handoff", "from": "engineer", "to": "validator", "t": int(time.time())})
+        except OSError:
+            pass
 
         val_out = str(state_dir.path / f"{prefix}_val_out.txt")
         agent_exit = agent_call(
             "validator", 300,
-            f"@MODE:VALIDATOR:CODE_VALIDATION\nimpl: {impl_file}\ncontext:\n{val_context}",
+            f"@MODE:VALIDATOR:CODE_VALIDATION\nimpl: {impl_file}\ncontext:\n{val_context}{_eng_val_hint}",
             val_out, run_logger, config, str(attempt_dir),
         )
         hlog_fn(f"validator 종료 (exit={agent_exit})")
@@ -1122,7 +1144,22 @@ def _run_std_deep(
             continue
         state_dir.flag_touch(Flag.VALIDATOR_B_PASSED)
 
-        # ── 워커 4: pr-reviewer + second reviewer (병렬) ─────────
+        # ── Handoff: engineer → pr-reviewer (std/deep) ─────────
+        _eng_handoff_hint_sd = ""
+        try:
+            _eng_content_sd = Path(eng_out).read_text(encoding="utf-8", errors="replace")
+            _eng_ho_sd = generate_handoff(
+                "engineer", "pr-reviewer", _eng_content_sd,
+                impl_file, attempt, issue_num,
+                changed_files=changed if changed else None,
+            )
+            _eng_ho_path_sd = write_handoff(state_dir, prefix, attempt, "engineer", "pr-reviewer", _eng_ho_sd)
+            _eng_handoff_hint_sd = f"\n인수인계 문서: {_eng_ho_path_sd}"
+            run_logger.log_event({"event": "handoff", "from": "engineer", "to": "pr-reviewer", "t": int(time.time())})
+        except OSError:
+            pass
+
+        # ── ��커 4: pr-reviewer + second reviewer (병렬) ─────────
         log_phase("pr-reviewer", run_logger, attempt)
         hlog_fn(f"pr-reviewer 시작 (depth={depth}, timeout=240s)")
         hud.agent_start("pr-reviewer")
@@ -1158,7 +1195,7 @@ def _run_std_deep(
             "pr-reviewer", 240,
             f'@MODE:PR_REVIEWER:REVIEW\n'
             f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
-            f"변경 diff:\n{diff_out}",
+            f"변경 diff:\n{diff_out}{_eng_handoff_hint_sd}",
             pr_out, run_logger, config, str(attempt_dir),
         )
         hlog_fn(f"pr-reviewer 종료 (exit={agent_exit})")

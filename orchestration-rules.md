@@ -47,6 +47,33 @@
 - `agent_call`에서 에이전트 frontmatter `tools:` 목록 외 도구를 `--disallowedTools`에 추가하여 불필요한 도구 사용 방지 (예: product-planner의 Bash 차단).
 - `agent_call` 내부에서 30초마다 stdout heartbeat 출력 (`[HARNESS] agent 경과 Ns, tool calls: N`). 에이전트 실행 중 부모 Bash가 "조용"해지는 문제 방지.
 
+### agent_call 타임아웃 ���리
+- agent_call이 exit 124/142(타임아웃)를 반환하면, 호출부에서 **즉시 fail_type="agent_timeout"으로 판정**하고 attempt 소진.
+- 부분 출력이 있어도 타임아웃 = 미완료이므로 해당 출력으로 다음 단계 진행 금지.
+
+### parse_marker UNKNOWN 로그
+- parse_marker 결과가 UNKNOWN이면 `hlog`와 `print`로 경고를 즉시 출력. 디버깅용.
+
+### plan 루프 체크포인트
+- plan_loop 진입 시 기존 산출물(prd.md, architecture.md, stories.md) 존재 여부 확인.
+- 이미 존재하는 단계는 스킵하고 다음 단계부터 재개. 상태는 `{prefix}_plan_metadata.json`에 저장.
+
+### 에이전트 간 handoff 전달 규칙
+- impl 루프에서 모든 에이전트 전환 시 handoff 문���를 생성하고 다음 에이전트 프롬프트에 경로 포함.
+- std/deep pr-reviewer, test-engineer, validator(Code Validation) 포함 — simple에만 있고 std/deep에 누락된 handoff를 동기화.
+
+### SPEC_GAP 피드백 추출
+- engineer 출력에서 SPEC_GAP_FOUND 마커 이후 ~ 출력 끝까지 추출. 기존 50줄 하드캡 제거.
+
+### merge_to_main 안전 규칙
+- `git checkout default` 실패 시(uncommitted changes 등) 즉시 False 반환. merge 시도 금지.
+
+### watchdog 프로세스 정리
+- watchdog에서 proc.kill() 후 proc.stdout.close() 추가. stdout 파이프 교착 방지.
+
+### budget_check 예외 처리
+- budget_check에서 sys.exit(1) 대신 BudgetExceeded 예외 발생. impl_loop에서 catch하여 HUD/브랜치 정리 후 반환.
+
 ### plan 루프 architect-mp 호출 규칙
 - architect System Design 출력에서 `design_doc` 추출 시 `docs/architecture*.md` 패턴 우선 매칭. `docs/sdk.md` 등 보조 문서가 먼저 매칭되는 문제 방지.
 - architect Module Plan 호출 시 `module` 파라미터 필수. design_doc에서 stories.md 경로를 추출하고, stories.md 첫 번째 미완료 모듈을 `module`로 전달.

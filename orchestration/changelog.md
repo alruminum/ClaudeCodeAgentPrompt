@@ -34,3 +34,4 @@
 | 2026-04-15 | plan_loop architect에 pp_out 전문 대신 prd.md 경로만 전달 | architect가 pp_out(수만 토큰)을 prd.md로 다시 쓰려고 Bash heredoc 루프에 빠져 900초 타임아웃. 경로만 넘기고 Read하게 변경 |
 | 2026-04-15 | plan 루프 전면 타임아웃 조정 + 도구 차단 | Bash 20분 < plan loop 50분(worst case) 문제. product-plan 스킬에 timeout 3600000(60분) 명시. architect-sd/mp 900s→600s. agent_call에 에이전트별 disallowedTools 추가 (product-planner: Bash 차단, validator/pr-reviewer/critic: Bash+Write+Edit 차단) |
 | 2026-04-16 | plan_loop architect-mp: design_doc 오탐 수정 + module 파라미터 + TASK_DECOMPOSE 분기 | 1) design_doc regex가 docs/sdk.md를 먼저 매칭 → architecture*.md 우선 매칭으로 변경. 2) MODULE_PLAN에 module 파라미터 누락 → stories.md에서 추출. 3) stories.md impl 3개 이상이면 TASK_DECOMPOSE로 자동 분기 |
+| 2026-04-16 | 하네스 26개 항목 일괄 개선 (Ralph 10회) | FIX 9건: plan 체크포인트(prd/architecture 스킵), plan 메타데이터 저장, std/deep pr-reviewer handoff, test-engineer handoff 경로, SPEC_GAP 마커 기반 추출, validator handoff, kill_check rework, watchdog stdout.close, merge checkout 체크. SKIP 14건(의도적/오탐). DEFER 4건. |

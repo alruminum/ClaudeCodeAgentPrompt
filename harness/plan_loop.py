@@ -65,27 +65,49 @@ def run_plan(
     # ── HUD 초기화 ──
     hud = HUD("plan", prefix, issue_num, 1, config.max_total_cost, state_dir)
 
+    # ── 체크포인트: 이전 런 산출물 재사용 ──
+    _meta_file = state_dir.path / f"{prefix}_plan_metadata.json"
+    _prev_meta = {}
+    if _meta_file.exists():
+        try:
+            import json as _json
+            _prev_meta = _json.loads(_meta_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+
     # ── product-planner ──
-    print("[HARNESS] product-planner 기획")
-    _pp_t0 = time.time()
-    hud.agent_start("product-planner")
-    pp_out_file = str(state_dir.path / f"{prefix}_pp_out.txt")
-    agent_call(
-        "product-planner", 600,
-        f"@MODE:PLANNER:PRODUCT_PLAN\ncontext: {context} issue: #{issue_num}",
-        pp_out_file, run_logger, config,
-    )
-    pp_out = Path(pp_out_file).read_text(encoding="utf-8", errors="replace")
-    _pp_cost = 0.0
-    try:
-        _pp_cost_file = Path(str(pp_out_file).replace(".txt", "_cost.txt"))
-        _pp_cost = float(_pp_cost_file.read_text() or "0") if _pp_cost_file.exists() else 0.0
-    except (ValueError, OSError):
-        pass
-    hud.agent_done("product-planner", int(time.time() - _pp_t0), _pp_cost)
+    _skip_pp = False
+    _prev_prd = _prev_meta.get("prd_path", "")
+    if _prev_prd and Path(_prev_prd).exists():
+        print(f"[HARNESS] 체크포인트: prd 파일 존재 ({_prev_prd}) — product-planner 스킵")
+        hud.agent_skip("product-planner", f"checkpoint: {_prev_prd}")
+        _skip_pp = True
+        pp_out = f"PRODUCT_PLAN_READY\nplan_doc: {_prev_prd}"
+        prd_path = _prev_prd
+    else:
+        print("[HARNESS] product-planner 기획")
+        _pp_t0 = time.time()
+        hud.agent_start("product-planner")
+        pp_out_file = str(state_dir.path / f"{prefix}_pp_out.txt")
+        agent_call(
+            "product-planner", 600,
+            f"@MODE:PLANNER:PRODUCT_PLAN\ncontext: {context} issue: #{issue_num}",
+            pp_out_file, run_logger, config,
+        )
+        pp_out = Path(pp_out_file).read_text(encoding="utf-8", errors="replace")
+        _pp_cost = 0.0
+        try:
+            _pp_cost_file = Path(str(pp_out_file).replace(".txt", "_cost.txt"))
+            _pp_cost = float(_pp_cost_file.read_text() or "0") if _pp_cost_file.exists() else 0.0
+        except (ValueError, OSError):
+            pass
+        hud.agent_done("product-planner", int(time.time() - _pp_t0), _pp_cost)
     kill_check(state_dir)
 
-    pp_marker = parse_marker(pp_out_file, "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED|CLARITY_INSUFFICIENT")
+    if _skip_pp:
+        pp_marker = "PRODUCT_PLAN_READY"
+    else:
+        pp_marker = parse_marker(pp_out_file, "PRODUCT_PLAN_READY|PRODUCT_PLAN_UPDATED|CLARITY_INSUFFICIENT")
 
     if pp_marker == "CLARITY_INSUFFICIENT":
         os.environ["HARNESS_RESULT"] = "CLARITY_INSUFFICIENT"
@@ -104,76 +126,86 @@ def run_plan(
     hud.log(f"product-planner → {pp_marker}")
     print(f"[HARNESS] product-planner → {pp_marker}")
 
-    # prd.md 경로 추출 (product-planner가 저장한 파일)
-    prd_path = ""
-    prd_m = re.search(r"(prd[^ ]*\.md)", pp_out)
-    if prd_m:
-        prd_path = prd_m.group(1)
-    if not prd_path or not Path(prd_path).exists():
-        if Path("prd.md").exists():
-            prd_path = "prd.md"
+    # prd.md 경로 추출 (체크포인트에서 이미 설정됐으면 스킵)
+    if not _skip_pp:
+        prd_path = ""
+        prd_m = re.search(r"(prd[^ ]*\.md)", pp_out)
+        if prd_m:
+            prd_path = prd_m.group(1)
+        if not prd_path or not Path(prd_path).exists():
+            if Path("prd.md").exists():
+                prd_path = "prd.md"
     print(f"[HARNESS] prd_path: {prd_path or 'N/A'}")
 
-    # ── architect System Design ──
-    print("[HARNESS] architect System Design 작성")
-    _asd_t0 = time.time()
-    hud.agent_start("architect-sd")
-    arch_sd_out = str(state_dir.path / f"{prefix}_arch_sd_out.txt")
-    # pp_out 전문이 아닌 prd.md 경로만 전달 — architect가 직접 Read
-    agent_call(
-        "architect", 600,
-        f"@MODE:ARCHITECT:SYSTEM_DESIGN\nplan_doc: {prd_path}\nissue: #{issue_num}",
-        arch_sd_out, run_logger, config,
-    )
-    _asd_cost = 0.0
-    try:
-        _asd_cost_file = Path(str(arch_sd_out).replace(".txt", "_cost.txt"))
-        _asd_cost = float(_asd_cost_file.read_text() or "0") if _asd_cost_file.exists() else 0.0
-    except (ValueError, OSError):
-        pass
+    # ── architect System Design (체크포인트: design_doc 존재 시 스킵) ──
+    _skip_arch_sd = False
+    _prev_design = _prev_meta.get("design_doc", "")
+    if _prev_design and Path(_prev_design).exists():
+        print(f"[HARNESS] 체크포인트: design_doc 존재 ({_prev_design}) — architect-sd 스킵")
+        hud.agent_skip("architect-sd", f"checkpoint: {_prev_design}")
+        _skip_arch_sd = True
+        design_doc = _prev_design
+        stories_doc = _prev_meta.get("stories_doc", "")
+    else:
+        print("[HARNESS] architect System Design 작성")
+        _asd_t0 = time.time()
+        hud.agent_start("architect-sd")
+        arch_sd_out = str(state_dir.path / f"{prefix}_arch_sd_out.txt")
+        agent_call(
+            "architect", 600,
+            f"@MODE:ARCHITECT:SYSTEM_DESIGN\nplan_doc: {prd_path}\nissue: #{issue_num}",
+            arch_sd_out, run_logger, config,
+        )
+        _asd_cost = 0.0
+        try:
+            _asd_cost_file = Path(str(arch_sd_out).replace(".txt", "_cost.txt"))
+            _asd_cost = float(_asd_cost_file.read_text() or "0") if _asd_cost_file.exists() else 0.0
+        except (ValueError, OSError):
+            pass
     kill_check(state_dir)
 
-    arch_sd_marker = parse_marker(arch_sd_out, "SYSTEM_DESIGN_READY|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
-    if arch_sd_marker == "PRODUCT_PLANNER_ESCALATION_NEEDED":
-        hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost, "fail")
-        os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
-        print("[HARNESS] architect-sd → PRODUCT_PLANNER_ESCALATION_NEEDED")
-        run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", "", issue_num)
-        return "PRODUCT_PLANNER_ESCALATION_NEEDED"
-    if arch_sd_marker not in ("SYSTEM_DESIGN_READY",):
-        hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost, "fail")
-        os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
-        print(f"[HARNESS] architect-sd → 마커 감지 실패 ({arch_sd_marker}) — SPEC_GAP_ESCALATE")
-        arch_sd_content = Path(arch_sd_out).read_text(encoding="utf-8", errors="replace") if Path(arch_sd_out).exists() else ""
-        print(arch_sd_content[-500:] if len(arch_sd_content) > 500 else arch_sd_content)
-        run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
-        return "SPEC_GAP_ESCALATE"
-    hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost)
-    hud.log(f"architect-sd → {arch_sd_marker}")
-    print(f"[HARNESS] architect-sd → {arch_sd_marker}")
+    if not _skip_arch_sd:
+        arch_sd_marker = parse_marker(arch_sd_out, "SYSTEM_DESIGN_READY|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT")
+        if arch_sd_marker == "PRODUCT_PLANNER_ESCALATION_NEEDED":
+            hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost, "fail")
+            os.environ["HARNESS_RESULT"] = "PRODUCT_PLANNER_ESCALATION_NEEDED"
+            print("[HARNESS] architect-sd → PRODUCT_PLANNER_ESCALATION_NEEDED")
+            run_logger.write_run_end("PRODUCT_PLANNER_ESCALATION_NEEDED", "", issue_num)
+            return "PRODUCT_PLANNER_ESCALATION_NEEDED"
+        if arch_sd_marker not in ("SYSTEM_DESIGN_READY",):
+            hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost, "fail")
+            os.environ["HARNESS_RESULT"] = "SPEC_GAP_ESCALATE"
+            print(f"[HARNESS] architect-sd → 마커 감지 실패 ({arch_sd_marker}) — SPEC_GAP_ESCALATE")
+            arch_sd_content = Path(arch_sd_out).read_text(encoding="utf-8", errors="replace") if Path(arch_sd_out).exists() else ""
+            print(arch_sd_content[-500:] if len(arch_sd_content) > 500 else arch_sd_content)
+            run_logger.write_run_end("SPEC_GAP_ESCALATE", "", issue_num)
+            return "SPEC_GAP_ESCALATE"
+        hud.agent_done("architect-sd", int(time.time() - _asd_t0), _asd_cost)
+        hud.log(f"architect-sd → {arch_sd_marker}")
+        print(f"[HARNESS] architect-sd → {arch_sd_marker}")
 
-    # design_doc 경로 추출 (architecture*.md 우선, 보조 문서 오탐 방지)
-    design_doc = ""
-    stories_doc = ""
-    try:
-        content = Path(arch_sd_out).read_text(encoding="utf-8", errors="replace")
-        # 1차: architecture*.md 우선 매칭
-        m = re.search(r"docs/(?:milestones/[^ ]*)?architecture[^ ]*\.md", content)
-        if m and Path(m.group(0)).exists():
-            design_doc = m.group(0)
-        else:
-            # 2차: docs/*.md 중 sdk/db-schema 제외
-            for match in re.finditer(r"docs/[^ ]+\.md", content):
-                p = match.group(0)
-                if not re.search(r"(sdk|db-schema|test-plan|ait-reference)", p) and Path(p).exists():
-                    design_doc = p
-                    break
-        # stories.md 경로 추출
-        m_stories = re.search(r"docs/[^ ]*stories\.md", content)
-        if m_stories and Path(m_stories.group(0)).exists():
-            stories_doc = m_stories.group(0)
-    except OSError:
-        pass
+        # design_doc 경로 추출 (architecture*.md 우선, 보조 문서 오탐 방지)
+        design_doc = ""
+        stories_doc = ""
+        try:
+            content = Path(arch_sd_out).read_text(encoding="utf-8", errors="replace")
+            # 1차: architecture*.md 우선 매칭
+            m = re.search(r"docs/(?:milestones/[^ ]*)?architecture[^ ]*\.md", content)
+            if m and Path(m.group(0)).exists():
+                design_doc = m.group(0)
+            else:
+                # 2차: docs/*.md 중 sdk/db-schema 제외
+                for match in re.finditer(r"docs/[^ ]+\.md", content):
+                    p = match.group(0)
+                    if not re.search(r"(sdk|db-schema|test-plan|ait-reference)", p) and Path(p).exists():
+                        design_doc = p
+                        break
+            # stories.md 경로 추출
+            m_stories = re.search(r"docs/[^ ]*stories\.md", content)
+            if m_stories and Path(m_stories.group(0)).exists():
+                stories_doc = m_stories.group(0)
+        except OSError:
+            pass
     print(f"[HARNESS] design_doc: {design_doc or 'N/A'}")
     print(f"[HARNESS] stories_doc: {stories_doc or 'N/A'}")
 
@@ -295,8 +327,21 @@ def run_plan(
         return "PLAN_VALIDATION_ESCALATE"
     hud.agent_done("plan-validation", int(time.time() - _pv_t0), 0.0)
 
-    # ── 완료 ──
+    # ── 완료 — 메타데이터 저장 ──
     (state_dir.path / f"{prefix}_impl_path").write_text(impl_file, encoding="utf-8")
+    import json as _json
+    _plan_meta = {
+        "prd_path": prd_path,
+        "design_doc": design_doc,
+        "stories_doc": stories_doc,
+        "impl_file": impl_file,
+        "issue_num": issue_num,
+    }
+    try:
+        (state_dir.path / f"{prefix}_plan_metadata.json").write_text(
+            _json.dumps(_plan_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
     os.environ["HARNESS_RESULT"] = "PLAN_VALIDATION_PASS"
     hud.log("PLAN_VALIDATION_PASS")
     print(f"[HARNESS] ✅ PLAN_VALIDATION_PASS")

@@ -745,6 +745,12 @@ def agent_call(
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     proc.kill()
+                # stdout 파이프 교착 방지
+                try:
+                    if proc.stdout:
+                        proc.stdout.close()
+                except Exception:
+                    pass
         wd = threading.Thread(target=_watchdog, daemon=True)
         wd.start()
 
@@ -998,7 +1004,10 @@ def merge_to_main(
             print("[HARNESS] merge 거부: validator_b_passed 없음 (bugfix)")
             return False
 
-    _git("checkout", default)
+    r_co = _git("checkout", default)
+    if r_co.returncode != 0:
+        print(f"[HARNESS] merge 거부: checkout {default} 실패 (uncommitted changes?)")
+        return False
 
     merge_msg = f"merge: {branch} (#{issue})"
     r = _git("merge", "--no-ff", "-m", merge_msg, branch)
@@ -1610,6 +1619,7 @@ def run_plan_validation(
 
     # FAIL → architect 재보강
     for rework in range(1, max_rework + 1):
+        kill_check(state_dir)
         print(f"[HARNESS] Plan Validation FAIL → architect 재보강 ({rework}/{max_rework})")
         fail_feedback = ""
         try:
@@ -1624,6 +1634,7 @@ def run_plan_validation(
             f"@MODE:ARCHITECT:SPEC_GAP\nPlan Validation FAIL 피드백 반영. impl: {impl_file} feedback: {fail_feedback}",
             arch_out, run_logger, config,
         )
+        kill_check(state_dir)
 
         val_out2 = str(state_dir.path / f"{prefix}_val_pv_out{rework}.txt")
         agent_call(
@@ -1677,6 +1688,7 @@ def run_design_validation(
         return True
 
     for rework in range(1, max_rework + 1):
+        kill_check(state_dir)
         print(f"[HARNESS] Design Validation FAIL → architect 재설계 ({rework}/{max_rework})")
         fail_feedback = ""
         try:
@@ -1691,6 +1703,7 @@ def run_design_validation(
             f"@MODE:ARCHITECT:SYSTEM_DESIGN\n재설계 — Design Validation FAIL 피드백 반영. design_doc: {design_doc} feedback: {fail_feedback}",
             arch_out, run_logger, config,
         )
+        kill_check(state_dir)
 
         val_out2 = str(state_dir.path / f"{prefix}_val_dv_out{rework}.txt")
         agent_call(
