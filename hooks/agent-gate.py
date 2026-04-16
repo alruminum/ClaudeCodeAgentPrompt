@@ -52,8 +52,10 @@ def main():
         sys.exit(0)
 
     # 1. 프롬프트 검증: 이슈 번호 필수 에이전트
+    #    예외: architect Mode D (Task Decompose)는 이슈를 생성하는 역할이므로 면제
     if agent in ISSUE_REQUIRED_AGENTS:
-        if not re.search(r"#\d+", prompt):
+        is_mode_d = agent == "architect" and re.search(r"Mode\s*D|Task\s*Decompose", prompt, re.IGNORECASE)
+        if not is_mode_d and not re.search(r"#\d+", prompt):
             deny(f"❌ {agent} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.")
 
     # 2. 프롬프트 검증: architect 호출 시 Mode A-F 명시 필수

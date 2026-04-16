@@ -48,7 +48,7 @@ class FLAGS:
 HARNESS_ONLY_AGENTS = ("engineer",)
 
 # 이슈 생성 가능 에이전트 — issue-gate.py에서 harness_active 없이도 허용
-ISSUE_CREATORS = ("qa", "designer")
+ISSUE_CREATORS = ("qa", "designer", "architect")
 
 # 이슈 번호 필수 에이전트 — 프롬프트에 #NNN 없으면 차단
 ISSUE_REQUIRED_AGENTS = ("architect", "engineer")
