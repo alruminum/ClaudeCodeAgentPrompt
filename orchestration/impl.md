@@ -93,7 +93,8 @@ bash ~/.claude/harness/executor.sh impl --issue <N> [--prefix <P>]
 
   // 테스트/린트 (빈 문자열이면 해당 단계 스킵)
   "test_command": "npx vitest run",  // depth=std/deep에서 ground-truth 테스트 실행
-  "lint_command": "npx tsc --noEmit", // automated_checks + POLISH regression
+  "lint_command": "npx eslint . --max-warnings 0", // automated_checks + POLISH regression
+  "build_command": "npx tsc --noEmit", // automated_checks + POLISH regression (빌드/타입체크)
 
   // 비용 제어
   "max_total_cost": 20.0,            // 전체 루프 USD 상한 (초과 시 HARNESS_BUDGET_EXCEEDED)

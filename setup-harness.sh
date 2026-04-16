@@ -56,7 +56,7 @@ echo "📋 핵심 설계 문서: docs/${DOC_NAME}.md"
 
 # harness.config.json 생성 (없으면)
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "{\"prefix\": \"${PREFIX}\"}" > "$CONFIG_FILE"
+  echo "{\"prefix\": \"${PREFIX}\", \"test_command\": \"\", \"lint_command\": \"\", \"build_command\": \"\"}" > "$CONFIG_FILE"
   echo "📄 $CONFIG_FILE 생성 완료"
 else
   echo "ℹ️  $CONFIG_FILE 이미 존재 — 유지"
