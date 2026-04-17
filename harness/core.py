@@ -172,6 +172,12 @@ class HUD:
         if state_dir:
             self._hud_path = state_dir.path / f".{prefix}_hud"
 
+        # 이벤트 로그에 루프 시작 구분선
+        mode = "plan" if depth == "plan" else "impl"
+        issue_str = f" #{issue_num}" if issue_num else ""
+        self._event(f"{'═' * 50}")
+        self._event(f"루프 시작 | mode={mode} depth={depth}{issue_str}")
+
     def set_depth(self, depth: str) -> None:
         """depth 확정 후 에이전트 목록 확장."""
         self.depth = depth
@@ -352,6 +358,10 @@ class HUD:
 
     def cleanup(self) -> None:
         """하네스 종료 시 HUD에 완료 상태 기록 (파일 유지)."""
+        elapsed = int(time.time() - self.start_time)
+        m, s = divmod(elapsed, 60)
+        self._event(f"루프 종료 | ${self.total_cost:.2f} | {m}m{s:02d}s")
+        self._event(f"{'═' * 50}")
         self._write_json()
         if self._hud_path and self._hud_path.exists():
             try:
