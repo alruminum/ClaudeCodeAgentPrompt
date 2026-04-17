@@ -92,12 +92,15 @@ def main():
     # 진단 로그: prefix/CWD/env/active 플래그 기록 → 훅 오진단 시 분석용
     try:
         import datetime
+        _state_dir_path = get_state_dir()
+        _all_files = os.listdir(_state_dir_path) if os.path.isdir(_state_dir_path) else []
         _dbg = {
             "ts": datetime.datetime.now().isoformat(),
             "prefix": prefix,
             "cwd": os.getcwd(),
+            "state_dir": _state_dir_path,
             "HARNESS_PREFIX": os.environ.get("HARNESS_PREFIX", ""),
-            "active_flags": [f for f in os.listdir(get_state_dir()) if "_active" in f],
+            "active_flags": [f for f in _all_files if "_active" in f],
             "tool": tool_name,
             "fp": fp,
         }

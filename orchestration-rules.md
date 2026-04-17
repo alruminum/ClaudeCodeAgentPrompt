@@ -138,7 +138,7 @@
 
 ### agent_call active 플래그 디버깅
 - agent_call에서 active 플래그 생성 시 경로를 로그에 기록 (디버그용)
-- 훅의 get_state_dir()와 동일 경로인지 확인하기 위함
+- agent-boundary.py 디버그 로그에 state_dir 실제 경로 포함 — 훅과 agent_call의 경로 일치 여부 확인
 
 ### 에이전트 Read 제한 (READ_DENY_MATRIX)
 agent-boundary.py가 에이전트별 Read 접근을 제한한다. Write/Edit 허용 경로와 별개.
