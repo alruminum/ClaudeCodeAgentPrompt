@@ -754,6 +754,7 @@ def agent_call(
     env = os.environ.copy()
     env["HARNESS_INTERNAL"] = "1"
     env["HARNESS_PREFIX"] = prefix_for_flag
+    env["HARNESS_AGENT_NAME"] = agent
 
     run_log_path = str(run_logger.path) if run_logger else "/dev/null"
 
@@ -940,14 +941,27 @@ def agent_call(
     if out_file.exists() and out_file.stat().st_size > 0:
         lines = out_file.read_text(encoding="utf-8", errors="replace").splitlines()
         total_lines = len(lines)
-        print(f"┌── {agent} 출력 ({total_lines}줄) ────────────────────────────")
+        header = f"┌── {agent} 출력 ({total_lines}줄) ────────────────────────────"
+        footer = "└────────────────────────────────────────────────────────────"
         if total_lines <= 80:
-            print("\n".join(lines))
+            body = "\n".join(lines)
         else:
-            print("\n".join(lines[:50]))
-            print(f"│ ··· ({total_lines - 70}줄 중략) ···")
-            print("\n".join(lines[-20:]))
-        print("└────────────────────────────────────────────────────────────")
+            body = "\n".join(lines[:50]) + f"\n│ ··· ({total_lines - 70}줄 중략) ···\n" + "\n".join(lines[-20:])
+        print(header)
+        print(body)
+        print(footer)
+
+        # events 파일에도 에이전트 출력 기록 (tail -f 모니터용)
+        if config:
+            try:
+                pfx = getattr(config, "prefix", None)
+                if pfx:
+                    ev_path = Path(".claude/harness-state") / f".{pfx}_events"
+                    if ev_path.exists():
+                        with open(ev_path, "a") as ef:
+                            ef.write(f"{header}\n{body}\n{footer}\n")
+            except OSError:
+                pass
 
     return call_exit
 

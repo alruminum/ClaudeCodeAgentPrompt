@@ -1225,5 +1225,47 @@ class TestLoopVarsInitialized(unittest.TestCase):
                         f"total_cost 초기화(line {init_line})가 최초 참조(line {read_line})보다 먼저 와야 함")
 
 
+class TestEnvVarAgentDetection(unittest.TestCase):
+    """hooks가 HARNESS_AGENT_NAME env var로 에이전트를 판별하는지 검증."""
+
+    def test_get_active_agent_returns_name(self):
+        """env var 설정 시 에이전트 이름 반환."""
+        os.environ["HARNESS_AGENT_NAME"] = "engineer"
+        try:
+            sys.path.insert(0, str(HARNESS_DIR.parent / "hooks"))
+            from harness_common import get_active_agent
+            self.assertEqual(get_active_agent(), "engineer")
+        finally:
+            del os.environ["HARNESS_AGENT_NAME"]
+            sys.path.pop(0)
+
+    def test_get_active_agent_returns_none(self):
+        """env var 미설정 시 None 반환 — 메인 Claude 세션."""
+        os.environ.pop("HARNESS_AGENT_NAME", None)
+        sys.path.insert(0, str(HARNESS_DIR.parent / "hooks"))
+        try:
+            from harness_common import get_active_agent
+            self.assertIsNone(get_active_agent())
+        finally:
+            sys.path.pop(0)
+
+    def test_agent_call_sets_env_var(self):
+        """agent_call이 HARNESS_AGENT_NAME을 env에 설정하는지 AST 검증."""
+        import ast
+        src = (HARNESS_DIR / "core.py").read_text()
+        self.assertIn('env["HARNESS_AGENT_NAME"]', src,
+                       "agent_call()에 HARNESS_AGENT_NAME env 설정이 없음")
+
+    def test_agent_boundary_uses_env_not_files(self):
+        """agent-boundary.py가 파일 기반 glob 탐색 대신 env var를 사용하는지."""
+        boundary_src = (HARNESS_DIR.parent / "hooks" / "agent-boundary.py").read_text()
+        # env var 방식 사용
+        self.assertIn("get_active_agent", boundary_src,
+                       "agent-boundary.py가 get_active_agent()를 사용하지 않음")
+        # 900초 TTL glob 탐색 제거됨
+        self.assertNotIn("900", boundary_src,
+                          "agent-boundary.py에 900초 TTL glob 탐색이 아직 남아있음")
+
+
 if __name__ == "__main__":
     unittest.main()

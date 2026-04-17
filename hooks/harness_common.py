@@ -120,6 +120,11 @@ def get_flags_dir():
     return flags_dir
 
 
+def get_active_agent():
+    """env var로 현재 에이전트 판별. 메인 Claude에는 없으므로 None 반환."""
+    return os.environ.get("HARNESS_AGENT_NAME") or None
+
+
 def flag_path(prefix, name):
     """플래그 파일 경로 반환."""
     return os.path.join(get_flags_dir(), f"{prefix}_{name}")
