@@ -12,11 +12,9 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import glob
 import json
 import re
-import time
-from harness_common import get_prefix, get_state_dir, get_flags_dir, deny
+from harness_common import get_prefix, get_state_dir, get_flags_dir, get_active_agent, deny
 
 # 하네스 인프라 파일 패턴 — 모든 에이전트에서 Read/Write/Edit 차단
 HARNESS_INFRA_PATTERNS = [
@@ -91,27 +89,15 @@ def main():
 
     prefix = get_prefix()
 
-    # 진단 로그: prefix/CWD/env/active 플래그 기록 → 훅 오진단 시 분석용
+    # 진단 로그: env var 기반 에이전트 판별 기록
     try:
         import datetime
-        _flags_dir_path = get_flags_dir()
-        _all_files = os.listdir(_flags_dir_path) if os.path.isdir(_flags_dir_path) else []
-        _active_files = [f for f in _all_files if "_active" in f]
-        _direct_checks = {}
-        for _ag in ("product-planner", "engineer", "architect", "ux-architect", "test-engineer", "designer"):
-            _flag_name = f"{prefix}_{_ag}_active"
-            _flag_full = os.path.join(_flags_dir_path, _flag_name)
-            if os.path.exists(_flag_full):
-                _direct_checks[_ag] = True
-                if _flag_name not in _active_files:
-                    _active_files.append(_flag_name)
         _dbg = {
             "ts": datetime.datetime.now().isoformat(),
             "prefix": prefix,
-            "flags_dir": _flags_dir_path,
+            "HARNESS_AGENT_NAME": os.environ.get("HARNESS_AGENT_NAME", ""),
             "HARNESS_PREFIX": os.environ.get("HARNESS_PREFIX", ""),
-            "active_flags": _active_files,
-            "direct_exists": _direct_checks,
+            "HARNESS_INTERNAL": os.environ.get("HARNESS_INTERNAL", ""),
             "tool": tool_name,
             "fp": fp,
         }
@@ -120,28 +106,8 @@ def main():
     except Exception:
         pass
 
-    # 활성 에이전트 탐색
-    active_agent = None
-    # 1차: 계산된 prefix로 정확 매칭
-    for agent in ALLOW_MATRIX:
-        if os.path.exists(os.path.join(get_flags_dir(), f"{prefix}_{agent}_active")):
-            active_agent = agent
-            break
-
-    # 2차 fallback: prefix 불일치 대비 glob 탐색 (900초 TTL = engineer 최대 타임아웃)
-    # HARNESS_PREFIX가 훅 서브프로세스에 전파되지 않아 prefix가 틀릴 수 있음.
-    if active_agent is None:
-        now = time.time()
-        for agent in ALLOW_MATRIX:
-            for f in glob.glob(os.path.join(get_flags_dir(), f"*_{agent}_active")):
-                try:
-                    if now - os.path.getmtime(f) < 900:
-                        active_agent = agent
-                        break
-                except Exception:
-                    pass
-            if active_agent:
-                break
+    # 활성 에이전트 판별 — env var 기반 (파일 플래그 불사용)
+    active_agent = get_active_agent()
 
     # 에이전트 활성화 안 됨 → 메인 Claude 직접 수정 제한 (file-ownership 통합)
     if active_agent is None:

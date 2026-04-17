@@ -106,7 +106,7 @@ def main():
     except Exception:
         pass
 
-    # 7. 에이전트 활성 플래그 설정 (agent-boundary.py 연동)
+    # 7. 에이전트 활성 플래그 설정 (정보성 로그용 — 판별에는 HARNESS_AGENT_NAME env var 사용)
     try:
         open(f"{get_flags_dir()}/{PREFIX}_{agent}_active", "w").close()
     except Exception:
