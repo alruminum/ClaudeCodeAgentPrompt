@@ -39,9 +39,9 @@
 
 ### 에이전트 간 데이터 전달 규칙
 - plan 루프에서 product-planner → ux-architect 전환 시, prd.md 경로만 전달. ux-architect가 직접 Read.
-- plan 루프에서 ux-architect → architect(SD) 전환 시, ux-flow.md + prd.md 경로만 전달. architect가 직접 Read.
-- plan 루프에서 product-planner → architect 전환 시, **pp_out 전문을 프롬프트에 넣지 않는다**. prd.md 경로만 전달하고 architect가 직접 Read하도록 한다.
-- 이유: 수만 토큰의 PRD 전문이 architect 프롬프트에 들어가면 architect가 prd.md를 자기가 다시 써야 한다고 착각해서 Bash heredoc 파일 쓰기 루프에 빠진다 (900초 타임아웃 사고 원인).
+- 설계 루프에서 메인 Claude가 architect(SD)를 호출할 때, ux-flow.md + prd.md 경로만 전달. architect가 직접 Read.
+- 설계/구현 루프에서 에이전트에 전문을 프롬프트에 넣지 않는다. 경로만 전달하고 에이전트가 직접 Read하도록 한다.
+- 이유: 수만 토큰의 전문이 프롬프트에 들어가면 에이전트가 파일을 자기가 다시 써야 한다고 착각해서 Bash heredoc 파일 쓰기 루프에 빠진다 (900초 타임아웃 사고 원인).
 
 ### PRODUCT_PLAN_CHANGE 경유 시 ux-architect 재호출 조건
 - 유저 승인 ① 수정 요청 시 라우팅:
