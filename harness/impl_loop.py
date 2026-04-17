@@ -1106,10 +1106,12 @@ def _run_std_deep(
             hud.agent_start("test-engineer")
 
             _te_handoff_hint = f"\n인수인계 문서: {_handoff_path}" if _handoff_path else ""
+            # test_command 없는 폴백: TDD 모드로 호출하되 실행 금지 지시
             te_prompt = (
                 f"@MODE:TEST_ENGINEER:TDD\n"
                 f'@PARAMS: {{ "impl_path": "{impl_file}" }}\n\n'
-                f"[지시] impl의 인터페이스 정의 + 수용 기준(TEST)에서 테스트 작성.\n"
+                f"[지시] impl + 구현 코드 기반으로 테스트 작성. 테스트 실행은 하지 마라 (test_command 미설정).\n"
+                f"수정된 파일: {changed_files_str}\n"
                 f"issue: #{issue_num}"
                 f"{_te_handoff_hint}"
             )
