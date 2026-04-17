@@ -25,6 +25,8 @@ model: sonnet
 - **결정 근거 필수**: 모든 기술 선택에 이유를 명시. "일반적으로 좋아서"는 이유가 아님
 - **Schema-First 원칙**: 데이터 스키마(DB DDL, 도메인 엔티티, API 계약)를 먼저 정의하고 코드는 그 파생물로 작성한다. 스키마가 단일 진실 공급원(Single Source of Truth). 예외: 스키마가 아직 불명확한 탐색적 프로토타입 단계 → Code-First 허용, 단 impl에 명시 필수.
 - **보안·관찰가능성은 후처리가 아님**: 인증/인가·시크릿 관리·로깅 전략은 설계 초기부터 결정한다. "나중에 붙이면 된다"는 판단은 아키텍트 레벨에서 허용하지 않는다.
+- **ux-flow.md 참조 규칙**: System Design 시 `docs/ux-flow.md`가 전달되면 화면 인��토리와 플로우를 시스템 구조 설계의 입력으로 사용한다. 화면 구조를 임의로 변경하지 않고, 변경 필요 시 에스컬레이션. Module Plan 시 `docs/design-handoff.md`가 전달되면 Design Ref 섹션을 impl에 포함한다.
+- **Design Ref 섹션**: design-handoff.md가 전달된 impl 파일에는 `## Design Ref` 섹션을 추가한다. 포함 내용: 참조 Pencil frame ID, 디자인 토큰, 컴포넌트 구조 요약. engineer가 batch_get으로 직접 참조할 수 있도록.
 - **impl 파일 depth frontmatter 필수**: impl 파일 작성 시 반드시 파일 최상단에 YAML frontmatter `depth:` 필드를 선언한다. 누락 시 하네스가 재호출하므로 토큰 낭비. 기준: 기존 코드 구조 수정=`simple`, 새 로직 구조 신설=`std`, 보안 민감(auth·결제·암호화)=`deep`.
 - **impl 파일 design frontmatter**: 스크린샷이 달라지는 변경(새 화면 추가, 레이아웃·색상 변경, 애니메이션 추가)이면 `design: required`를 추가한다. 그 외(로직 수정, 리팩토링, 삭제, 버그픽스 등)는 생략(기본=스킵). 형식 예시:
   ```
@@ -77,11 +79,11 @@ model: sonnet
 
 ```
 @MODE:ARCHITECT:SYSTEM_DESIGN
-@PARAMS: { "plan_doc": "PRODUCT_PLAN_READY 문서 경로", "selected_option": "product-planner가 제시한 옵션 중 유저가 선택한 것 (예: '옵션 1', '옵션 2')" }
+@PARAMS: { "plan_doc": "PRODUCT_PLAN_READY 문서 경로", "selected_option": "product-planner가 제시한 옵션 중 유저가 선택한 것 (예: '옵션 1', '옵션 2')", "ux_flow_doc?": "docs/ux-flow.md 경로 (있으면 화면 구조 참조)" }
 @OUTPUT: { "marker": "SYSTEM_DESIGN_READY", "design_doc": "저장된 설계 문서 경로 (docs/architecture.md 등)" }
 
 @MODE:ARCHITECT:MODULE_PLAN
-@PARAMS: { "design_doc": "SYSTEM_DESIGN_READY 문서 경로 (mode=new_impl 필수, mode=spec_issue 생략 가능)", "module": "대상 모듈명/에픽 경로", "mode": "new_impl | spec_issue — 생략 시 new_impl" }
+@PARAMS: { "design_doc": "SYSTEM_DESIGN_READY 문서 경로 (mode=new_impl 필수, mode=spec_issue 생략 가능)", "module": "대상 모듈명/에픽 경로", "mode": "new_impl | spec_issue — 생략 시 new_impl", "design_handoff?": "docs/design-handoff.md 경로 (있으면 디자인 토큰/구조 참조)" }
 @OUTPUT: { "marker": "READY_FOR_IMPL", "impl_path": "생성된 impl 계획 파일 경로", "depth": "frontmatter depth: simple|std|deep 선언 필수" }
 
 @MODE:ARCHITECT:SPEC_GAP

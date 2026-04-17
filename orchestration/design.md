@@ -8,6 +8,8 @@
 > ONE_WAY: 스킬이 designer 직접 호출 후 유저 확인.
 > THREE_WAY: 스킬이 designer → design-critic 루프(max 3회)를 순차 오케스트레이션.
 
+> **참고**: [설계 루프](system-design.md)에서도 designer를 호출하지만, 그 경로는 plan loop 경유(기획-UX 루프 후)이며 이 문서의 ux 스킬 독립 경로와 별개다. 설계 루프에서의 designer 파라미터(`skip_issue_creation`, `save_handoff_to`)는 [system-design.md](system-design.md) 참조.
+
 ---
 
 ## 2×2 포맷 매트릭스

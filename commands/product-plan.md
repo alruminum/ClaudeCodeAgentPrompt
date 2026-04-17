@@ -1,6 +1,6 @@
 ---
 name: product-plan
-description: 기능 추가/변경 요청을 명확히 정의한 뒤 하네스 plan 루프(product-planner → architect → validator)를 시작하는 스킬. 유저가 "기획자야", "기획아", "기능 추가할 게 생겼어", "피쳐 추가할 게 생겼어", "feature 추가", "이런 기능이 필요할 것 같아", "이런 기능이 빠진 것 같은데", "피쳐 추가", "새 기능", "새 피쳐", "기획해줘", "프로덕트 플랜" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
+description: 기능 추가/변경 요청을 명확히 정의한 뒤 하네스 기획-UX 루프(product-planner → ux-architect → validator(UX) → 유저 승인 ①)를 시작하고, 이후 설계 루프 → 구현 루프로 연결하는 스킬. 유저가 "기획자야", "기획아", "기능 추가할 게 생겼어", "피쳐 추가할 게 생겼어", "feature 추가", "이런 기능이 필요할 것 같아", "이런 기능이 빠진 것 같은데", "피쳐 추가", "새 기능", "새 피쳐", "기획해줘", "프로덕트 플랜" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
 ---
 
 # Product Plan Loop Skill
@@ -127,3 +127,61 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
 5. **최대 2회 반복**. 3회째 CLARITY_INSUFFICIENT가 오면:
    "product-planner가 여전히 정보 부족을 보고합니다. 현재 상태로 강제 진행할까요?"
    → 유저 선택
+
+### 5단계: 유저 승인 ① (PRD + UX Flow)
+
+기획-UX 루프가 정상 완료되면 (UX_REVIEW_PASS) 유저에게 결과를 보여주고 승인을 받는다:
+
+```
+---
+기획-UX 루프 완료
+
+**PRD**: prd.md
+**UX Flow**: docs/ux-flow.md
+- 화면 N개, 플로우 M개 경로
+
+확인 후 승인/수정 요청해주세요.
+(수정 시: "화면 추가", "플로우 변경", "비기능 변경" 중 어떤 종류인지 알려주세요)
+---
+```
+
+수정 요청 시 라우팅 ([orchestration-rules.md](../orchestration-rules.md) 기준):
+- **화면 추가/삭제** → planner(PRODUCT_PLAN_CHANGE) + ux-architect 재실행
+- **기존 화면 내 변경** → ux-architect만 재실행
+- **비기능 변경** → planner(PRODUCT_PLAN_CHANGE)만 재실행
+
+### 6단계: 설계 루프 트리거
+
+유저 승인 ① 후 architect(SD) + designer를 **병렬**로 호출한다.
+상세: [orchestration/system-design.md](../orchestration/system-design.md)
+
+```
+# architect(SD) — 하네스 경유
+python3 ~/.claude/harness/executor.py plan \
+  --phase system-design \
+  --context "prd.md + docs/ux-flow.md" \
+  $PREFIX_FLAG
+
+# designer — Agent 도구 직접 호출 (하네스 밖, 병렬)
+# UX Flow Doc 디자인 테이블에서 대상 화면 추출 → 화면별 ONE_WAY 순차
+@MODE:DESIGNER:SCREEN_ONE_WAY
+@PARAMS: { "target": "[화면명]", "ux_goal": "[UX Flow 기반]", "skip_issue_creation": true, "save_handoff_to": "docs/design-handoff.md" }
+```
+
+### 7단계: 디자인 승인
+
+architect(SD) SYSTEM_DESIGN_READY + designer DESIGN_HANDOFF 완료 후:
+- validator Design Validation 실행
+- DESIGN_REVIEW_PASS → 유저에게 architecture.md + Pencil 캔버스 확인 요청
+- 유저 승인 → 8단계
+
+### 8단계: 구현 루프 트리거
+
+디자인 승인 후 구현 루프 진입. 상세: [orchestration/impl.md](../orchestration/impl.md)
+
+```
+python3 ~/.claude/harness/executor.py impl \
+  --impl <impl_path> \
+  --issue <N> \
+  $PREFIX_FLAG
+```

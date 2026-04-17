@@ -14,6 +14,7 @@
 | designer | 2×2 포맷 매트릭스 기반 variant 생성 (SCREEN/COMPONENT × ONE_WAY/THREE_WAY), DESIGN_HANDOFF 패키지 출력. ux 스킬이 직접 호출 — 하네스 루프 밖 | src/** 수정, 코드 생성 |
 | design-critic | PICK/ITERATE/ESCALATE 판정 | 파일 수정 |
 | qa | 원인 분석 + 라우팅 추천 | 코드·문서 수정 |
+| ux-architect | UX Flow Doc 작성 (화면 구조·플로우·인터랙션) | 시각 디자인, 시스템 설계, 코드 작성, Pencil MCP |
 | product-planner | PRD/TRD 작성 | 코드·설계 문서 수정 |
 | test-engineer | 테스트 코드 작성 | 소스 수정 |
 | pr-reviewer | 코드 품질 리뷰 | 파일 수정 |
@@ -30,6 +31,7 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 | architect | `docs/**`, `backlog.md` | impl 파일 포함 |
 | designer | `design-variants/**`, `docs/ui-spec*` | architecture 계열 금지. design-preview-*.html 제거 (Pencil MCP로 대체) |
 | test-engineer | `src/__tests__/**` | src 본체 수정 금지 |
+| ux-architect | `docs/ux-flow.md` | 다른 모든 경로 금지 |
 | product-planner | `prd.md`, `trd.md` | 설계 문서 금지 |
 | validator, design-critic, pr-reviewer, qa, security-reviewer | *(없음 — ReadOnly)* | 모든 Write/Edit deny |
 

@@ -5,6 +5,8 @@ description: 디자인/UX 변경 요청을 2×2 포맷 매트릭스(SCREEN/COMPO
 
 # UX Loop Skill
 
+> **참고**: 이 스킬은 독립 UX 변경 요청을 처리하는 경로다. 설계 루프(plan loop 경유)에서의 designer 호출은 [system-design.md](../orchestration/system-design.md) 참조. 향후 이 스킬의 이름을 `designer`로 변경 예정 (당장은 기존 `ux` 유지).
+
 유저의 디자인/UX 변경 요청을 구조화된 컨텍스트로 만들고, 부족한 정보는 역질문으로 채운 뒤 designer 에이전트를 직접 호출한다.
 
 ## 정보 추출

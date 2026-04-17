@@ -19,12 +19,12 @@
 
 | 상황 | 호출 |
 |------|------|
-| 신규 프로젝트 / PRD 변경 | → **[기획 루프](orchestration/plan.md)** |
-| UI 변경 요청 | → **ux 스킬** → designer 에이전트 직접 호출 (Pencil 캔버스, 하네스 루프 없음). 상세: [orchestration/design.md](orchestration/design.md) |
+| 신규 프로젝트 / PRD 변경 | → **[기획-UX 루프](orchestration/plan.md)** → 유저 승인 ① → **[설계 루프](orchestration/system-design.md)** → 디자인 승인 → **[구현 루프](orchestration/impl.md)** |
+| UI 변경 요청 (독립) | → **ux 스킬** → designer 에이전트 직접 호출 (Pencil 캔버스, 하네스 루프 없음). 상세: [orchestration/design.md](orchestration/design.md) |
 | 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프 개요](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth simple\|std\|deep]`<br>depth 상세: [simple](orchestration/impl_simple.md) / [std](orchestration/impl_std.md) / [deep](orchestration/impl_deep.md) |
 | 버그 보고 | → **qa 스킬** → QA 에이전트 직접 분류 + 라우팅. 상세: [orchestration/impl.md](orchestration/impl.md) (QA/DESIGN_HANDOFF 진입 흐름 섹션)<br>FUNCTIONAL_BUG → `executor.sh impl --issue <N>` (architect LIGHT_PLAN) / DESIGN_ISSUE → ux 스��� / SCOPE_ESCALATE → 유저 보고 |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>]` |
-| **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획 루프) |
+| **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획-UX 루프) |
 
 ---
 
@@ -38,12 +38,25 @@
 원칙: **마커 없으면 진행 금지**. 우연히 텍스트에서 추출한 경로로 다음 단계에 진입하는 것을 방지한다.
 
 ### 에이전트 간 데이터 전달 규칙
+- plan 루프에서 product-planner → ux-architect 전환 시, prd.md 경로만 전달. ux-architect가 직접 Read.
+- plan 루프에서 ux-architect → architect(SD) 전환 시, ux-flow.md + prd.md 경로만 전달. architect가 직접 Read.
 - plan 루프에서 product-planner → architect 전환 시, **pp_out 전문을 프롬프트에 넣지 않는다**. prd.md 경로만 전달하고 architect가 직접 Read하도록 한다.
 - 이유: 수만 토큰의 PRD 전문이 architect 프롬프트에 들어가면 architect가 prd.md를 자기가 다시 써야 한다고 착각해서 Bash heredoc 파일 쓰기 루프에 빠진다 (900초 타임아웃 사고 원인).
 
+### PRODUCT_PLAN_CHANGE 경유 시 ux-architect 재호출 조건
+- 유저 승인 ① 수정 요청 시 라우팅:
+  - 화면 추가/삭제 → planner(PRODUCT_PLAN_CHANGE) + ux-architect(UX_FLOW) 재실행
+  - 기존 화면 내 인터랙션/플로우 변경 → ux-architect(UX_FLOW)만 재실행
+  - 비기능 변경 (BM, 기술 스택 등) → planner(PRODUCT_PLAN_CHANGE)만 재실행
+
+### SPEC_GAP 화면 구조 변경 에스컬레이션
+- SPEC_GAP에서 화면 구조 변경이 필요하다고 판단되면 (새 화면 추가, 화면 간 플로우 변경):
+  - architect가 직접 처리하지 않고 `UX_FLOW_ESCALATE` 경로로 에스컬레이션
+  - 메인 Claude가 ux-architect 재호출 여부를 판단
+
 ### plan 루프 타임아웃 정책
 - plan 루프 Bash 호출 시 **timeout 3600000ms (60분)** 명시. 기본 20분으로는 plan loop 완주 불가.
-- 에이전트별 타임아웃: product-planner 600s, architect-sd 600s, architect-mp 600s, validator 300s.
+- 에이전트별 타임아웃: product-planner 600s, ux-architect 600s, architect-sd 600s, architect-mp 600s, validator 300s.
 - `agent_call`에서 에이전트 frontmatter `tools:` 목록 외 도구를 `--disallowedTools`에 추가하여 불필요한 도구 사용 방지 (예: product-planner의 Bash 차단).
 - `agent_call` 내부에서 30초마다 stdout heartbeat 출력 (`[HARNESS] agent 경과 Ns, tool calls: N`). 에이전트 실행 중 부모 Bash가 "조용"해지는 문제 방지.
 
@@ -55,8 +68,9 @@
 - parse_marker 결과가 UNKNOWN이면 `hlog`와 `print`로 경고를 즉시 출력. 디버깅용.
 
 ### plan 루프 체크포인트
-- plan_loop 진입 시 기존 산출물(prd.md, architecture.md, stories.md) 존재 여부 확인.
+- plan_loop 진입 시 기존 산출물(prd.md, ux-flow.md, architecture.md, stories.md) 존재 여부 확인.
 - 이미 존재하는 단계는 스킵하고 다음 단계부터 재개. 상태는 `{prefix}_plan_metadata.json`에 저장.
+- ux-flow.md 존재 시 ux-architect 스킵, architecture.md 존재 시 architect(SD) 스킵.
 
 ### 에이전트 간 handoff 전달 규칙
 - impl 루프에서 모든 에이전트 전환 시 handoff 문���를 생성하고 다음 에이전트 프롬프트에 경로 포함.
@@ -97,6 +111,11 @@
 
 | 마커 | 발행 주체 | 처리 |
 |------|-----------|------|
+| `UX_FLOW_READY` | ux-architect (UX Flow Doc 완성) | 기획-UX 루프에서 validator(UX) 호출 |
+| `UX_FLOW_ESCALATE` | ux-architect (PRD 범위 초과/모순) | 메인 Claude 보고 — planner 재호출 또는 유저 판단 |
+| `UX_REVIEW_PASS` | validator UX Validation (UX Flow Doc 검증 통과) | 유저 승인 ① 게이트 |
+| `UX_REVIEW_FAIL` | validator UX Validation (UX Flow Doc 검증 실패) | ux-architect 재설계 (max 1회) |
+| `UX_REVIEW_ESCALATE` | validator UX Validation (재검 후 재FAIL) | 메인 Claude 보고 |
 | `VARIANTS_APPROVED` | design-critic THREE_WAY 모드 (1개 이상 PASS) | 유저 PICK 안내 |
 | `VARIANTS_ALL_REJECTED` | design-critic THREE_WAY 모드 (전체 REJECT) | designer 재시도 (max 3회) |
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
@@ -128,7 +147,7 @@
 ### HUD Statusline (진행 상태 시각화)
 impl/plan 전체 라이프사이클의 진행 상태를 stdout에 시각적으로 표시.
 - `run_impl()` 진입 시 HUD 생성 (depth="auto", preamble: architect + plan-validation)
-- `run_plan()` 진입 시 HUD 생성 (depth="plan", agents: product-planner → architect-sd → design-validation → architect-mp → plan-validation)
+- `run_plan()` 진입 시 HUD 생성 (depth="plan", agents: product-planner → ux-architect → ux-validation). 설계 루프(architect-sd, design-validation)와 구현 루프(architect-mp, plan-validation)는 별도 HUD.
 - depth 확정 후 `set_depth()`로 depth별 에이전트 목록 확장
 - run_simple/run_std/run_deep에 `hud` 파라미터 전달 — 외부 HUD가 있으면 재사용, 없으면 자체 생성
 - 재진입 경로(plan_validation_passed 플래그): preamble 없이 depth 루프가 자체 HUD 생성
@@ -201,8 +220,9 @@ engineer 구현 후 automated_checks에서 `config.build_command`를 실행.
 | [이슈 컨벤션](orchestration/issue-convention.md) | GitHub 이슈 제목·본문 규칙 |
 | [브랜치 전략](orchestration/branch-strategy.md) | 네이밍·머지·정리 규칙 |
 | [에이전트 역할 경계](orchestration/agent-boundaries.md) | 담당·금지 + Write/Edit 매트릭스 + Pencil MCP 권한 |
-| [기획 루프](orchestration/plan.md) | product-planner → architect → validator 흐름 |
-| [디자인 루프](orchestration/design.md) | designer → design-critic 흐름 |
+| [기획-UX 루프](orchestration/plan.md) | planner → ux-architect → validator(UX) → 유저 승인 ① |
+| [설계 루프](orchestration/system-design.md) | architect(SD) + designer 병렬 → validator(DV) → 디자인 승인 |
+| [디자인 루프](orchestration/design.md) | designer 2×2 매트릭스 (Pencil, ux 스킬 독립 경로) |
 | [구현 루프 개요](orchestration/impl.md) | depth 선택 + QA/DESIGN_HANDOFF 진입 |
 | [impl simple](orchestration/impl_simple.md) / [std](orchestration/impl_std.md) / [deep](orchestration/impl_deep.md) | depth별 상세 |
 | [기술 에픽](orchestration/tech-epic.md) | 리팩·인프라 에픽 루프 |
@@ -217,7 +237,8 @@ engineer 구현 후 automated_checks에서 `config.build_command`를 실행.
 | 루프 순서 / 조건 변경 | `harness/executor.py`, `harness/{impl_router,impl_loop,helpers,plan_loop,core,config}.py`, `docs/harness-state.md` (진입점: `harness/executor.sh` → Python 래퍼) |
 | 마커 추가 / 변경 | 해당 에이전트 md 파일 + 해당 루프 파일(`orchestration/*.md`) |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 + `orchestration/agent-boundaries.md` |
-| 에이전트 추가 / 삭제 | `orchestration/agent-boundaries.md` + 해당 루프 다이어그램 + 마커 표 + 스크립트 |
+| 에이전트 추가 / 삭제 | `orchestration/agent-boundaries.md` + 해당 루프 다이어그램 + 마커 표 + 스크립트 + `CLAUDE.md` 수정 금지 테이블 |
+| UX 흐름 / 화면 구조 변경 | `agents/ux-architect.md` + `orchestration/plan.md` + `orchestration/design.md` |
 | 하네스 기능 추가 / 변경 | `docs/harness-state.md` (완료/한계 섹션) + `docs/harness-backlog.md` (항목 상태) |
 | config.py 필드 추가 | `harness/config.py` (필드) + `harness/impl_loop.py`/`helpers.py` (사용처) + `harness/tests/test_parity.py` (테스트) + `orchestration/changelog.md` (변경 로그) + `setup-harness.sh` (기본 템플릿) |
 | 훅 패턴/매핑 변경 | `hooks/*.py` 대상 파일 + `setup-harness.sh` 주석 |

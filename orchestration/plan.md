@@ -1,6 +1,9 @@
-# 기획 루프 (Plan)
+# 기획-UX 루프 (Plan)
 
 진입 조건: 신규 프로젝트 / PRD 변경
+종료 게이트: **유저 승인 ①** (PRD + UX Flow + 와이어프레임)
+
+> 이 루프가 끝나면 → [설계 루프](system-design.md)로 진행
 
 ---
 
@@ -13,38 +16,21 @@ flowchart TD
     PPU{"PRODUCT_PLAN_UPDATED"}
     CI["CLARITY_INSUFFICIENT\n(마커 누락 포함)"]:::escalation
 
-    SCOPE{{"메인 Claude 판단:\n전체 구조 변경?"}}
+    UI_CHECK{{"PRD 화면 인벤토리\n비어있는가?"}}
 
-    ARC_SD["architect\n@MODE:ARCHITECT:SYSTEM_DESIGN"]
-    ARC_MP_SKIP["architect\n@MODE:ARCHITECT:MODULE_PLAN"]
+    UXA["ux-architect\n@MODE:UX_ARCHITECT:UX_FLOW"]
+    UFR{"UX_FLOW_READY"}
+    UFE["UX_FLOW_ESCALATE"]:::escalation
 
-    SDR{"SYSTEM_DESIGN_READY"}
+    VAL_UX["validator\n@MODE:VALIDATOR:UX_VALIDATION"]
+    URP{"UX_REVIEW_PASS"}
+    URF{"UX_REVIEW_FAIL"}
+    UXA_REDO["ux-architect 재설계\n(max 1회)"]
+    URE["UX_REVIEW_ESCALATE"]:::escalation
 
-    VAL_DV["validator\n@MODE:VALIDATOR:DESIGN_VALIDATION"]
-
-    DRF{"DESIGN_REVIEW_FAIL"}
-    DRP{"DESIGN_REVIEW_PASS"}
-
-    ARC_REDO["architect 재설계\n(max 1회)"]
-    DRE["DESIGN_REVIEW_ESCALATE"]:::escalation
-
-    EPIC{{"메인 Claude 판단:\nEpic 전체 batch?"}}
-
-    ARC_TD["architect\n@MODE:ARCHITECT:TASK_DECOMPOSE"]
-    ARC_MP["architect\n@MODE:ARCHITECT:MODULE_PLAN"]
-
-    IMPL_GATE["impl 진입 게이트\n(공통 — 모든 루프)"]
-    VAL_PV["validator\n@MODE:VALIDATOR:PLAN_VALIDATION"]
-
-    PVF{"PLAN_VALIDATION_FAIL"}
-    PVP{"PLAN_VALIDATION_PASS"}
-
-    ARC_RE["architect 재보강\n(max 1회)"]
-    PVE["PLAN_VALIDATION_ESCALATE"]:::escalation
-
-    RFI{"READY_FOR_IMPL"}
-    USER_APPROVE{{"유저 승인 대기"}}
-    IMPL_ENTRY["→ 구현 루프 진입"]
+    USER_APPROVE_1{{"유저 승인 ①\n(PRD + UX Flow + 와이어프레임)"}}
+    NEXT["→ 설계 루프\n(system-design.md)"]
+    SKIP_UX["ux-architect 스킵\n→ 설계 루프 직행"]
 
     PP_NEW -->|"PRODUCT_PLAN_READY"| PPR
     PP_NEW -->|"CLARITY_INSUFFICIENT\n또는 마커 없음"| CI
@@ -52,76 +38,79 @@ flowchart TD
 
     CI -->|"유저 답변 후 재실행"| PP_NEW
 
-    PPR -->|"prd.md 경로 전달\n(전문 X)"| ARC_SD
-    PPU --> SCOPE
-    SCOPE -->|YES| ARC_SD
-    SCOPE -->|NO| ARC_MP_SKIP
+    PPR --> UI_CHECK
+    PPU --> UI_CHECK
 
-    ARC_SD -->|"SYSTEM_DESIGN_READY"| SDR
-    ARC_SD -->|"마커 없음"| SGE_SD["SPEC_GAP_ESCALATE"]:::escalation
-    ARC_MP_SKIP -->|"design_doc, module"| IMPL_GATE
+    UI_CHECK -->|"화면 있음"| UXA
+    UI_CHECK -->|"화면 없음\n(순수 로직 기능)"| SKIP_UX
 
-    SDR --> VAL_DV
-    VAL_DV -->|"design_doc"| DRF
-    VAL_DV -->|"design_doc"| DRP
+    UXA -->|"UX_FLOW_READY"| UFR
+    UXA -->|"UX_FLOW_ESCALATE"| UFE
 
-    DRF --> ARC_REDO
-    ARC_REDO -->|재FAIL| DRE
-    ARC_REDO -->|PASS| DRP
+    UFR --> VAL_UX
+    VAL_UX -->|"UX_REVIEW_PASS"| URP
+    VAL_UX -->|"UX_REVIEW_FAIL"| URF
 
-    DRP --> EPIC
-    EPIC -->|"stories.md impl 3개+"| ARC_TD
-    EPIC -->|"stories.md impl 1~2개"| ARC_MP
+    URF --> UXA_REDO
+    UXA_REDO -->|재FAIL| URE
+    UXA_REDO -->|PASS| URP
 
-    ARC_TD -->|"READY_FOR_IMPL"| IMPL_GATE
-    ARC_MP -->|"READY_FOR_IMPL"| IMPL_GATE
-    ARC_MP -->|"마커 없음"| SGE_MP["SPEC_GAP_ESCALATE"]:::escalation
-
-    IMPL_GATE --> VAL_PV
-    VAL_PV -->|"impl_path"| PVF
-    VAL_PV -->|"impl_path"| PVP
-
-    PVF --> ARC_RE
-    ARC_RE -->|재FAIL| PVE
-    ARC_RE -->|PASS| PVP
-
-    PVP --> RFI
-    RFI --> USER_APPROVE
-    USER_APPROVE --> IMPL_ENTRY
+    URP --> USER_APPROVE_1
+    USER_APPROVE_1 --> NEXT
+    SKIP_UX --> NEXT
 
     classDef escalation stroke:#f00,stroke-width:2px
 ```
 
 ---
 
+## UI 없는 기능 감지
+
+planner PRD의 화면 인벤토리가 비어있거나 모든 기능에 `(UI 없음)` 표시 → ux-architect 스킵, 설계 루프 직행.
+
+## UX_SYNC 모드 분기
+
+src/ 코드 존재 + ux-flow.md 없음 → `@MODE:UX_ARCHITECT:UX_SYNC` 모드로 호출 (기존 프로젝트 현행화).
+
+## 유저 승인 ① 라우팅
+
+유저 수정 요청 시 메인 Claude가 판단:
+- **화면 추가/삭제** → planner(PRODUCT_PLAN_CHANGE) + ux-architect(UX_FLOW) 재실행
+- **기존 화면 내 변경** → ux-architect(UX_FLOW)만 재실행
+- **비기능 변경** → planner(PRODUCT_PLAN_CHANGE)만 재실행
+
+## 체크포인트
+
+| 산출물 | 존재 시 스킵 |
+|--------|-------------|
+| `prd.md` | product-planner 스킵 |
+| `docs/ux-flow.md` | ux-architect 스킵 |
+
+상태는 `{prefix}_plan_metadata.json`에 저장.
+
+---
+
 ## 마커 레퍼런스
 
-### 인풋 마커 (이 루프에서 호출하는 @MODE)
+### 인풋 마커
 
 | @MODE | 대상 에이전트 | 호출 시점 |
 |---|---|---|
 | `@MODE:PLANNER:PRODUCT_PLAN` | product-planner | 신규 기획 시작 |
 | `@MODE:PLANNER:PRODUCT_PLAN_CHANGE` | product-planner | 기존 PRD 변경 |
-| `@MODE:ARCHITECT:SYSTEM_DESIGN` | architect | PRODUCT_PLAN_READY 후 전체 구조 설계 |
-| `@MODE:ARCHITECT:MODULE_PLAN` | architect | 단일 모듈 impl 작성 (구조 변경 불필요 시) |
-| `@MODE:ARCHITECT:TASK_DECOMPOSE` | architect | Epic 전체 batch 분해 |
-| `@MODE:VALIDATOR:DESIGN_VALIDATION` | validator | SYSTEM_DESIGN_READY 후 설계 검증 |
-| `@MODE:VALIDATOR:PLAN_VALIDATION` | validator | impl 계획 검증 (impl 진입 게이트) |
+| `@MODE:UX_ARCHITECT:UX_FLOW` | ux-architect | PRODUCT_PLAN_READY 후 UX 설계 |
+| `@MODE:UX_ARCHITECT:UX_SYNC` | ux-architect | 기존 프로젝트 현행화 |
+| `@MODE:VALIDATOR:UX_VALIDATION` | validator | UX_FLOW_READY 후 UX 검증 |
 
-### 아웃풋 마커 (이 루프에서 발생하는 시그널)
+### 아웃풋 마커
 
 | 마커 | 발행 주체 | 다음 행동 |
 |------|-----------|-----------|
-| `PRODUCT_PLAN_READY` | product-planner | architect System Design |
-| `PRODUCT_PLAN_UPDATED` | product-planner | 메인 Claude 범위 판단 → System Design or Module Plan |
-| `CLARITY_INSUFFICIENT` | product-planner (또는 마커 누락 시 자동) | 유저에게 부족 항목 질문 → 답변 후 plan 루프 재실행 |
-| `SYSTEM_DESIGN_READY` | architect | validator Design Validation |
-| `SPEC_GAP_ESCALATE` | plan_loop (architect 마커 누락 시 자동) | 메인 Claude 보고 후 대기 |
-| `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect | product-planner 에스컬레이션 |
-| `DESIGN_REVIEW_PASS` | validator | 에픽 규모 판단 → Task Decompose or Module Plan |
-| `DESIGN_REVIEW_FAIL` | validator | architect 재설계 (max 1회) |
-| `DESIGN_REVIEW_ESCALATE` | validator | 메인 Claude 보고 후 대기 |
-| `READY_FOR_IMPL` | architect | impl 진입 게이트 → validator Plan Validation |
-| `PLAN_VALIDATION_PASS` | validator | 유저 승인 → 구현 루프 진입 |
-| `PLAN_VALIDATION_FAIL` | validator | architect 재보강 (max 1회) |
-| `PLAN_VALIDATION_ESCALATE` | validator | 메인 Claude 보고 후 대기 |
+| `PRODUCT_PLAN_READY` | product-planner | UI 여부 판단 → ux-architect 호출 or 스킵 |
+| `PRODUCT_PLAN_UPDATED` | product-planner | 메인 Claude 범위 판단 → 라우팅 |
+| `CLARITY_INSUFFICIENT` | product-planner | 유저에게 부족 항목 질문 → 답변 후 재실행 |
+| `UX_FLOW_READY` | ux-architect | validator UX Validation |
+| `UX_FLOW_ESCALATE` | ux-architect | 메인 Claude 보고 — planner 재호출 또는 유저 판단 |
+| `UX_REVIEW_PASS` | validator | 유저 승인 ① 게이트 |
+| `UX_REVIEW_FAIL` | validator | ux-architect 재설계 (max 1회) |
+| `UX_REVIEW_ESCALATE` | validator | 메인 Claude 보고 후 대기 |

@@ -49,7 +49,7 @@ model: sonnet
 
 ```
 @MODE:DESIGNER:SCREEN_ONE_WAY
-@PARAMS: { "target": "대상 화면명", "ux_goal": "UX 목표/문제점", "ui_spec?": "docs/ui-spec.md 경로" }
+@PARAMS: { "target": "대상 화면명", "ux_goal": "UX 목표/문제점", "ui_spec?": "docs/ui-spec.md 경로", "skip_issue_creation?": "true 시 Phase 0-0 스킵 (설계 루프 경유 시)", "save_handoff_to?": "DESIGN_HANDOFF 저장 경로 (설계 루프 경유 시 docs/design-handoff.md)" }
 @OUTPUT: { "marker": "DESIGN_READY_FOR_REVIEW", "pencil_frames": ["variant-A"], "screenshots": ["경로1"] }
 
 @MODE:DESIGNER:SCREEN_THREE_WAY
@@ -74,6 +74,8 @@ model: sonnet
 **건너뛰기 금지. 모든 모드에서 필수.**
 
 ### 0-0. GitHub 이슈 생성 (디자인 작업 시작 전)
+
+**`skip_issue_creation: true`가 전달된 경우 이 단계를 스킵한다.** (설계 루프 경유 시)
 
 UX 스킬에서 호출된 경우, 항상 디자인 작업 전에 GitHub 이슈를 먼저 생성한다.
 
@@ -227,6 +229,7 @@ MODE: [SCREEN_THREE_WAY | COMPONENT_THREE_WAY]
 ## Phase 4 — DESIGN_HANDOFF 패키지 출력
 
 **유저가 variant를 선택한 후에만 실행. 코드 생성은 이 단계에서 하지 않는다.**
+**`save_handoff_to`가 전달된 경우**: DESIGN_HANDOFF 패키지를 해당 파일 경로에 Write로 저장한다 (설계 루프 경유 시 `docs/design-handoff.md`).
 코드 구현은 엔지니어가 Pencil 캔버스 + DESIGN_HANDOFF 패키지를 읽어 `src/`에 직접 작성한다.
 
 ### 4-1. 확정 디자인 읽기
