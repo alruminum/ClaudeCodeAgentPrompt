@@ -192,8 +192,7 @@ SCOPE_ESCALATE: [이슈 요약]
 - 추천: product-planner 에스컬레이션
 ```
 
-> Bugs milestone 번호는 이름으로 API 조회 후 사용 (하드코딩 금지):
-> `gh api repos/{owner}/{repo}/milestones --jq '.[] | select(.title=="Bugs") | .number'`
+> Bugs milestone 번호는 프로젝트 CLAUDE.md 마일스톤 표에서 확인한다 (Bash 없이 Read로 조회 가능).
 
 ---
 
