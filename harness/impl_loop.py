@@ -276,7 +276,6 @@ def run_simple(
         )
         _eng_cost = float(Path(f"{eng_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{eng_out[:-4]}_cost.txt").exists() else 0.0
         hud.agent_done("engineer", int(time.time() - _eng_t0), _eng_cost, "done" if agent_exit == 0 else "fail")
-        hud.log(f"engineer {'완료' if agent_exit == 0 else 'FAIL'} ({int(time.time() - _eng_t0)}s, ${_eng_cost:.2f})")
         hlog_fn(f"engineer 종료 (exit={agent_exit})")
         if agent_exit == 124:
             hlog_fn("engineer timeout")
