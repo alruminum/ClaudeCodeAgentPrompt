@@ -700,6 +700,9 @@ def agent_call(
     active_flag = _sd / f"{prefix_for_flag}_{agent}_active"
     active_flag.touch()
 
+    # 디버그: active 플래그 경로 + 존재 확인
+    print(f"[HARNESS] active_flag: {active_flag} (exists={active_flag.exists()})")
+
     # 공통 프리앰블 주입
     preamble_file = Path.home() / ".claude" / "agents" / "preamble.md"
     preamble = ""
