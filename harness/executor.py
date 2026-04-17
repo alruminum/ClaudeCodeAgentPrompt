@@ -96,7 +96,7 @@ def main() -> None:
         lock_file.unlink(missing_ok=True)
         (state_dir.path / f"{prefix}_harness_kill").unlink(missing_ok=True)
         # *_active 정리
-        for f in state_dir.path.glob(f"{prefix}_*_active"):
+        for f in state_dir.path.glob(f".{prefix}_*_active"):
             f.unlink(missing_ok=True)
         # write_run_end — 루프 함수에서 이미 호출했으면 스킵 (이중 호출 방지)
         if run_logger_ref[0] and not _run_end_written[0]:

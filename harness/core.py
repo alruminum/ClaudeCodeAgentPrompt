@@ -697,7 +697,7 @@ def agent_call(
         _state = _state.parent
     else:
         _sd = _P("/tmp")
-    active_flag = _sd / f"{prefix_for_flag}_{agent}_active"
+    active_flag = _sd / f".{prefix_for_flag}_{agent}_active"
     active_flag.touch()
 
     # 디버그: active 플래그 경로 + 존재 확인

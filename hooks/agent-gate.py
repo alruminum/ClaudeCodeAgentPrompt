@@ -105,7 +105,7 @@ def main():
 
     # 7. 에이전트 활성 플래그 설정 (agent-boundary.py 연동)
     try:
-        open(f"{get_state_dir()}/{PREFIX}_{agent}_active", "w").close()
+        open(f"{get_state_dir()}/.{PREFIX}_{agent}_active", "w").close()
     except Exception:
         pass
 

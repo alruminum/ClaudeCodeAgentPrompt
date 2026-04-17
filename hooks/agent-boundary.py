@@ -49,6 +49,7 @@ ALLOW_MATRIX = {
     "product-planner": [
         r'(^|/)prd\.md$',              # prd.md
         r'(^|/)trd\.md$',              # trd.md
+        r'stories\.md$',               # stories.md (에픽 스토리)
     ],
     "ux-architect": [
         r'(^|/)docs/ux-flow\.md$',     # docs/ux-flow.md만
@@ -97,7 +98,7 @@ def main():
         _active_files = [f for f in _all_files if "_active" in f]
         _direct_checks = {}
         for _ag in ("product-planner", "engineer", "architect", "ux-architect", "test-engineer", "designer"):
-            _flag_name = f"{prefix}_{_ag}_active"
+            _flag_name = f".{prefix}_{_ag}_active"
             _flag_full = os.path.join(_state_dir_path, _flag_name)
             if os.path.exists(_flag_full):
                 _direct_checks[_ag] = True
@@ -122,7 +123,7 @@ def main():
     active_agent = None
     # 1차: 계산된 prefix로 정확 매칭
     for agent in ALLOW_MATRIX:
-        if os.path.exists(os.path.join(get_state_dir(), f"{prefix}_{agent}_active")):
+        if os.path.exists(os.path.join(get_state_dir(), f".{prefix}_{agent}_active")):
             active_agent = agent
             break
 
@@ -131,7 +132,7 @@ def main():
     if active_agent is None:
         now = time.time()
         for agent in ALLOW_MATRIX:
-            for f in glob.glob(os.path.join(get_state_dir(), f"*_{agent}_active")):
+            for f in glob.glob(os.path.join(get_state_dir(), f".*_{agent}_active")):
                 try:
                     if now - os.path.getmtime(f) < 900:
                         active_agent = agent
