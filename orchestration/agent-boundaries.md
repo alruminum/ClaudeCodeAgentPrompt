@@ -30,7 +30,7 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 | engineer | `src/**` | 테스트 포함 |
 | architect | `docs/**`, `backlog.md` | impl 파일 포함 |
 | designer | `design-variants/**`, `docs/ui-spec*` | architecture 계열 금지. design-preview-*.html 제거 (Pencil MCP로 대체) |
-| test-engineer | `src/__tests__/**` | src 본체 수정 금지 |
+| test-engineer | `src/__tests__/**`, `src/**/*.test.*`, `src/**/*.spec.*` | src 본체 수정 금지 |
 | ux-architect | `docs/ux-flow.md` | 다른 모든 경로 금지 |
 | product-planner | `prd.md`, `trd.md` | 설계 문서 금지 |
 | validator, design-critic, pr-reviewer, qa, security-reviewer | *(없음 — ReadOnly)* | 모든 Write/Edit deny |

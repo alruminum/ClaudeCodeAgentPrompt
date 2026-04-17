@@ -139,7 +139,7 @@
 ### TDD 게이트 (std/deep -- test-engineer 선행, Phase 2 구현 완료)
 - attempt 0 + test_command 설정: test-engineer TDD 모드(@MODE:TEST_ENGINEER:TDD) -> RED 확인 -> engineer 구현 + 자체 vitest -> GREEN 확인
 - attempt 1+: test-engineer 스킵 (테스트 이미 존재) -> engineer 재시도 + 자체 vitest -> GREEN 확인
-- test_command 미설정 시 TDD 스킵 -- 기존 순서(engineer -> test-engineer) 폴백
+- test_command 미설정 시 TDD 스킵 -- 기존 순서(engineer -> test-engineer) 폴백. 폴백 시에도 test-engineer는 TDD 모드로 호출하되 "테스트 실행하지 마라" 지시 포함 (vitest 불가하므로)
 - simple depth: 변경 없음
 - 마커: TESTS_WRITTEN (test-engineer TDD 모드 완료 시)
 

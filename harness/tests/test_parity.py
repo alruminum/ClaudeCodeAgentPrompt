@@ -1017,8 +1017,84 @@ class TestRunUxValidation(unittest.TestCase):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# TDD Gate Phase 2 — 마커 + HUD 순서 + 파싱 테스트
+# TDD Gate — 마커 + HUD 순서 + 파싱 + 통합 검증 테스트
 # ═══════════════════════════════════════════════════════════════════════
+
+
+class TestDesignGateIntegrity(unittest.TestCase):
+    """디자인 게이트 정합성 검증."""
+
+    def test_ux_architect_agent_exists(self):
+        agent_file = HARNESS_DIR.parent / "agents" / "ux-architect.md"
+        self.assertTrue(agent_file.exists(), "ux-architect.md 에이전트 파일 없음")
+
+    def test_ux_architect_in_boundary(self):
+        boundary_file = HARNESS_DIR.parent / "orchestration" / "agent-boundaries.md"
+        content = boundary_file.read_text()
+        self.assertIn("ux-architect", content, "agent-boundaries.md에 ux-architect 없음")
+
+    def test_system_design_doc_exists(self):
+        doc = HARNESS_DIR.parent / "orchestration" / "system-design.md"
+        self.assertTrue(doc.exists(), "system-design.md 없음")
+
+    def test_plan_loop_no_architect_sd(self):
+        """plan_loop.py에 architect(SD) 호출이 없어야 함 (설계 루프로 분리됨)."""
+        plan_loop = HARNESS_DIR / "plan_loop.py"
+        content = plan_loop.read_text()
+        self.assertNotIn("SYSTEM_DESIGN", content, "plan_loop.py에 SYSTEM_DESIGN 잔재")
+        self.assertNotIn("architect-sd", content, "plan_loop.py에 architect-sd 잔재")
+
+    def test_plan_loop_returns_ux_markers(self):
+        """plan_loop.py가 UX_REVIEW_PASS/UX_SKIP을 리턴하는지."""
+        plan_loop = HARNESS_DIR / "plan_loop.py"
+        content = plan_loop.read_text()
+        self.assertIn("UX_REVIEW_PASS", content)
+        self.assertIn("UX_SKIP", content)
+
+
+class TestTDDGateIntegrity(unittest.TestCase):
+    """TDD 게이트 정합성 검증."""
+
+    def test_no_old_test_mode_in_agents(self):
+        """에이전트 파일에 @MODE:TEST_ENGINEER:TEST 잔재가 없어야 함."""
+        te = HARNESS_DIR.parent / "agents" / "test-engineer.md"
+        content = te.read_text()
+        self.assertNotIn("@MODE:TEST_ENGINEER:TEST", content)
+        self.assertIn("@MODE:TEST_ENGINEER:TDD", content)
+
+    def test_impl_std_has_tdd_flow(self):
+        doc = HARNESS_DIR.parent / "orchestration" / "impl_std.md"
+        content = doc.read_text()
+        self.assertIn("TDD", content, "impl_std.md에 TDD 관련 내용 없음")
+        self.assertIn("TESTS_WRITTEN", content)
+
+    def test_impl_deep_has_tdd_flow(self):
+        doc = HARNESS_DIR.parent / "orchestration" / "impl_deep.md"
+        content = doc.read_text()
+        self.assertIn("TDD", content, "impl_deep.md에 TDD 관련 내용 없음")
+
+    def test_impl_simple_no_tdd(self):
+        doc = HARNESS_DIR.parent / "orchestration" / "impl_simple.md"
+        content = doc.read_text()
+        self.assertNotIn("TDD", content, "impl_simple.md에 TDD가 있으면 안 됨")
+
+    def test_engineer_has_self_test(self):
+        eng = HARNESS_DIR.parent / "agents" / "engineer.md"
+        content = eng.read_text()
+        self.assertIn("자체 테스트 검증", content)
+
+    def test_harness_review_sequence_updated(self):
+        """harness-review.py EXPECTED_SEQUENCE에서 test-engineer가 engineer 앞인지."""
+        review = HARNESS_DIR.parent / "scripts" / "harness-review.py"
+        content = review.read_text()
+        # std 시퀀스에서 test-engineer가 engineer보다 먼저 나오는지
+        import re
+        m = re.search(r'"std":\s*\[(.*?)\]', content)
+        if m:
+            seq = m.group(1)
+            te_pos = seq.find("test-engineer")
+            eng_pos = seq.find('"engineer"')
+            self.assertLess(te_pos, eng_pos, "std 시퀀스에서 test-engineer가 engineer 뒤에 있음")
 
 
 class TestTDDMarker(unittest.TestCase):

@@ -39,6 +39,7 @@ DRIFT_MAP = {
     # designer/design-critic는 하네스 루프 밖 (v4). ux 스킬이 직접 호출.
     'agents/designer.md': ['commands/ux.md'],
     'agents/design-critic.md': ['orchestration/design.md'],
+    'agents/ux-architect.md': ['harness/plan_loop.py', 'harness/core.py'],
     'agents/product-planner.md': ['harness/plan_loop.py', 'orchestration/plan.md'],
     'agents/pr-reviewer.md': ['harness/impl_loop.py'],
     'agents/security-reviewer.md': ['harness/impl_loop.py'],
