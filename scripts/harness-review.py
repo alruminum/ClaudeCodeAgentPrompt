@@ -49,11 +49,11 @@ EXPECTED_SEQUENCE = {
         "plan_only": ["architect", "validator"],
         "fast": ["engineer"],
         "simple": ["engineer", "pr-reviewer"],
-        "std":  ["engineer", "test-engineer", "validator"],
-        "deep": ["engineer", "test-engineer", "validator", "pr-reviewer", "security-reviewer"],
+        "std":  ["test-engineer", "engineer", "validator"],
+        "deep": ["test-engineer", "engineer", "validator", "pr-reviewer", "security-reviewer"],
     },
     "design": ["designer", "design-critic"],
-    "plan":   ["product-planner", "architect", "validator"],
+    "plan":   ["product-planner", "ux-architect", "validator"],
 }
 
 LOG_DIR = os.path.expanduser("~/.claude/harness-logs")

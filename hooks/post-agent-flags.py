@@ -77,8 +77,8 @@ def main():
         if has_marker("BUGFIX_PASS"):
             touch(FLAGS.BUGFIX_VALIDATION_PASSED)
 
-    # ── test-engineer TESTS_PASS → 플래그 생성 ──
-    if agent == "test-engineer" and has_marker("TESTS_PASS"):
+    # ── test-engineer TESTS_PASS 또는 TESTS_WRITTEN → 플래그 생성 ──
+    if agent == "test-engineer" and (has_marker("TESTS_PASS") or has_marker("TESTS_WRITTEN")):
         touch(FLAGS.TEST_ENGINEER_PASSED)
 
     # ── pr-reviewer LGTM → 플래그 생성 ──

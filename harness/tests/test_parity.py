@@ -1016,5 +1016,48 @@ class TestRunUxValidation(unittest.TestCase):
             self.assertGreaterEqual(call_count[0], 3)
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# TDD Gate Phase 2 — 마커 + HUD 순서 + 파싱 테스트
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class TestTDDMarker(unittest.TestCase):
+    """TESTS_WRITTEN 마커 테스트."""
+
+    def test_tests_written_in_enum(self):
+        self.assertTrue(hasattr(Marker, "TESTS_WRITTEN"))
+        self.assertEqual(Marker.TESTS_WRITTEN.value, "TESTS_WRITTEN")
+
+    def test_parse_tests_written(self):
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+        f.write("output\n---MARKER:TESTS_WRITTEN---\ntest_files: src/a.test.ts")
+        f.close()
+        self.assertEqual(parse_marker(f.name, "TESTS_WRITTEN"), "TESTS_WRITTEN")
+        os.unlink(f.name)
+
+
+class TestTDDHUDOrder(unittest.TestCase):
+    """TDD에서 HUD 에이전트 순서: test-engineer가 engineer 앞."""
+
+    def test_std_order(self):
+        from harness.core import HUD
+        hud = HUD("std", "t", "1", 3, 10.0)
+        te_idx = hud.agents.index("test-engineer")
+        eng_idx = hud.agents.index("engineer")
+        self.assertLess(te_idx, eng_idx, "test-engineer should come before engineer in std")
+
+    def test_deep_order(self):
+        from harness.core import HUD
+        hud = HUD("deep", "t", "1", 3, 10.0)
+        te_idx = hud.agents.index("test-engineer")
+        eng_idx = hud.agents.index("engineer")
+        self.assertLess(te_idx, eng_idx, "test-engineer should come before engineer in deep")
+
+    def test_simple_no_test_engineer(self):
+        from harness.core import HUD
+        hud = HUD("simple", "t", "1", 3, 10.0)
+        self.assertNotIn("test-engineer", hud.agents)
+
+
 if __name__ == "__main__":
     unittest.main()

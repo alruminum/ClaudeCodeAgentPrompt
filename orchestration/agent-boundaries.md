@@ -16,7 +16,7 @@
 | qa | 원인 분석 + 라우팅 추천 | 코드·문서 수정 |
 | ux-architect | UX Flow Doc 작성 (화면 구조·플로우·인터랙션) | 시각 디자인, 시스템 설계, 코드 작성, Pencil MCP |
 | product-planner | PRD/TRD 작성 | 코드·설계 문서 수정 |
-| test-engineer | 테스트 코드 작성 | 소스 수정 |
+| test-engineer | 테스트 코드 작성 (TDD: impl 기반 선작성, 실행은 하네스) | 소스 수정, 테스트 실행 |
 | pr-reviewer | 코드 품질 리뷰 | 파일 수정 |
 | security-reviewer | OWASP+WebView 보안 감사 | 파일 수정 |
 

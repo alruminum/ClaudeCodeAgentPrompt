@@ -607,7 +607,7 @@ def save_impl_meta(
         str(adir / "meta.json"),
         attempt=anum, loop="impl", depth=depth, result=result,
         fail_type=fail_type, failed_tests=ftests, changed_files=changed,
-        agent_sequence="engineer,test-engineer,validator,pr-reviewer",
+        agent_sequence="test-engineer,engineer,validator,pr-reviewer",
         error_summary=err1, next_hints=hints,
     )
 

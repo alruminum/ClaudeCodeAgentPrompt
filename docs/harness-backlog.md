@@ -115,6 +115,7 @@
 | DG1 | **디자인 게이트 Phase 1** — 3개 루프 분리 문서 + ux-architect 에이전트 신설 | 04-17 |
 | DG2 | **디자인 게이트 Phase 2** — plan_loop.py 기획-UX 전용 재작성 + UX 마커 + run_ux_validation | 04-17 |
 | DG3 | **디자인 게이트 Phase 3** — 15개 테스트 + agent-boundary.py 매트릭스 + handoff + 정합성 검수 | 04-17 |
+| TDD1 | **TDD 게이트 Phase 1** — test-engineer TDD 모드 교체 + engineer 자체 vitest + impl_std/deep 흐름 재작성 | 04-17 |
 
 ### 대기 / 보류
 

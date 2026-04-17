@@ -780,6 +780,8 @@ def _run_std_deep(
         "depth": depth, "max_retries": MAX, "constraints_chars": len(constraints),
     })
 
+    _tdd_test_files = ""  # TDD 테스트 파일 경로 (attempt 0에서 설정, 이후 유지)
+
     while attempt < MAX:
         hlog_fn.set_attempt(attempt)
         kill_check(state_dir)
@@ -799,9 +801,86 @@ def _run_std_deep(
         os.environ["HARNESS_HIST_DIR"] = str(attempt_dir)
         prune_history(str(loop_out_dir))
 
+        # ── TDD Phase: test-engineer 선행 (attempt 0 + test_command + std/deep) ──
+        _tdd_active = (attempt == 0 and bool(config.test_command) and depth in ("std", "deep"))
+        if _tdd_active:
+            log_phase("test-engineer-tdd", run_logger, attempt)
+            hlog_fn(f"test-engineer TDD 시작 (attempt=0, depth={depth})")
+            hud.agent_start("test-engineer")
+            kill_check(state_dir)
+
+            te_tdd_out = str(state_dir.path / f"{prefix}_te_tdd_out.txt")
+            te_tdd_prompt = (
+                f"@MODE:TEST_ENGINEER:TDD\n"
+                f'@PARAMS: {{ "impl_path": "{impl_file}" }}\n\n'
+                f"[지시] impl의 인터페이스 정의 + 수용 기준(TEST)에서 테스트 작성. 코드 없이 impl만 참조.\n"
+                f"issue: #{issue_num}"
+            )
+            _te_tdd_t0 = time.time()
+            te_tdd_exit = agent_call("test-engineer", 600, te_tdd_prompt, te_tdd_out, run_logger, config, str(attempt_dir))
+            _te_tdd_cost = 0.0
+            try:
+                _te_cost_file = Path(str(te_tdd_out).replace(".txt", "_cost.txt"))
+                _te_tdd_cost = float(_te_cost_file.read_text() or "0") if _te_cost_file.exists() else 0.0
+            except (ValueError, OSError):
+                pass
+            hud.agent_done("test-engineer", int(time.time() - _te_tdd_t0), _te_tdd_cost)
+            hlog_fn(f"test-engineer TDD 종료 (exit={te_tdd_exit})")
+            total_cost = budget_check("test-engineer", te_tdd_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
+
+            te_tdd_marker = parse_marker(te_tdd_out, "TESTS_WRITTEN")
+            if te_tdd_marker == "TESTS_WRITTEN":
+                hlog_fn("TESTS_WRITTEN 확인")
+                print("[HARNESS] test-engineer TDD -> TESTS_WRITTEN")
+                try:
+                    _te_content = Path(te_tdd_out).read_text(encoding="utf-8", errors="replace")
+                    _tdd_test_files = " ".join(
+                        m.group(0) for m in re.finditer(r"src/[^ ]+\.(?:test|spec)\.[jt]sx?", _te_content)
+                    )
+                except OSError:
+                    pass
+            else:
+                hlog_fn(f"test-engineer TDD 마커 없음 ({te_tdd_marker}) -- 테스트 없이 진행")
+                print(f"[HARNESS] test-engineer TDD -> {te_tdd_marker} (TESTS_WRITTEN 아님)")
+
+            # RED 확인 (정보성, attempt 미소진)
+            if _tdd_test_files and config.test_command:
+                import shlex as _shlex_red
+                try:
+                    red_result = subprocess.run(
+                        _shlex_red.split(config.test_command),
+                        capture_output=True, text=True, timeout=120,
+                    )
+                    if red_result.returncode == 0:
+                        print("[HARNESS] 경고: 테스트가 코드 없이 통과 -- trivially true 의심")
+                        hlog_fn("RED: trivially true")
+                    else:
+                        print(f"[HARNESS] RED 확인 OK (exit={red_result.returncode})")
+                        hlog_fn(f"RED OK (exit={red_result.returncode})")
+                except (subprocess.TimeoutExpired, OSError) as e:
+                    hlog_fn(f"RED 확인 실패: {e}")
+
+            # handoff: test-engineer -> engineer
+            try:
+                _te_output = Path(te_tdd_out).read_text(encoding="utf-8", errors="replace") if Path(te_tdd_out).exists() else ""
+                _te_ho = generate_handoff(
+                    "test-engineer", "engineer", _te_output,
+                    impl_file, attempt, issue_num,
+                )
+                write_handoff(state_dir, prefix, attempt, "test-engineer", "engineer", _te_ho)
+                run_logger.log_event({"event": "handoff", "from": "test-engineer", "to": "engineer", "t": int(time.time())})
+            except Exception:
+                pass
+        elif attempt > 0 and depth in ("std", "deep"):
+            hud.agent_skip("test-engineer", f"attempt {attempt} -- 테스트 이미 작성됨")
+            hlog_fn(f"test-engineer 스킵 (attempt {attempt})")
+
         context = build_smart_context(impl_file, 0)
         if attempt == 0:
-            task = "impl 파일의 구현 명세 전체 이행"
+            _tdd_hint = ""
+            if _tdd_test_files:
+                _tdd_hint = f"\n\n[TDD] 테스트 파일: {_tdd_test_files}\n이 테스트를 통과시켜라. commit 전 Bash로 테스트 실행해서 통과 확인하라."
+            task = f"impl 파일의 구현 명세 전체 이행{_tdd_hint}"
         else:
             prev_dir = loop_out_dir / f"attempt-{attempt - 1}"
             wt_prefix = (
@@ -817,7 +896,8 @@ def _run_std_deep(
                 "test_fail": (
                     f"[테스트 실패] 시도 {attempt}회.\n"
                     f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'test-results.log'))}\n"
-                    "구현 코드를 수정하라. 테스트 코드 자체는 수정 금지."
+                    f"{'테스트 파일: ' + _tdd_test_files + chr(10) if _tdd_test_files else ''}"
+                    "구현 코드를 수정하라. 테스트 코드 자체는 수정 금지. commit 전 자체 vitest 실행."
                 ),
                 "validator_fail": (
                     f"[스펙 불일치] 시도 {attempt}회.\n"
@@ -987,101 +1067,87 @@ def _run_std_deep(
             run_logger.log_event({"event": "commit", "hash": early_commit, "attempt": attempt + 1, "t": int(time.time())})
             hlog_fn(f"early commit: {early_commit} (attempt={attempt + 1})")
 
-        # ── handoff: engineer → test-engineer ─────────────────────
-        _eng_output = ""
-        try:
-            _eng_output = Path(str(state_dir.path / f"{prefix}_eng_out.txt")).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            pass
-        _handoff_content = generate_handoff(
-            "engineer", "test-engineer", _eng_output,
-            impl_file, attempt, issue_num,
-            acceptance_criteria=extract_acceptance_criteria(impl_file),
-        )
-        _handoff_path = write_handoff(state_dir, prefix, attempt, "engineer", "test-engineer", _handoff_content)
-        run_logger.log_event({
-            "event": "handoff", "from": "engineer", "to": "test-engineer",
-            "t": int(time.time()),
-        })
-
-        # ── 워커 2: test-engineer ─────────────────────────────────
-        r_changed = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
-        if r_changed.returncode != 0:
-            r_changed = subprocess.run(["git", "status", "--short"], capture_output=True, text=True, timeout=5)
-            changed_files_str = " ".join(
-                line.split(None, 1)[1] for line in r_changed.stdout.splitlines()
-                if re.match(r"^ M|^M |^A ", line)
+        # ── TDD 여부에 따라 test-engineer 처리 분기 ─────────────────
+        if _tdd_active or (attempt > 0 and depth in ("std", "deep")):
+            # TDD: test-engineer 이미 완료 (attempt 0) 또는 스킵 (attempt 1+)
+            # → 바로 vitest GREEN 확인으로 진행
+            hlog_fn("test-engineer 스킵 (TDD: 이미 완료 or attempt 1+)")
+        elif not config.test_command:
+            # test_command 미설정 시 기존 순서 폴백 (engineer → test-engineer)
+            _eng_output = ""
+            try:
+                _eng_output = Path(str(state_dir.path / f"{prefix}_eng_out.txt")).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                pass
+            _handoff_content = generate_handoff(
+                "engineer", "test-engineer", _eng_output,
+                impl_file, attempt, issue_num,
+                acceptance_criteria=extract_acceptance_criteria(impl_file),
             )
-        else:
-            changed_files_str = " ".join(r_changed.stdout.strip().splitlines())
+            _handoff_path = write_handoff(state_dir, prefix, attempt, "engineer", "test-engineer", _handoff_content)
+            run_logger.log_event({
+                "event": "handoff", "from": "engineer", "to": "test-engineer",
+                "t": int(time.time()),
+            })
 
-        log_phase("test-engineer", run_logger, attempt)
-        hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=600s)")
-        kill_check(state_dir)
-        hud.agent_start("test-engineer")
+            r_changed = subprocess.run(["git", "diff", "HEAD~1", "--name-only"], capture_output=True, text=True, timeout=5)
+            if r_changed.returncode != 0:
+                r_changed = subprocess.run(["git", "status", "--short"], capture_output=True, text=True, timeout=5)
+                changed_files_str = " ".join(
+                    line.split(None, 1)[1] for line in r_changed.stdout.splitlines()
+                    if re.match(r"^ M|^M |^A ", line)
+                )
+            else:
+                changed_files_str = " ".join(r_changed.stdout.strip().splitlines())
 
-        test_cmd_hint = config.test_command or "프로젝트의 테스트 명령어"
-        _te_handoff_hint = f"\n인수인계 문서: {_handoff_path}" if _handoff_path else ""
-        if attempt > 0:
+            log_phase("test-engineer", run_logger, attempt)
+            hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=600s)")
+            kill_check(state_dir)
+            hud.agent_start("test-engineer")
+
+            _te_handoff_hint = f"\n인수인계 문서: {_handoff_path}" if _handoff_path else ""
             te_prompt = (
-                f"[RETRY 모드] 이전 attempt에서 테스트 파일이 이미 작성됨. 새 테스트 파일 작성 불필요.\n"
-                f"impl: {impl_file}\n수정된 파일: {changed_files_str}\nissue: #{issue_num}\n\n"
-                f"[지시] {test_cmd_hint}를 실행해서 결과를 TESTS_PASS / TESTS_FAIL로 보고하라. 파일 읽기 최소화."
-                f"{_te_handoff_hint}"
-            )
-        else:
-            te_prompt = (
-                f"@MODE:TEST_ENGINEER:TEST\n"
-                f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{changed_files_str}" }}\n\n'
-                f"[지시] 위 src_files 목록이 이번 구현에서 변경된 파일 전체다. 추가 탐색 없이 이 파일들만 테스트하라.\n"
+                f"@MODE:TEST_ENGINEER:TDD\n"
+                f'@PARAMS: {{ "impl_path": "{impl_file}" }}\n\n'
+                f"[지시] impl의 인터페이스 정의 + 수용 기준(TEST)에서 테스트 작성.\n"
                 f"issue: #{issue_num}"
                 f"{_te_handoff_hint}"
             )
 
-        te_out = str(state_dir.path / f"{prefix}_te_out.txt")
-        agent_exit = agent_call("test-engineer", 600, te_prompt, te_out, run_logger, config, str(attempt_dir))
-        hlog_fn(f"test-engineer 종료 (exit={agent_exit})")
-        if agent_exit == 124:
-            hlog_fn("test-engineer timeout")
-        total_cost = budget_check("test-engineer", te_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
+            # fallback: test-engineer 호출 (test_command 없을 때)
+            te_out = str(state_dir.path / f"{prefix}_te_out.txt")
+            agent_exit = agent_call("test-engineer", 600, te_prompt, te_out, run_logger, config, str(attempt_dir))
+            hlog_fn(f"test-engineer 종료 (exit={agent_exit})")
+            total_cost = budget_check("test-engineer", te_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
 
-        if not check_agent_output("test-engineer", te_out):
-            fail_type = "test_fail"
-            error_trace = f"test-engineer agent produced no output (exit={agent_exit})"
-            append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
-            rollback_attempt(attempt, run_logger)
-            attempt += 1
-            continue
-
-        # ── test run (ground truth) ───────────────────────────────
-        import shlex as _shlex
-        if not config.test_command:
-            # test_command 미설정 → ground-truth 테스트 스킵, test-engineer 마커에 의존
-            hlog_fn("test_command 미설정 → ground-truth 테스트 스킵")
-            print("[HARNESS] test_command 미설정 — ground-truth 테스트 스킵")
-            te_content = Path(te_out).read_text(encoding="utf-8", errors="replace")
-            te_marker = parse_marker(te_out, "TESTS_PASS|TESTS_FAIL")
-            if te_marker == "TESTS_FAIL":
+            if not check_agent_output("test-engineer", te_out):
                 fail_type = "test_fail"
-                error_trace = te_content
-                log_decision("fail_type", fail_type, "test-engineer reported TESTS_FAIL", run_logger, attempt)
-                append_failure(impl_file, "test_fail", error_trace, state_dir, prefix)
-                try:
-                    shutil.copy2(te_out, str(attempt_dir / "test-engineer.log"))
-                except OSError:
-                    pass
-                save_impl_meta(attempt_dir, attempt, "FAIL", depth, "test_fail",
-                               f"{attempt_dir}/test-engineer.log 확인")
+                error_trace = f"test-engineer agent produced no output (exit={agent_exit})"
+                append_failure(impl_file, fail_type, error_trace, state_dir, prefix)
                 rollback_attempt(attempt, run_logger)
                 attempt += 1
                 continue
-            # TESTS_PASS 또는 UNKNOWN → 통과 처리
+
+            # test_command 없으므로 마커 기반 판정
+            te_marker = parse_marker(te_out, "TESTS_PASS|TESTS_FAIL|TESTS_WRITTEN")
+            if te_marker == "TESTS_FAIL":
+                fail_type = "test_fail"
+                te_content = Path(te_out).read_text(encoding="utf-8", errors="replace")
+                log_decision("fail_type", fail_type, "test-engineer reported TESTS_FAIL", run_logger, attempt)
+                append_failure(impl_file, "test_fail", te_content, state_dir, prefix)
+                rollback_attempt(attempt, run_logger)
+                attempt += 1
+                continue
             state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
-            print("[HARNESS] TESTS_PASS (test-engineer marker)")
-        else:
+            hud.agent_done("test-engineer", 0, 0.0)
+            print("[HARNESS] test-engineer PASS (fallback)")
+
+        # ── GREEN 확인 (vitest run) ───────────────────────────────
+        import shlex as _shlex
+        if config.test_command:
             test_cmd_parts = _shlex.split(config.test_command)
-            print(f"[HARNESS] 테스트 실행: {config.test_command} (attempt {attempt + 1}/{MAX})")
-            hlog_fn(f"테스트 시작: {config.test_command}")
+            print(f"[HARNESS] GREEN 테스트: {config.test_command} (attempt {attempt + 1}/{MAX})")
+            hlog_fn(f"GREEN 테스트 시작: {config.test_command}")
             kill_check(state_dir)
             test_result = subprocess.run(
                 test_cmd_parts,
@@ -1089,17 +1155,16 @@ def _run_std_deep(
             )
             test_out_file = state_dir.path / f"{prefix}_test_out.txt"
             test_out_file.write_text(test_result.stdout + test_result.stderr, encoding="utf-8")
-            hlog_fn(f"테스트 종료 (exit={test_result.returncode})")
+            hlog_fn(f"GREEN 테스트 종료 (exit={test_result.returncode})")
 
             if test_result.returncode != 0:
-                print("[HARNESS] TESTS_FAIL")
+                print("[HARNESS] TESTS_FAIL (GREEN)")
                 error_trace = test_out_file.read_text(encoding="utf-8")
                 fail_type = "test_fail"
                 log_decision("fail_type", fail_type, f"test exit={test_result.returncode}", run_logger, attempt)
                 append_failure(impl_file, "test_fail", error_trace, state_dir, prefix)
                 try:
                     shutil.copy2(str(test_out_file), str(attempt_dir / "test-results.log"))
-                    shutil.copy2(te_out, str(attempt_dir / "test-engineer.log"))
                 except OSError:
                     pass
                 save_impl_meta(attempt_dir, attempt, "FAIL", depth, "test_fail",
@@ -1108,7 +1173,7 @@ def _run_std_deep(
                 attempt += 1
                 continue
             state_dir.flag_touch(Flag.TEST_ENGINEER_PASSED)
-            print("[HARNESS] TESTS_PASS")
+            print("[HARNESS] GREEN PASS")
 
         # ── 워커 3: validator ─────────────────────────────────────
         log_phase("validator", run_logger, attempt)
@@ -1194,7 +1259,7 @@ def _run_std_deep(
         except OSError:
             pass
 
-        # ── ��커 4: pr-reviewer + second reviewer (병렬) ─────────
+        # ── 워커 4: pr-reviewer + second reviewer (병렬) ─────────
         log_phase("pr-reviewer", run_logger, attempt)
         hlog_fn(f"pr-reviewer 시작 (depth={depth}, timeout=360s)")
         hud.agent_start("pr-reviewer")
@@ -1519,6 +1584,6 @@ def run_deep(
 
 DEPTH_CHAINS = {
     "simple": ["engineer", "pr-reviewer"],
-    "std": ["engineer", "test-engineer", "validator", "pr-reviewer"],
-    "deep": ["engineer", "test-engineer", "validator", "pr-reviewer", "security-reviewer"],
+    "std": ["test-engineer", "engineer", "validator", "pr-reviewer"],
+    "deep": ["test-engineer", "engineer", "validator", "pr-reviewer", "security-reviewer"],
 }
