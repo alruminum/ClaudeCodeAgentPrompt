@@ -290,10 +290,16 @@ def run_impl(
         else:
             print("[HARNESS] architect Module Plan 작성")
             hud.log(f"architect Module Plan (issue #{issue_num})")
+            _mp_extra = ""
+            if Path("docs/design-handoff.md").exists():
+                _mp_extra = "\ndesign_handoff: docs/design-handoff.md"
+                print("[HARNESS] design-handoff.md 감지 -- architect MP에 전달")
+            if Path("docs/ux-flow.md").exists():
+                _mp_extra += "\nux_flow_doc: docs/ux-flow.md"
             arch_exit = agent_call(
                 "architect", 900,
                 f"@MODE:ARCHITECT:MODULE_PLAN\n"
-                f"issue #{issue_num} impl 계획 작성. context: {context}",
+                f"issue #{issue_num} impl 계획 작성. context: {context}{_mp_extra}",
                 arch_out, run_logger, config,
             )
 

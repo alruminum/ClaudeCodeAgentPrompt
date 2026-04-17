@@ -57,3 +57,25 @@ ux-architect가 생성한 UX Flow Doc(`docs/ux-flow.md`)이 PRD 요구사항을 
 
 판정: FAIL
 ```
+
+### UX_REVIEW_ESCALATE
+
+ux-architect 재설계(max 1회) 후에도 FAIL이 재발하면 에스컬레이션:
+
+```
+---MARKER:UX_REVIEW_ESCALATE---
+
+## UX Validation Escalation Report
+
+### 1차 FAIL 항목
+[1차 검증 FAIL 항목 요약]
+
+### 재검증 후에도 미해결
+1. [카테고리] 구체적 문제 — 파일:섹션 근거
+2. [카테고리] 구체적 문제 — 파일:섹션 근거
+
+### 에스컬레이션 사유
+- ux-architect 1회 재설계 후에도 위 항목이 해결되지 않음
+
+판정: ESCALATE
+```

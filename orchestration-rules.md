@@ -235,7 +235,7 @@ engineer 구현 후 automated_checks에서 `config.build_command`를 실행.
 | 변경 내용 | 업데이트 대상 |
 |-----------|---------------|
 | 루프 순서 / 조건 변경 | `harness/executor.py`, `harness/{impl_router,impl_loop,helpers,plan_loop,core,config}.py`, `docs/harness-state.md` (진입점: `harness/executor.sh` → Python 래퍼) |
-| 마커 추가 / 변경 | 해당 에이전트 md 파일 + 해당 루프 파일(`orchestration/*.md`) |
+| 마커 추가 / 변경 | 해당 에이전트 md 파일 + 해당 루프 파일(`orchestration/*.md`) + `harness/core.py` Marker enum |
 | 에이전트 역할 경계 변경 | 해당 에이전트 md 파일 + `orchestration/agent-boundaries.md` |
 | 에이전트 추가 / 삭제 | `orchestration/agent-boundaries.md` + 해당 루프 다이어그램 + 마커 표 + 스크립트 + `CLAUDE.md` 수정 금지 테이블 |
 | UX 흐름 / 화면 구조 변경 | `agents/ux-architect.md` + `orchestration/plan.md` + `orchestration/design.md` |
