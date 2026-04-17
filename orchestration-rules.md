@@ -136,10 +136,17 @@
 
 ## 구현 루프 내부 기능
 
+### TDD 게이트 (std/deep -- test-engineer 선행, Phase 2 구현 완료)
+- attempt 0 + test_command 설정: test-engineer TDD 모드(@MODE:TEST_ENGINEER:TDD) -> RED 확인 -> engineer 구현 + 자체 vitest -> GREEN 확인
+- attempt 1+: test-engineer 스킵 (테스트 이미 존재) -> engineer 재시도 + 자체 vitest -> GREEN 확인
+- test_command 미설정 시 TDD 스킵 -- 기존 순서(engineer -> test-engineer) 폴백
+- simple depth: 변경 없음
+- 마커: TESTS_WRITTEN (test-engineer TDD 모드 완료 시)
+
 ### Handoff 문서 (에이전트 간 인수인계)
 에이전트 전환 시 하네스가 자동으로 구조화된 인수인계 문서를 생성한다 (에이전트 프롬프트 변경 없음).
 - 저장: `.claude/harness-state/{prefix}_handoffs/attempt-{N}/{from}-to-{to}.md`
-- 적용 지점: architect→validator, validator→engineer, engineer→pr-reviewer, engineer→test-engineer, SPEC_GAP engineer→architect
+- 적용 지점: architect→validator, validator→engineer, test-engineer→engineer (TDD), engineer→pr-reviewer, SPEC_GAP engineer→architect
 - JSONL에 `{"event": "handoff", "from": ..., "to": ...}` 이벤트 로깅
 - `explore_instruction()`에 `handoff_path` 파라미터 추가 — handoff 우선, 상세 로그는 필요 시만
 - `harness-review.py`: handoff 이벤트 존재 시 WASTE_DUPLICATE_READ 심각도 LOW로 하향

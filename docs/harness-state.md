@@ -31,7 +31,7 @@ Claude Code 위에서 Python 코어 + Bash 래퍼 + Python 훅으로 동작 (외
 | `core.py` | `_agent_call()`, `kill_check()`, `parse_marker()` 등 코어 유틸 |
 | `config.py` | 프로젝트 설정 로드 (harness.config.json, prefix, 경로) |
 | `helpers.py` | impl 루프 공유 헬퍼 (constraints, budget_check, hlog) |
-| `impl_loop.py` | impl depth별 루프 엔진 (simple/std/deep) |
+| `impl_loop.py` | impl depth별 루프 엔진 (simple/std/deep). std/deep: TDD 순서 (test-engineer 선행 -> engineer) |
 | `impl_router.py` | impl 모드 진입 — 재진입 감지, architect, plan validation |
 | `plan_loop.py` | plan 모드 — 기획-UX 루프만 (product-planner → ux-architect → validator UX). 설계 루프(architect SD + designer)는 메인 Claude 오케스트레이션으로 분리됨 |
 | `review_agent.py` | 하네스 완료 후 Haiku 로그 분석 → review-result.json 생성 |

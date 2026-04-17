@@ -116,6 +116,8 @@ class Marker(str, Enum):
     MERGE_CONFLICT_ESCALATE = "MERGE_CONFLICT_ESCALATE"
     # product-planner (정보 부족 에스컬레이션)
     CLARITY_INSUFFICIENT = "CLARITY_INSUFFICIENT"
+    # test-engineer TDD
+    TESTS_WRITTEN = "TESTS_WRITTEN"
     # ux-architect
     UX_FLOW_READY = "UX_FLOW_READY"
     UX_FLOW_ESCALATE = "UX_FLOW_ESCALATE"
@@ -140,8 +142,8 @@ class HUD:
     PREAMBLE_AGENTS = ["architect", "plan-validation"]
     DEPTH_AGENTS = {
         "simple": ["engineer", "pr-reviewer", "merge"],
-        "std": ["engineer", "test-engineer", "validator", "pr-reviewer", "merge"],
-        "deep": ["engineer", "test-engineer", "validator", "security-reviewer", "pr-reviewer", "merge"],
+        "std": ["test-engineer", "engineer", "validator", "pr-reviewer", "merge"],
+        "deep": ["test-engineer", "engineer", "validator", "security-reviewer", "pr-reviewer", "merge"],
         "plan": ["product-planner", "ux-architect", "ux-validation"],
     }
 

@@ -1,37 +1,45 @@
 # Deep 구현 루프 (impl_deep)
 
-진입 조건: impl frontmatter `depth: deep` — behavior 변경 + 보안 민감
-스크립트: `harness/impl_deep.sh`
+진입 조건: impl frontmatter `depth: deep` -- behavior 변경 + 보안 민감
 
 ---
 
 ## 특징
 
-- **LLM 호출**: 5회 (engineer + test-engineer + validator + pr-reviewer + security-reviewer)
+- **TDD 순서**: test-engineer(TDD) -> engineer (attempt 0) -- impl_std와 동일
+- **LLM 호출**: 5회 (test-engineer + engineer + validator + pr-reviewer + security-reviewer)
 - **std와의 차이**: pr-reviewer LGTM 이후 security-reviewer 추가 실행
 - **머지 조건**: `pr_reviewer_lgtm` + `security_review_passed`
+- **test_command 미설정**: TDD 스킵, 기존 순서 폴백
 
 ---
 
 ## 흐름
 
-impl_std와 동일한 흐름에서 pr-reviewer LGTM 이후 security-reviewer가 추가된다.
+impl_std와 동일한 TDD 흐름에서 pr-reviewer LGTM 이후 security-reviewer가 추가된다.
 
 ```mermaid
 flowchart TD
     RFI{"READY_FOR_IMPL\n(frontmatter depth: deep)"}
 
+    ATT_CHECK{{"attempt == 0\n+ test_command 설정?"}}
+
+    subgraph TDD_PHASE["TDD Phase (attempt 0 only)"]
+        TE_TDD["test-engineer\n@MODE:TEST_ENGINEER:TDD\n(impl 기반, 코드 없이)"]
+        TW{"TESTS_WRITTEN"}
+        RED["vitest run\n(RED 확인)"]
+    end
+
     subgraph ATTEMPT_LOOP["attempt loop (MAX 3회)"]
-        ENG["engineer\n@MODE:ENGINEER:IMPL"]
+        ENG["engineer\n@MODE:ENGINEER:IMPL\n(테스트 파일 참조 + 자체 vitest)"]
         SPEC_CHK{{"SPEC_GAP_FOUND?"}}
         ARC_SG["architect\n@MODE:ARCHITECT:SPEC_GAP"]
-        COMMIT_EARLY["git commit (feature branch)"]
-        TE["test-engineer\n@MODE:TEST_ENGINEER:TEST\n(내부: TEST_CODE_BUG/FLAKY\nmax 2회 자체 수정)"]
-        VITEST["vitest run\n(ground truth)"]
+        COMMIT["git commit (feature branch)"]
+        GREEN["vitest run\n(GREEN 확인)"]
         VAL_CV["validator\n@MODE:VALIDATOR:CODE_VALIDATION"]
         PR_REV["pr-reviewer\n@MODE:PR_REVIEWER:REVIEW"]
         PR_RESULT{{"LGTM / CHANGES_REQUESTED"}}
-        FAIL_ROUTE["FAIL → attempt++"]
+        FAIL_ROUTE["FAIL -> attempt++"]
         IMPL_ESC["IMPLEMENTATION_ESCALATE\n(3회 실패)"]:::escalation
     end
 
@@ -40,11 +48,18 @@ flowchart TD
         SEC_RESULT{{"SECURE / VULNERABILITIES_FOUND"}}
     end
 
-    MERGE["merge_to_main (--no-ff)"]
+    MERGE["merge_to_main (--squash)"]
     MCE["MERGE_CONFLICT_ESCALATE"]:::escalation
     HD{"HARNESS_DONE"}
 
-    RFI --> ENG
+    RFI --> ATT_CHECK
+    ATT_CHECK -->|"YES"| TE_TDD
+    ATT_CHECK -->|"NO"| ENG
+
+    TE_TDD --> TW
+    TW --> RED
+    RED --> ENG
+
     ENG --> SPEC_CHK
     SPEC_CHK -->|YES| ARC_SG
     ARC_SG --> SG_RESULT{{"SPEC_GAP_RESOLVED?"}}
@@ -53,11 +68,10 @@ flowchart TD
     SG_LIMIT -->|YES| IMPL_ESC_SG["IMPLEMENTATION_ESCALATE\n(SPEC_GAP 초과)"]:::escalation
     SG_RESULT -->|PP_ESCALATION| PP_ESC["product-planner 에스컬레이션"]:::escalation
 
-    SPEC_CHK -->|NO| COMMIT_EARLY
-    COMMIT_EARLY --> TE
-    TE --> VITEST
-    VITEST -->|실패| FAIL_ROUTE
-    VITEST -->|통과| VAL_CV
+    SPEC_CHK -->|NO| COMMIT
+    COMMIT --> GREEN
+    GREEN -->|실패| FAIL_ROUTE
+    GREEN -->|통과| VAL_CV
     VAL_CV --> VAL_RESULT{{"PASS / FAIL"}}
     VAL_RESULT -->|FAIL| FAIL_ROUTE
     VAL_RESULT -->|PASS| PR_REV
@@ -80,6 +94,12 @@ flowchart TD
 
 ---
 
+## attempt 0 vs 1+ 분기
+
+impl_std와 동일. security-reviewer 위치는 TDD와 무관 (pr-reviewer LGTM 후).
+
+---
+
 ## 실패 유형별 수정 전략
 
 | fail_type | 컨텍스트 (engineer에게 전달) | 지시 |
@@ -98,9 +118,9 @@ flowchart TD
 
 | @MODE | 대상 에이전트 | 호출 시점 |
 |---|---|---|
+| `@MODE:TEST_ENGINEER:TDD` | test-engineer | attempt 0 (테스트 선작성) |
 | `@MODE:ENGINEER:IMPL` | engineer | 코드 구현 (초회 + 재시도) |
-| `@MODE:TEST_ENGINEER:TEST` | test-engineer | src/** 변경 후 |
-| `@MODE:VALIDATOR:CODE_VALIDATION` | validator | vitest 통과 후 |
+| `@MODE:VALIDATOR:CODE_VALIDATION` | validator | vitest GREEN 후 |
 | `@MODE:PR_REVIEWER:REVIEW` | pr-reviewer | validator PASS 후 |
 | `@MODE:SECURITY_REVIEWER:AUDIT` | security-reviewer | pr-reviewer LGTM 후 (deep only) |
 | `@MODE:ARCHITECT:SPEC_GAP` | architect | SPEC_GAP_FOUND 수신 시 |
