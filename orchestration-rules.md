@@ -22,7 +22,7 @@
 | 신규 프로젝트 / PRD 변경 | → **[기획-UX 루프](orchestration/plan.md)** → 유저 승인 ① → **[설계 루프](orchestration/system-design.md)** → 디자인 승인 → **[구현 루프](orchestration/impl.md)** |
 | UI 변경 요청 (독립) | → **ux 스킬** → designer 에이전트 직접 호출 (Pencil 캔버스, 하네스 루프 없음). 상세: [orchestration/design.md](orchestration/design.md) |
 | 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프 개요](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth simple\|std\|deep]`<br>depth 상세: [simple](orchestration/impl_simple.md) / [std](orchestration/impl_std.md) / [deep](orchestration/impl_deep.md) |
-| 버그 보고 | → **qa 스킬** → QA 에이전트 직접 분류 + 라우팅. 상세: [orchestration/impl.md](orchestration/impl.md) (QA/DESIGN_HANDOFF 진입 흐름 섹션)<br>FUNCTIONAL_BUG → `executor.sh impl --issue <N>` (architect LIGHT_PLAN) / DESIGN_ISSUE → ux 스��� / SCOPE_ESCALATE → 유저 보고 |
+| 버그 보고 | → **qa 스킬** → QA 에이전트 직접 분류 + 라우팅. 상세: [orchestration/impl.md](orchestration/impl.md) (QA/DESIGN_HANDOFF 진입 흐름 섹션)<br>FUNCTIONAL_BUG → `executor.sh impl --issue <N>` (architect LIGHT_PLAN) / DESIGN_ISSUE → ux 스킬 / SCOPE_ESCALATE → 유저 보고 |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>]` |
 | **AMBIGUOUS** | → **Adaptive Interview** (Haiku Q&A → 충분하면 product-planner → 기획-UX 루프) |
 
@@ -60,7 +60,7 @@
 - `agent_call`에서 에이전트 frontmatter `tools:` 목록 외 도구를 `--disallowedTools`에 추가하여 불필요한 도구 사용 방지 (예: product-planner의 Bash 차단).
 - `agent_call` 내부에서 30초마다 stdout heartbeat 출력 (`[HARNESS] agent 경과 Ns, tool calls: N`). 에이전트 실행 중 부모 Bash가 "조용"해지는 문제 방지.
 
-### agent_call 타임아웃 ���리
+### agent_call 타임아웃 처리
 - agent_call이 exit 124/142(타임아웃)를 반환하면, 호출부에서 **즉시 fail_type="agent_timeout"으로 판정**하고 attempt 소진.
 - 부분 출력이 있어도 타임아웃 = 미완료이므로 해당 출력으로 다음 단계 진행 금지.
 
@@ -73,7 +73,7 @@
 - ux-flow.md 존재 시 ux-architect 스킵, architecture.md 존재 시 architect(SD) 스킵.
 
 ### 에이전트 간 handoff 전달 규칙
-- impl 루프에서 모든 에이전트 전환 시 handoff 문���를 생성하고 다음 에이전트 프롬프트에 경로 포함.
+- impl 루프에서 모든 에이전트 전환 시 handoff 문서를 생성하고 다음 에이전트 프롬프트에 경로 포함.
 - std/deep pr-reviewer, test-engineer, validator(Code Validation) 포함 — simple에만 있고 std/deep에 누락된 handoff를 동기화.
 
 ### SPEC_GAP 피드백 추출
@@ -119,7 +119,7 @@
 | `VARIANTS_APPROVED` | design-critic THREE_WAY 모드 (1개 이상 PASS) | 유저 PICK 안내 |
 | `VARIANTS_ALL_REJECTED` | design-critic THREE_WAY 모드 (전체 REJECT) | designer 재시도 (max 3회) |
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
-| `DESIGN_ISSUE` | qa 스킬 (QA 에이전트 분류 결과) | ux ���킬 자동 진입 (COMPONENT_ONE_WAY 기본) → DESIGN_HANDOFF 후 executor.sh impl --issue <N> |
+| `DESIGN_ISSUE` | qa 스킬 (QA 에이전트 분류 결과) | ux 스킬 자동 진입 (COMPONENT_ONE_WAY 기본) → DESIGN_HANDOFF 후 executor.sh impl --issue <N> |
 | `KNOWN_ISSUE` | qa 에이전트 (1회 분석으로 원인 특정 불가) | 메인 Claude 보고 |
 | `SCOPE_ESCALATE` | qa 에이전트 (관련 모듈/파일 = 0 → 신규 기능 판정) | 메인 Claude 보고 — product-planner 라우팅 |
 | `LIGHT_PLAN_READY` | architect Light Plan (버그·디자인 국소 변경) | plan_validation → depth별 루프 |
