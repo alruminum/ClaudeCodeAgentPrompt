@@ -139,6 +139,7 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
 **PRD**: prd.md
 **UX Flow**: docs/ux-flow.md
 - 화면 N개, 플로우 M개 경로
+- 와이어프레임 + 인터랙션 + 상태 정의 포함 (docs/ux-flow.md 내)
 
 확인 후 승인/수정 요청해주세요.
 (수정 시: "화면 추가", "플로우 변경", "비기능 변경" 중 어떤 종류인지 알려주세요)
@@ -152,20 +153,25 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
 
 ### 6단계: 설계 루프 트리거
 
-유저 승인 ① 후 architect(SD) + designer를 **병렬**로 호출한다.
+유저 승인 ① 후 메인 Claude가 Agent 도구 2개를 **병렬**로 직접 호출한다.
+**executor.py 경유 아님 — 메인 Claude가 직접 오케스트레이션.**
 상세: [orchestration/system-design.md](../orchestration/system-design.md)
 
 ```
-# architect(SD) — 하네스 경유
-python3 ~/.claude/harness/executor.py plan \
-  --phase system-design \
-  --context "prd.md + docs/ux-flow.md" \
-  $PREFIX_FLAG
+# Agent 도구 2개를 단일 메시지에서 병렬 호출:
 
-# designer — Agent 도구 직접 호출 (하네스 밖, 병렬)
-# UX Flow Doc 디자인 테이블에서 대상 화면 추출 → 화면별 ONE_WAY 순차
-@MODE:DESIGNER:SCREEN_ONE_WAY
-@PARAMS: { "target": "[화면명]", "ux_goal": "[UX Flow 기반]", "skip_issue_creation": true, "save_handoff_to": "docs/design-handoff.md" }
+# 1) architect(SD) — Agent 도구
+subagent_type: architect
+prompt: |
+  @MODE:ARCHITECT:SYSTEM_DESIGN
+  @PARAMS: { "plan_doc": "prd.md", "ux_flow_doc": "docs/ux-flow.md" }
+  issue: #[이슈번호]
+
+# 2) designer — Agent 도구 (UX Flow 디자인 테이블 화면별 ONE_WAY 순차)
+subagent_type: designer
+prompt: |
+  @MODE:DESIGNER:SCREEN_ONE_WAY
+  @PARAMS: { "target": "[화면명]", "ux_goal": "[UX Flow 기반]", "skip_issue_creation": true, "save_handoff_to": "docs/design-handoff.md" }
 ```
 
 ### 7단계: 디자인 승인
