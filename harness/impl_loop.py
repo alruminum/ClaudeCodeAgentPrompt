@@ -567,12 +567,15 @@ def run_simple(
             # regression check (하네스 직접 실행, 에이전트 X)
             _reg_ok = True
             if config.lint_command:
+                _polish_files = collect_changed_files()
+                _lintable = [f for f in _polish_files if any(f.endswith(e) for e in ('.ts','.tsx','.js','.jsx','.mjs','.cjs'))]
+                _lint_cmd = f"{config.lint_command} {' '.join(_lintable)}" if _lintable else config.lint_command
                 _lint_r = subprocess.run(
-                    config.lint_command, shell=True, capture_output=True, timeout=60,
+                    _lint_cmd, shell=True, capture_output=True, timeout=60,
                 )
                 if _lint_r.returncode != 0:
                     _reg_ok = False
-                    hlog_fn(f"POLISH regression FAIL: lint ({config.lint_command})")
+                    hlog_fn(f"POLISH regression FAIL: lint ({_lint_cmd})")
             if _reg_ok and config.build_command:
                 _build_r = subprocess.run(
                     config.build_command, shell=True, capture_output=True, timeout=120,
@@ -1295,10 +1298,13 @@ def _run_std_deep(
             )
             _reg_ok = True
             if config.lint_command:
-                _lint_r = subprocess.run(config.lint_command, shell=True, capture_output=True, timeout=60)
+                _polish_files = collect_changed_files()
+                _lintable = [f for f in _polish_files if any(f.endswith(e) for e in ('.ts','.tsx','.js','.jsx','.mjs','.cjs'))]
+                _lint_cmd = f"{config.lint_command} {' '.join(_lintable)}" if _lintable else config.lint_command
+                _lint_r = subprocess.run(_lint_cmd, shell=True, capture_output=True, timeout=60)
                 if _lint_r.returncode != 0:
                     _reg_ok = False
-                    hlog_fn(f"POLISH regression FAIL: lint ({config.lint_command})")
+                    hlog_fn(f"POLISH regression FAIL: lint ({_lint_cmd})")
             if _reg_ok and config.build_command:
                 _build_r = subprocess.run(config.build_command, shell=True, capture_output=True, timeout=120)
                 if _build_r.returncode != 0:
