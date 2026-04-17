@@ -30,6 +30,7 @@ model: sonnet
 
 | 인풋 마커 | 모드 | 아웃풋 마커 | 상세 |
 |---|---|---|---|
+| `@MODE:VALIDATOR:UX_VALIDATION` | UX Validation — UX Flow Doc 검증 | `UX_REVIEW_PASS` / `UX_REVIEW_FAIL` | [상세](validator/ux-validation.md) |
 | `@MODE:VALIDATOR:DESIGN_VALIDATION` | Design Validation — 시스템 설계 검증 | `DESIGN_REVIEW_PASS` / `DESIGN_REVIEW_FAIL` | [상세](validator/design-validation.md) |
 | `@MODE:VALIDATOR:CODE_VALIDATION` | Code Validation — 구현 코드 검증 | `PASS` / `FAIL` / `SPEC_MISSING` | [상세](validator/code-validation.md) |
 | `@MODE:VALIDATOR:PLAN_VALIDATION` | Plan Validation — impl 계획 검증 | `PLAN_VALIDATION_PASS` / `PLAN_VALIDATION_FAIL` | [상세](validator/plan-validation.md) |
@@ -38,6 +39,10 @@ model: sonnet
 ### @PARAMS 스키마
 
 ```
+@MODE:VALIDATOR:UX_VALIDATION
+@PARAMS: { "ux_flow_doc": "docs/ux-flow.md 경로", "prd_path": "prd.md 경로" }
+@OUTPUT: { "marker": "UX_REVIEW_PASS / UX_REVIEW_FAIL", "fail_items?": "FAIL 시 항목별 문제 목록" }
+
 @MODE:VALIDATOR:DESIGN_VALIDATION
 @PARAMS: { "design_doc": "SYSTEM_DESIGN_READY 문서 경로" }
 @OUTPUT: { "marker": "DESIGN_REVIEW_PASS / DESIGN_REVIEW_FAIL", "save_path": "docs/validation/design-review.md (메인 Claude가 저장)", "fail_items?": "FAIL 시 항목별 문제 목록" }

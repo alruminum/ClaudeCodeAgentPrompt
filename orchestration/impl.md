@@ -67,6 +67,23 @@ flowchart TD
 
 ---
 
+## impl 파일 Design Ref 섹션
+
+architect가 Module Plan 작성 시 `docs/design-handoff.md`가 존재하면, impl 파일에 `## Design Ref` 섹션을 포함한다:
+
+```markdown
+## Design Ref
+- **Pencil Frame ID**: [node_id]
+- **Design Tokens**: [주요 토큰 요약 — 색상, 서체 등]
+- **Component Structure**: [컴포넌트 트리 요약]
+- **Animation Spec**: [애니메이션 요약]
+- **Handoff 문서**: docs/design-handoff.md
+```
+
+engineer는 이 섹션을 참조해 `batch_get`으로 Pencil 프레임을 직접 읽고 구현한다.
+
+---
+
 ## 호출 형식
 
 ```bash
