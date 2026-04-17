@@ -172,7 +172,13 @@ class HUD:
         if state_dir:
             self._hud_path = state_dir.path / f".{prefix}_hud"
 
-        # 이벤트 로그에 루프 시작 구분선
+        # 이벤트 파일 초기화 + 루프 시작 구분선
+        if self._hud_path:
+            ep = self._hud_path.parent / f".{prefix}_events"
+            try:
+                ep.write_text("")  # truncate
+            except OSError:
+                pass
         mode = "plan" if depth == "plan" else "impl"
         issue_str = f" #{issue_num}" if issue_num else ""
         self._event(f"{'═' * 50}")
