@@ -49,6 +49,18 @@
   - 기존 화면 내 인터랙션/플로우 변경 → ux-architect(UX_FLOW)만 재실행
   - 비기능 변경 (BM, 기술 스택 등) → planner(PRODUCT_PLAN_CHANGE)만 재실행
 
+### 유저 승인 ① 후 이슈 동기화
+- 유저 승인 ① 확정 후, 설계 루프 진입 전에 planner ISSUE_SYNC 모드를 호출하여 stories.md ↔ GitHub 이슈 동기화.
+  - 새 스토리 → 이슈 생성
+  - 삭제된 스토리 → 이슈 close
+  - 변경된 스토리 → 이슈 body 업데이트
+- ISSUE_CREATORS에 product-planner 포함 (`harness_common.py`).
+- 마커: `ISSUES_SYNCED` (이슈 번호 목록 포함).
+
+### agent-gate architect SYSTEM_DESIGN 예외
+- architect SYSTEM_DESIGN (Mode A)은 전체 구조 설계 — 특정 이슈에 귀속되지 않으므로 `#NNN` 불필요.
+- agent-gate.py에서 Task Decompose (Mode D)와 동일하게 면제.
+
 ### SPEC_GAP 화면 구조 변경 에스컬레이션
 - SPEC_GAP에서 화면 구조 변경이 필요하다고 판단되면 (새 화면 추가, 화면 간 플로우 변경):
   - architect가 직접 처리하지 않고 `UX_FLOW_ESCALATE` 경로로 에스컬레이션
@@ -125,6 +137,7 @@
 | `LIGHT_PLAN_READY` | architect Light Plan (버그·디자인 국소 변경) | plan_validation → depth별 루프 |
 | `SPEC_MISSING` | validator Code Validation (impl 없음) | architect Module Plan 호출 |
 | `PRODUCT_PLANNER_ESCALATION_NEEDED` | architect SPEC_GAP | product-planner 에스컬레이션 |
+| `ISSUES_SYNCED` | product-planner ISSUE_SYNC (이슈 동기화 완료) | 설계 루프 진입 (architect SD + designer 병렬) |
 | `CLARITY_INSUFFICIENT` | product-planner (정보 부족) | 부족 항목 질문 → 유저 답변 수집 → plan 루프 재실행 (max 2회) |
 | `IMPLEMENTATION_ESCALATE` | harness/impl_{simple,std,deep}.sh (3회 실패 or SPEC_GAP 동결 초과) | 메인 Claude 보고 — 복귀 옵션 제시 |
 | `DESIGN_LOOP_ESCALATE` | designer (ONE_WAY: 3회 재시도 후에도 REJECT / THREE_WAY: 3라운드 후에도 VARIANTS_ALL_REJECTED) | 유저 직접 선택 |
@@ -136,9 +149,13 @@
 
 ## 구현 루프 내부 기능
 
-### agent_call active 플래그 디버깅
-- agent_call에서 active 플래그 생성 시 경로를 로그에 기록 (디버그용)
-- active 플래그 파일명을 숨김파일로 변경 (`.{prefix}_{agent}_active`) — claude CLI 에이전트 세션이 glob으로 비숨김 파일을 삭제하는 문제 (77d05e1에서 HUD 동일 이슈 해결)
+### 상태 플래그 보호 — `.flags/` 숨김 디렉토리
+Claude CLI 에이전트 세션이 `.claude/harness-state/` 안의 비숨김 파일을 glob으로 삭제하는 문제 대응.
+- **모든 플래그 파일**(active, LGTM, plan_validation 등)을 `.claude/harness-state/.flags/` 숨김 디렉토리에 저장
+- `StateDir._flag_path` → `.flags/{prefix}_{name}` 경로 반환. `StateDir.__init__`에서 `.flags/` 자동 생성
+- `agent_call` active 플래그도 `.flags/` 경로 사용 (개별 `.` 접두사 불필요)
+- hooks(agent-boundary, agent-gate, commit-gate, issue-gate, post-agent-flags)도 `.flags/` 경로 참조
+- HUD/events 파일은 기존 숨김파일 방식 유지 (`.{prefix}_hud`, `.{prefix}_events`)
 
 ### 에이전트 Read 제한 (READ_DENY_MATRIX)
 agent-boundary.py가 에이전트별 Read 접근을 제한한다. Write/Edit 허용 경로와 별개.

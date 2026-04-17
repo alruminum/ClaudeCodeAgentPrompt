@@ -33,9 +33,11 @@ class StateDir:
         self.prefix = prefix
         self.path = project_root / ".claude" / "harness-state"
         self.path.mkdir(parents=True, exist_ok=True)
+        self.flags_dir = self.path / ".flags"
+        self.flags_dir.mkdir(exist_ok=True)
 
     def _flag_path(self, name: str) -> Path:
-        return self.path / f"{self.prefix}_{name}"
+        return self.flags_dir / f"{self.prefix}_{name}"
 
     def flag_touch(self, name: str) -> None:
         self._flag_path(name).touch()
@@ -697,7 +699,9 @@ def agent_call(
         _state = _state.parent
     else:
         _sd = _P("/tmp")
-    active_flag = _sd / f".{prefix_for_flag}_{agent}_active"
+    _flags_dir = _sd / ".flags"
+    _flags_dir.mkdir(exist_ok=True)
+    active_flag = _flags_dir / f"{prefix_for_flag}_{agent}_active"
     active_flag.touch()
 
     # 디버그: active 플래그 경로 + 존재 확인

@@ -28,7 +28,7 @@ import json
 import re
 import subprocess
 from datetime import datetime
-from harness_common import get_prefix, get_state_dir, deny, flag_exists, FLAGS, HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS
+from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS, HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS
 
 PREFIX = get_prefix()
 
@@ -52,10 +52,13 @@ def main():
         sys.exit(0)
 
     # 1. 프롬프트 검증: 이슈 번호 필수 에이전트
-    #    예외: architect Mode D (Task Decompose)는 이슈를 생성하는 역할이므로 면제
+    #    예외: architect Mode D (Task Decompose) — 이슈를 생성하는 역할
+    #    예외: architect Mode A / SYSTEM_DESIGN — 전체 구조 설계, 특정 이슈 귀속 아님
     if agent in ISSUE_REQUIRED_AGENTS:
-        is_mode_d = agent == "architect" and re.search(r"Mode\s*D|Task\s*Decompose", prompt, re.IGNORECASE)
-        if not is_mode_d and not re.search(r"#\d+", prompt):
+        is_exempt = agent == "architect" and re.search(
+            r"Mode\s*D|Task\s*Decompose|SYSTEM_DESIGN|Mode\s*A", prompt, re.IGNORECASE
+        )
+        if not is_exempt and not re.search(r"#\d+", prompt):
             deny(f"❌ {agent} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.")
 
     # 2. 프롬프트 검증: architect 호출 시 Mode A-F 명시 필수
@@ -70,7 +73,7 @@ def main():
             "architect": "python3 ~/.claude/harness/executor.py impl|plan ...",
         }
         deny(f"❌ {agent}는 harness/executor.py를 통해서만 호출 가능. "
-             f"{get_state_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
+             f"{get_flags_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
              f"직접 호출 금지 → {cmds.get(agent, 'executor.py')}")
 
     # 4. engineer는 feature branch에서만 실행 (main 보호)
@@ -105,7 +108,7 @@ def main():
 
     # 7. 에이전트 활성 플래그 설정 (agent-boundary.py 연동)
     try:
-        open(f"{get_state_dir()}/.{PREFIX}_{agent}_active", "w").close()
+        open(f"{get_flags_dir()}/{PREFIX}_{agent}_active", "w").close()
     except Exception:
         pass
 

@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import time
-from harness_common import get_prefix, flag_path, parse_marker_text, FLAGS
+from harness_common import get_prefix, get_flags_dir, flag_path, parse_marker_text, FLAGS
 
 PREFIX = get_prefix()
 DOC_NAME = os.environ.get("HARNESS_DOC_NAME", "domain-logic")
@@ -109,9 +109,8 @@ def main():
         remove(FLAGS.HARNESS_ACTIVE)
 
     # ── 에이전트 완료 → {agent}_active 삭제 (agent-boundary.py 연동) ──
-    # 숨김파일 active 플래그 삭제: .{prefix}_{agent}_active (에이전트 glob 회피)
     try:
-        _af = os.path.join(get_state_dir(), f".{PREFIX}_{agent}_active")
+        _af = os.path.join(get_flags_dir(), f"{PREFIX}_{agent}_active")
         if os.path.exists(_af):
             os.remove(_af)
     except Exception:

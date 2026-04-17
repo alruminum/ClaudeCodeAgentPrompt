@@ -762,6 +762,7 @@ def _run_std_deep(
     fail_type = ""
     _fail_timestamps: Dict[str, List[float]] = {}
 
+    total_cost = 0.0
     hlog_fn(f"=== 하네스 루프 시작 (depth={depth}, max_retries={MAX}) ===")
 
     # HUD 초기화 (외부 전달 시 set_depth로 확장, 없으면 자체 생성)
