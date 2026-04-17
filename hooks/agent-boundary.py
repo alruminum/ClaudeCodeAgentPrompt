@@ -50,6 +50,9 @@ ALLOW_MATRIX = {
         r'(^|/)prd\.md$',              # prd.md
         r'(^|/)trd\.md$',              # trd.md
     ],
+    "ux-architect": [
+        r'(^|/)docs/ux-flow\.md$',     # docs/ux-flow.md만
+    ],
     # ReadOnly 에이전트 — 모든 Write/Edit deny
     "validator": [],
     "design-critic": [],

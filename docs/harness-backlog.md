@@ -1,6 +1,6 @@
 # 하네스 엔지니어링 백로그
 
-> 최종 업데이트: 2026-04-12
+> 최종 업데이트: 2026-04-17
 > 하네스 수정 시 **첫 번째 단계**로 갱신한다 (백로그 → 수정 → state).
 
 ---
@@ -112,6 +112,9 @@
 | PY1 | **Python 마이그레이션 — core 모듈 9개 신규 작성 + 래퍼 스왑** | 04-12 |
 | PY2 | depth upshift Python 함수 직접 호출 전환 | 04-12 |
 | PY3 | 타임아웃 watchdog + SIGTERM 핸들러 + 데드코드 제거 | 04-12 |
+| DG1 | **디자인 게이트 Phase 1** — 3개 루프 분리 문서 + ux-architect 에이전트 신설 | 04-17 |
+| DG2 | **디자인 게이트 Phase 2** — plan_loop.py 기획-UX 전용 재작성 + UX 마커 + run_ux_validation | 04-17 |
+| DG3 | **디자인 게이트 Phase 3** — 15개 테스트 + agent-boundary.py 매트릭스 + handoff + 정합성 검수 | 04-17 |
 
 ### 대기 / 보류
 

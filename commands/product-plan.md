@@ -128,9 +128,21 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
    "product-planner가 여전히 정보 부족을 보고합니다. 현재 상태로 강제 진행할까요?"
    → 유저 선택
 
+### 4.5단계: UX_SKIP 분기 (UI 없는 기능)
+
+plan 루프가 `UX_SKIP`을 리턴하면 PRD에 화면이 없는 순수 로직 기능이다.
+ux-architect, designer를 모두 스킵하고 architect(SD)만 실행하는 축약 경로로 진행:
+
+```
+UX_SKIP → 유저에게 알림:
+  "UI 없는 기능입니다. UX Flow/디자인 없이 설계 루프로 직행합니다."
+→ 6단계에서 designer 호출 스킵 (architect SD만 단독 실행)
+→ 7단계 → 8단계
+```
+
 ### 5단계: 유저 승인 ① (PRD + UX Flow)
 
-기획-UX 루프가 정상 완료되면 (UX_REVIEW_PASS) 유저에게 결과를 보여주고 승인을 받는다:
+기획-UX 루프가 `UX_REVIEW_PASS`를 리턴하면 유저에게 결과를 보여주고 승인을 받는다:
 
 ```
 ---
@@ -148,8 +160,11 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
 
 수정 요청 시 라우팅 ([orchestration-rules.md](../orchestration-rules.md) 기준):
 - **화면 추가/삭제** → planner(PRODUCT_PLAN_CHANGE) + ux-architect 재실행
+  - 체크포인트 리셋 필요: `{prefix}_plan_metadata.json`에서 `prd_path`, `ux_flow_doc` 키를 삭제하고 plan 루프 재호출
 - **기존 화면 내 변경** → ux-architect만 재실행
+  - 체크포인트 리셋: `{prefix}_plan_metadata.json`에서 `ux_flow_doc` 키만 삭제
 - **비기능 변경** → planner(PRODUCT_PLAN_CHANGE)만 재실행
+  - 체크포인트 리셋: `{prefix}_plan_metadata.json`에서 `prd_path` 키만 삭제
 
 ### 6단계: 설계 루프 트리거
 
