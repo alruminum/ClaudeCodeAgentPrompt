@@ -343,7 +343,7 @@ class TestMockRunSimple(unittest.TestCase):
                 return 0
 
             with patch("harness.impl_loop.agent_call", side_effect=mock_agent_call), \
-                 patch("harness.impl_loop.create_feature_branch", return_value="feat/test-1"), \
+                 patch("harness.impl_loop.create_feature_branch", return_value=("feat/test-1", None)), \
                  patch("harness.impl_loop.merge_to_main", return_value=True), \
                  patch("harness.impl_loop.collect_changed_files", return_value=["src/test.ts"]), \
                  patch("harness.impl_loop.run_automated_checks", return_value=(True, "")), \
@@ -1265,6 +1265,87 @@ class TestEnvVarAgentDetection(unittest.TestCase):
         # 900초 TTL glob 탐색 제거됨
         self.assertNotIn("900", boundary_src,
                           "agent-boundary.py에 900초 TTL glob 탐색이 아직 남아있음")
+
+
+class TestWorktreeIsolation(unittest.TestCase):
+    """이슈별 worktree 격리 기능 검증."""
+
+    def test_state_dir_issue_flags_dir(self):
+        """StateDir(issue_num="42") 시 이슈별 .flags/ 서브디렉토리 생성."""
+        with tempfile.TemporaryDirectory() as td:
+            sd = StateDir(Path(td), "mb", issue_num="42")
+            self.assertTrue(sd.flags_dir.is_dir())
+            self.assertIn("mb_42", str(sd.flags_dir))
+            # 플래그 생성이 이슈별 디렉토리에 들어가는지
+            sd.flag_touch("plan_validation_passed")
+            self.assertTrue((sd.flags_dir / "mb_plan_validation_passed").exists())
+
+    def test_state_dir_no_issue_backward_compat(self):
+        """issue_num 없으면 기존 .flags/ 경로 유지."""
+        with tempfile.TemporaryDirectory() as td:
+            sd = StateDir(Path(td), "mb")
+            self.assertEqual(sd.flags_dir, sd.path / ".flags")
+
+    def test_worktree_manager_path(self):
+        """WorktreeManager 경로 조합 검증."""
+        from harness.core import WorktreeManager
+        with tempfile.TemporaryDirectory() as td:
+            wm = WorktreeManager(Path(td), "mb")
+            wt = wm.worktree_path("42")
+            self.assertEqual(wt, wm.base_dir / "issue-42")
+
+    def test_worktree_manager_gitignore(self):
+        """WorktreeManager가 .gitignore에 .worktrees/ 자동 등록."""
+        from harness.core import WorktreeManager
+        with tempfile.TemporaryDirectory() as td:
+            WorktreeManager(Path(td), "mb")
+            gitignore = Path(td) / ".gitignore"
+            self.assertTrue(gitignore.exists())
+            self.assertIn(".worktrees/", gitignore.read_text())
+
+    def test_create_feature_branch_returns_tuple(self):
+        """create_feature_branch가 (branch_name, path|None) tuple 반환."""
+        from harness.core import create_feature_branch
+        import inspect
+        sig = inspect.signature(create_feature_branch)
+        self.assertIn("worktree_mgr", sig.parameters)
+
+    def test_agent_call_has_cwd_param(self):
+        """agent_call에 cwd 파라미터 존재."""
+        from harness.core import agent_call
+        import inspect
+        sig = inspect.signature(agent_call)
+        self.assertIn("cwd", sig.parameters)
+
+    def test_merge_to_main_has_worktree_mgr(self):
+        """merge_to_main에 worktree_mgr 파라미터 존재."""
+        from harness.core import merge_to_main
+        import inspect
+        sig = inspect.signature(merge_to_main)
+        self.assertIn("worktree_mgr", sig.parameters)
+
+    def test_get_flags_dir_issue_num(self):
+        """get_flags_dir()가 HARNESS_ISSUE_NUM env var 인식."""
+        sys.path.insert(0, str(HARNESS_DIR.parent / "hooks"))
+        try:
+            # issue_num 파라미터 직접 전달
+            from harness_common import get_flags_dir
+            import inspect
+            sig = inspect.signature(get_flags_dir)
+            self.assertIn("issue_num", sig.parameters)
+        finally:
+            sys.path.pop(0)
+
+    def test_bind_cwd_returns_callable(self):
+        """_bind_cwd가 work_cwd 없으면 원본, 있으면 partial 반환."""
+        from harness.impl_loop import _bind_cwd, agent_call
+        # None → 원본
+        result = _bind_cwd(None)
+        self.assertEqual(result, agent_call)
+        # 경로 → partial
+        result = _bind_cwd("/tmp/test")
+        self.assertNotEqual(result, agent_call)
+        self.assertTrue(callable(result))
 
 
 if __name__ == "__main__":

@@ -28,13 +28,17 @@ except ImportError:
 class StateDir:
     """flags.sh의 flag_touch/flag_rm/flag_exists + init_state_dir 대체."""
 
-    def __init__(self, project_root: Path, prefix: str) -> None:
+    def __init__(self, project_root: Path, prefix: str, issue_num: str = "") -> None:
         self.project_root = project_root
         self.prefix = prefix
+        self.issue_num = issue_num
         self.path = project_root / ".claude" / "harness-state"
         self.path.mkdir(parents=True, exist_ok=True)
-        self.flags_dir = self.path / ".flags"
-        self.flags_dir.mkdir(exist_ok=True)
+        if issue_num:
+            self.flags_dir = self.path / ".flags" / f"{prefix}_{issue_num}"
+        else:
+            self.flags_dir = self.path / ".flags"
+        self.flags_dir.mkdir(parents=True, exist_ok=True)
 
     def _flag_path(self, name: str) -> Path:
         return self.flags_dir / f"{self.prefix}_{name}"
@@ -649,6 +653,7 @@ def agent_call(
     run_logger: Optional[RunLogger] = None,
     config: Optional[HarnessConfig] = None,
     hist_dir: Optional[str | Path] = None,
+    cwd: Optional[str | Path] = None,
 ) -> int:
     """에이전트 호출 래퍼 — _agent_call()의 Python 포팅.
 
@@ -755,6 +760,8 @@ def agent_call(
     env["HARNESS_INTERNAL"] = "1"
     env["HARNESS_PREFIX"] = prefix_for_flag
     env["HARNESS_AGENT_NAME"] = agent
+    if os.environ.get("HARNESS_ISSUE_NUM"):
+        env["HARNESS_ISSUE_NUM"] = os.environ["HARNESS_ISSUE_NUM"]
 
     run_log_path = str(run_logger.path) if run_logger else "/dev/null"
 
@@ -774,6 +781,7 @@ def agent_call(
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             env=env, text=True,
+            cwd=str(cwd) if cwd else None,
         )
 
         log_fh = None
@@ -970,12 +978,13 @@ def agent_call(
 # 7. Git 유틸 — utils.sh의 git 관련 함수들
 # ═══════════════════════════════════════════════════════════════════════
 
-def _git(*args: str, check: bool = False) -> subprocess.CompletedProcess[str]:
+def _git(*args: str, check: bool = False, cwd: Optional[str] = None) -> subprocess.CompletedProcess[str]:
     """git 명령 실행 헬퍼."""
     return subprocess.run(
         ["git"] + list(args),
         capture_output=True, text=True, timeout=30,
         check=check,
+        cwd=cwd,
     )
 
 
@@ -987,7 +996,67 @@ def _default_branch() -> str:
     return "main"
 
 
-def create_feature_branch(branch_type: str, issue_num: str | int) -> str:
+class WorktreeManager:
+    """이슈별 git worktree 라이프사이클 관리."""
+
+    def __init__(self, project_root: Path, prefix: str) -> None:
+        self.project_root = project_root.resolve()
+        self.prefix = prefix
+        self.base_dir = self.project_root / ".worktrees" / prefix
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        # .gitignore에 .worktrees/ 자동 등록 (git tracked 방지)
+        gitignore = self.project_root / ".gitignore"
+        try:
+            content = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+            if ".worktrees/" not in content and ".worktrees" not in content:
+                with open(gitignore, "a", encoding="utf-8") as f:
+                    f.write("\n# harness worktrees\n.worktrees/\n")
+        except OSError:
+            pass
+
+    def worktree_path(self, issue_num: str) -> Path:
+        return self.base_dir / f"issue-{issue_num}"
+
+    def create_or_reuse(self, branch_name: str, issue_num: str) -> Path:
+        """worktree 생성 또는 기존 재사용. 반환: worktree 절대 경로."""
+        wt_path = self.worktree_path(issue_num)
+        if wt_path.exists():
+            return wt_path
+        r = _git("show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}")
+        if r.returncode == 0:
+            _git("worktree", "add", str(wt_path), branch_name, check=True)
+        else:
+            default = _default_branch()
+            _git("worktree", "add", "-b", branch_name, str(wt_path), default, check=True)
+        return wt_path
+
+    def remove(self, issue_num: str) -> None:
+        """worktree 정리."""
+        wt_path = self.worktree_path(issue_num)
+        if wt_path.exists():
+            try:
+                _git("worktree", "remove", str(wt_path), "--force")
+            except Exception:
+                import shutil
+                shutil.rmtree(str(wt_path), ignore_errors=True)
+                try:
+                    _git("worktree", "prune")
+                except Exception:
+                    pass
+
+    def list_active(self) -> list:
+        """활성 worktree 이슈 번호 목록."""
+        if not self.base_dir.exists():
+            return []
+        return [d.name.replace("issue-", "") for d in self.base_dir.iterdir()
+                if d.is_dir() and d.name.startswith("issue-")]
+
+
+def create_feature_branch(
+    branch_type: str,
+    issue_num: str | int,
+    worktree_mgr: Optional[WorktreeManager] = None,
+) -> "tuple[str, Optional[Path]]":
     """Feature branch 생성. 동일 브랜치 존재 시 재진입."""
     issue_num = str(issue_num)
 
@@ -1029,14 +1098,19 @@ def create_feature_branch(branch_type: str, issue_num: str | int) -> str:
 
     default = _default_branch()
 
-    # 이미 동일 브랜치 존재 → 체크아웃만 (재진입)
+    # worktree 모드: git worktree add로 격리
+    if worktree_mgr:
+        wt_path = worktree_mgr.create_or_reuse(branch_name, issue_num)
+        return branch_name, wt_path
+
+    # 기존 모드: git checkout -b
     r = _git("show-ref", "--verify", "--quiet", f"refs/heads/{branch_name}")
     if r.returncode == 0:
         _git("checkout", branch_name)
-        return branch_name
+        return branch_name, None
 
     _git("checkout", "-b", branch_name, default)
-    return branch_name
+    return branch_name, None
 
 
 def push_and_ensure_pr(
@@ -1046,6 +1120,7 @@ def push_and_ensure_pr(
     depth: str = "",
     state_dir: Optional[StateDir] = None,
     prefix: str = "",
+    cwd: Optional[str] = None,
 ) -> str:
     """커밋 후 push + PR 없으면 생성. 반환: PR URL (실패 시 빈 문자열)."""
     issue = str(issue)
@@ -1055,6 +1130,7 @@ def push_and_ensure_pr(
     r = subprocess.run(
         ["git", "push", "-u", "origin", branch],
         capture_output=True, text=True, timeout=30,
+        cwd=cwd,
     )
     if r.returncode != 0:
         print(f"[HARNESS] push 실패: {r.stderr[:200]}")
@@ -1064,6 +1140,7 @@ def push_and_ensure_pr(
     r_check = subprocess.run(
         ["gh", "pr", "view", branch, "--json", "url", "-q", ".url"],
         capture_output=True, text=True, timeout=10,
+        cwd=cwd,
     )
     if r_check.returncode == 0 and r_check.stdout.strip():
         print(f"[HARNESS] pushed → PR 업데이트: {r_check.stdout.strip()}")
@@ -1092,6 +1169,7 @@ def push_and_ensure_pr(
          "--base", default,
          "--head", branch],
         capture_output=True, text=True, timeout=30,
+        cwd=cwd,
     )
     if r_pr.returncode == 0:
         url = r_pr.stdout.strip()
@@ -1108,6 +1186,7 @@ def merge_to_main(
     depth: str,
     prefix: str,
     state_dir: Optional[StateDir] = None,
+    worktree_mgr: Optional[WorktreeManager] = None,
 ) -> bool:
     """LGTM 후 squash merge. 반환: True=성공."""
     default = _default_branch()
@@ -1141,6 +1220,11 @@ def merge_to_main(
         print(f"MERGE_CONFLICT_ESCALATE\n{r_merge.stderr[:200]}")
         return False
 
+    # worktree 정리 (merge 성공 시)
+    if worktree_mgr:
+        worktree_mgr.remove(str(issue))
+        print(f"[HARNESS] worktree 정리: issue-{issue}")
+
     # 로컬 동기화 (브랜치 보존)
     _git("checkout", default)
     _git("pull")
@@ -1171,15 +1255,15 @@ def generate_commit_msg(impl_file: str = "", issue_num: str | int = "") -> str:
     )
 
 
-def collect_changed_files() -> List[str]:
+def collect_changed_files(cwd: Optional[str] = None) -> List[str]:
     """변경된 파일 목록. 변경 없으면 빈 리스트."""
-    r = _git("status", "--short")
+    r = _git("status", "--short", cwd=cwd)
     if r.returncode != 0:
         return []
     files = []
     for line in r.stdout.splitlines():
         line = line.strip()
-        if re.match(r"^( M|M |A )", line):
+        if re.match(r"^( M|M |A |\?\?)", line):
             parts = line.split(None, 1)
             if len(parts) >= 2:
                 files.append(parts[1])

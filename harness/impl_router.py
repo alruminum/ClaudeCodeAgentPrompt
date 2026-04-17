@@ -147,7 +147,7 @@ def run_impl(
             from config import load_config
         config = load_config()
     if state_dir is None:
-        state_dir = StateDir(Path.cwd(), prefix)
+        state_dir = StateDir(Path.cwd(), prefix, issue_num=issue_num)
 
     # ── 재진입 감지 ── (preamble 스킵 — depth 루프가 자체 HUD 생성)
     if (state_dir.flag_exists(Flag.PLAN_VALIDATION_PASSED)
@@ -269,6 +269,16 @@ def run_impl(
                 "추천 없음 — 이슈 내용 기반으로 architect가 직접 판단"
             )
 
+            # ── DESIGN_HANDOFF 파일 자동 감지 ──
+            _dh_prompt = ""
+            _dh_file = state_dir.path / ".flags" / f"{prefix}_design_handoff.md"
+            if _dh_file.exists():
+                _dh_content = _dh_file.read_text(encoding="utf-8", errors="replace")
+                _dh_prompt = f"\n\n## DESIGN_HANDOFF (Pencil 디자인 스펙 — 반드시 impl에 반영)\n{_dh_content}"
+                print(f"[HARNESS] design_handoff 파일 감지 — architect 프롬프트에 주입 ({len(_dh_content)} chars)")
+            elif state_dir.flag_exists(Flag.DESIGN_CRITIC_PASSED):
+                print("[HARNESS] ⚠️ design_critic_passed 플래그 있으나 design_handoff.md 없음 — architect가 디자인 스펙 없이 진행")
+
             print(f"[HARNESS] architect LIGHT_PLAN 작성 (issue #{issue_num}, depth_hint={depth_hint or 'none'})")
             hud.log(f"architect LIGHT_PLAN (issue #{issue_num})")
             arch_exit = agent_call(
@@ -284,7 +294,8 @@ def run_impl(
                 f"- simple: 기존 구조 수정 — 값·조건·스타일·요소 변경, 코드 제거/정리\n"
                 f"- std: 새 로직 구조 신설 — 새 함수·모듈·상태·API·데이터 흐름\n"
                 f"- deep: 보안·결제·인증\n"
-                f"{depth_prompt}",
+                f"{depth_prompt}"
+                f"{_dh_prompt}",
                 arch_out, run_logger, config,
             )
         else:

@@ -18,7 +18,7 @@ from typing import Callable, Dict, List, Optional
 try:
     from .config import HarnessConfig, load_config
     from .core import (
-        Flag, Marker, RunLogger, StateDir, HUD,
+        Flag, Marker, RunLogger, StateDir, HUD, WorktreeManager,
         agent_call, parse_marker,
         create_feature_branch, merge_to_main, push_and_ensure_pr, generate_commit_msg,
         collect_changed_files,
@@ -37,7 +37,7 @@ try:
 except ImportError:
     from config import HarnessConfig, load_config
     from core import (
-        Flag, Marker, RunLogger, StateDir, HUD,
+        Flag, Marker, RunLogger, StateDir, HUD, WorktreeManager,
         agent_call, parse_marker,
         create_feature_branch, merge_to_main, push_and_ensure_pr, generate_commit_msg,
         collect_changed_files,
@@ -111,6 +111,14 @@ class AgentStep:
     fail_type: str            # "engineer_fail" etc.
 
 
+def _bind_cwd(work_cwd: Optional[str]):
+    """work_cwd가 있으면 agent_call에 cwd를 자동 주입하는 래퍼 반환."""
+    if not work_cwd:
+        return agent_call
+    from functools import partial
+    return partial(agent_call, cwd=work_cwd)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 2. run_simple — impl_simple.sh 전체 흐름
 # ═══════════════════════════════════════════════════════════════════════
@@ -151,13 +159,23 @@ def run_simple(
     if run_logger is None:
         run_logger = RunLogger(prefix, "impl", issue_num)
 
-    # feature branch
-    feature_branch = create_feature_branch(branch_type, issue_num)
+    # feature branch (worktree 격리 지원)
+    use_wt = bool(config and config.isolation == "worktree")
+    wt_mgr = WorktreeManager(state_dir.project_root, prefix) if use_wt else None
+    feature_branch, wt_path = create_feature_branch(branch_type, issue_num, wt_mgr)
+    work_cwd = str(wt_path) if wt_path else None
+    agent_call = _bind_cwd(work_cwd)  # noqa: F841 — worktree cwd 자동 주입
+    _orig_cwd = os.getcwd()
+    if work_cwd:
+        os.chdir(work_cwd)
+        import atexit
+        atexit.register(lambda oc=_orig_cwd: os.path.isdir(oc) and os.chdir(oc))
     os.environ["HARNESS_BRANCH"] = feature_branch
-    hlog_fn(f"feature branch: {feature_branch}")
+    hlog_fn(f"feature branch: {feature_branch}" + (f" (worktree: {wt_path})" if wt_path else ""))
     run_logger.log_event({
         "event": "branch_create",
         "branch": feature_branch,
+        "worktree": str(wt_path) if wt_path else "",
         "t": int(time.time()),
     })
 
@@ -378,7 +396,7 @@ def run_simple(
                 continue
 
         # ── automated_checks ──────────────────────────────────────
-        check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix)
+        check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix, cwd=work_cwd)
         if not check_ok:
             error_trace = check_err or "automated_checks FAIL"
             fail_type = "autocheck_fail"
@@ -399,7 +417,7 @@ def run_simple(
         print("[HARNESS] automated_checks PASS")
 
         # ── 즉시 커밋 ────────────────────────────────────────────
-        changed = collect_changed_files()
+        changed = collect_changed_files(work_cwd)
         if changed:
             subprocess.run(["git", "add", "--"] + changed, capture_output=True, timeout=10)
             commit_suffix = ""
@@ -407,7 +425,7 @@ def run_simple(
                 commit_suffix = f" [attempt-{attempt}-fix]"
             msg = generate_commit_msg(impl_file, issue_num) + commit_suffix
             subprocess.run(["git", "commit", "-m", msg], capture_output=True, timeout=10)
-            push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix)
+            push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix, cwd=work_cwd)
 
             r = subprocess.run(
                 ["git", "rev-parse", "--short", "HEAD"],
@@ -566,7 +584,7 @@ def run_simple(
             # regression check (하네스 직접 실행, 에이전트 X)
             _reg_ok = True
             if config.lint_command:
-                _polish_files = collect_changed_files()
+                _polish_files = collect_changed_files(work_cwd)
                 _lintable = [f for f in _polish_files if any(f.endswith(e) for e in ('.ts','.tsx','.js','.jsx','.mjs','.cjs'))]
                 _lint_cmd = f"{config.lint_command} {' '.join(_lintable)}" if _lintable else config.lint_command
                 _lint_r = subprocess.run(
@@ -592,7 +610,7 @@ def run_simple(
             if not _reg_ok:
                 hlog_fn("POLISH revert — 변경 파일만 선택적 복원")
                 print("[HARNESS] POLISH regression 실패 — 변경 파일만 복원")
-                _polish_changed = collect_changed_files()
+                _polish_changed = collect_changed_files(work_cwd)
                 if _polish_changed:
                     subprocess.run(
                         ["git", "checkout", _pre_polish_hash, "--"] + _polish_changed,
@@ -604,10 +622,10 @@ def run_simple(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
-                    push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix)
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix, cwd=work_cwd)
             else:
                 # polish 변경 커밋
-                _changed = collect_changed_files()
+                _changed = collect_changed_files(work_cwd)
                 if _changed:
                     subprocess.run(["git", "add", "--"] + _changed, capture_output=True, timeout=10)
                     subprocess.run(
@@ -615,7 +633,7 @@ def run_simple(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn("POLISH 커밋 완료")
-                    push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix)
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, "simple", state_dir, prefix, cwd=work_cwd)
                 print("[HARNESS] POLISH 완료")
         else:
             hlog_fn("POLISH 항목 없음 — 스킵")
@@ -633,7 +651,10 @@ def run_simple(
         )
         impl_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
 
-        if not merge_to_main(feature_branch, issue_num, "simple", prefix, state_dir):
+        # merge는 메인 repo에서 실행해야 함 — worktree cwd 복원
+        if work_cwd:
+            os.chdir(_orig_cwd)
+        if not merge_to_main(feature_branch, issue_num, "simple", prefix, state_dir, wt_mgr):
             os.environ["HARNESS_RESULT"] = "MERGE_CONFLICT_ESCALATE"
             print("MERGE_CONFLICT_ESCALATE")
             print(f"branch: {feature_branch}")
@@ -749,10 +770,19 @@ def _run_std_deep(
     if run_logger is None:
         run_logger = RunLogger(prefix, "impl", issue_num)
 
-    feature_branch = create_feature_branch(branch_type, issue_num)
+    use_wt = bool(config and config.isolation == "worktree")
+    wt_mgr = WorktreeManager(state_dir.project_root, prefix) if use_wt else None
+    feature_branch, wt_path = create_feature_branch(branch_type, issue_num, wt_mgr)
+    work_cwd = str(wt_path) if wt_path else None
+    agent_call = _bind_cwd(work_cwd)  # noqa: F841 — worktree cwd 자동 주입
+    _orig_cwd = os.getcwd()
+    if work_cwd:
+        os.chdir(work_cwd)
+        import atexit
+        atexit.register(lambda oc=_orig_cwd: os.path.isdir(oc) and os.chdir(oc))
     os.environ["HARNESS_BRANCH"] = feature_branch
-    hlog_fn(f"feature branch: {feature_branch}")
-    run_logger.log_event({"event": "branch_create", "branch": feature_branch, "t": int(time.time())})
+    hlog_fn(f"feature branch: {feature_branch}" + (f" (worktree: {wt_path})" if wt_path else ""))
+    run_logger.log_event({"event": "branch_create", "branch": feature_branch, "worktree": str(wt_path) if wt_path else "", "t": int(time.time())})
 
     MAX = 3
     MAX_SPEC_GAP = 2
@@ -1037,7 +1067,7 @@ def _run_std_deep(
                 continue
 
         # ── automated_checks ──────────────────────────────────────
-        check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix)
+        check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix, cwd=work_cwd)
         if not check_ok:
             error_trace = check_err or "automated_checks FAIL"
             fail_type = "autocheck_fail"
@@ -1054,7 +1084,7 @@ def _run_std_deep(
         print("[HARNESS] automated_checks PASS")
 
         # ── 즉시 커밋 ────────────────────────────────────────────
-        changed = collect_changed_files()
+        changed = collect_changed_files(work_cwd)
         if changed:
             subprocess.run(["git", "add", "--"] + changed, capture_output=True, timeout=10)
             commit_suffix = ""
@@ -1062,7 +1092,7 @@ def _run_std_deep(
                 commit_suffix = f" [attempt-{attempt}-fix]"
             msg = generate_commit_msg(impl_file, issue_num) + commit_suffix
             subprocess.run(["git", "commit", "-m", msg], capture_output=True, timeout=10)
-            push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
+            push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix, cwd=work_cwd)
             r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
             early_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
             run_logger.log_event({"event": "commit", "hash": early_commit, "attempt": attempt + 1, "t": int(time.time())})
@@ -1365,7 +1395,7 @@ def _run_std_deep(
             )
             _reg_ok = True
             if config.lint_command:
-                _polish_files = collect_changed_files()
+                _polish_files = collect_changed_files(work_cwd)
                 _lintable = [f for f in _polish_files if any(f.endswith(e) for e in ('.ts','.tsx','.js','.jsx','.mjs','.cjs'))]
                 _lint_cmd = f"{config.lint_command} {' '.join(_lintable)}" if _lintable else config.lint_command
                 _lint_r = subprocess.run(_lint_cmd, shell=True, capture_output=True, timeout=60)
@@ -1385,7 +1415,7 @@ def _run_std_deep(
             if not _reg_ok:
                 hlog_fn("POLISH revert — 변경 파일만 선택적 복원")
                 print("[HARNESS] POLISH regression 실패 — 변경 파일만 복원")
-                _polish_changed = collect_changed_files()
+                _polish_changed = collect_changed_files(work_cwd)
                 if _polish_changed:
                     subprocess.run(
                         ["git", "checkout", _pre_polish_hash, "--"] + _polish_changed,
@@ -1397,9 +1427,9 @@ def _run_std_deep(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn(f"POLISH revert 커밋 ({len(_polish_changed)} files)")
-                    push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix, cwd=work_cwd)
             else:
-                _changed = collect_changed_files()
+                _changed = collect_changed_files(work_cwd)
                 if _changed:
                     subprocess.run(["git", "add", "--"] + _changed, capture_output=True, timeout=10)
                     subprocess.run(
@@ -1407,7 +1437,7 @@ def _run_std_deep(
                         capture_output=True, timeout=10,
                     )
                     hlog_fn("POLISH 커밋 완료")
-                    push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
+                    push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix, cwd=work_cwd)
                 print("[HARNESS] POLISH 완료")
         else:
             hlog_fn("POLISH 항목 없음 — 스킵")
@@ -1477,7 +1507,7 @@ def _run_std_deep(
         # ── merge to main ─────────────────────────────────────────
         hud.agent_start("merge")
         # 미커밋 변경 커밋 (테스트 파일 등)
-        changed2 = collect_changed_files()
+        changed2 = collect_changed_files(work_cwd)
         if changed2:
             subprocess.run(["git", "add", "--"] + changed2, capture_output=True, timeout=10)
             subprocess.run(
@@ -1485,12 +1515,15 @@ def _run_std_deep(
                 capture_output=True, timeout=10,
             )
             hlog_fn("test 파일 추가 커밋 완료")
-            push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix)
+            push_and_ensure_pr(feature_branch, issue_num, impl_file, depth, state_dir, prefix, cwd=work_cwd)
 
         r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5)
         impl_commit = r.stdout.strip() if r.returncode == 0 else "unknown"
 
-        if not merge_to_main(feature_branch, issue_num, depth, prefix, state_dir):
+        # merge는 메인 repo에서 실행해야 함 — worktree cwd 복원
+        if work_cwd:
+            os.chdir(_orig_cwd)
+        if not merge_to_main(feature_branch, issue_num, depth, prefix, state_dir, wt_mgr):
             os.environ["HARNESS_RESULT"] = "MERGE_CONFLICT_ESCALATE"
             print("MERGE_CONFLICT_ESCALATE")
             print(f"branch: {feature_branch}")

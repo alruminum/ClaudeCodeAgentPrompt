@@ -39,10 +39,18 @@ def main() -> None:
 
     config = load_config()
     prefix = args.prefix or config.prefix
-    state_dir = StateDir(Path.cwd(), prefix)
+    issue_num = getattr(args, "issue_num", "") or ""
+    state_dir = StateDir(Path.cwd(), prefix, issue_num=issue_num)
 
-    # ── 병렬 실행 가드 ──
-    lock_file = state_dir.path / f"{prefix}_harness_active"
+    # HARNESS_ISSUE_NUM env var — hooks가 이슈별 플래그 디렉토리 참조
+    if issue_num:
+        os.environ["HARNESS_ISSUE_NUM"] = issue_num
+
+    # ── 병렬 실행 가드 (이슈별 잠금 — 다른 이슈는 동시 실행 가능) ──
+    if issue_num:
+        lock_file = state_dir.path / f"{prefix}_{issue_num}_harness_active"
+    else:
+        lock_file = state_dir.path / f"{prefix}_harness_active"
     if lock_file.exists():
         try:
             data = json.loads(lock_file.read_text())

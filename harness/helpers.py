@@ -263,16 +263,19 @@ def run_automated_checks(
     config: object,
     state_dir: StateDir,
     prefix: str,
+    cwd: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """자동화된 체크. (성공여부, 에러메시지) 반환."""
     import subprocess
+    from functools import partial as _partial
+    _run = _partial(subprocess.run, cwd=cwd) if cwd else subprocess.run
 
     out_file = state_dir.path / f"{prefix}_autocheck_fail.txt"
     out_file.unlink(missing_ok=True)
 
     # 1. 변경 파일 확인
     # (a) 미커밋 변경: git status --short
-    r = subprocess.run(
+    r = _run(
         ["git", "status", "--short"],
         capture_output=True, text=True, timeout=10,
     )
@@ -281,7 +284,7 @@ def run_automated_checks(
     # (b) 커밋된 변경: git diff main..HEAD (SPEC_GAP 후 early commit 감지)
     has_committed = False
     if not has_uncommitted:
-        r_diff = subprocess.run(
+        r_diff = _run(
             ["git", "diff", "main..HEAD", "--name-only", "--", "src/"],
             capture_output=True, text=True, timeout=10,
         )
@@ -295,12 +298,12 @@ def run_automated_checks(
         return False, msg
 
     # 2. package.json 새 의존성 감지
-    r_show = subprocess.run(
+    r_show = _run(
         ["git", "show", "HEAD:package.json"],
         capture_output=True, text=True, timeout=5,
     )
     if r_show.returncode == 0:
-        r_diff = subprocess.run(
+        r_diff = _run(
             ["git", "diff", "HEAD", "--", "package.json"],
             capture_output=True, text=True, timeout=5,
         )
@@ -320,7 +323,7 @@ def run_automated_checks(
     for pf in protected:
         if not pf:
             continue
-        r_diff = subprocess.run(
+        r_diff = _run(
             ["git", "diff", "HEAD", "--", pf],
             capture_output=True, text=True, timeout=5,
         )
@@ -351,7 +354,7 @@ def run_automated_checks(
 
         if allowed_files:
             # 실제 변경된 src 파일 (인프라 파일 제외)
-            r_diff = subprocess.run(
+            r_diff = _run(
                 ["git", "diff", "--name-only", "HEAD"],
                 capture_output=True, text=True, timeout=5,
             )
@@ -374,7 +377,7 @@ def run_automated_checks(
     # 5. lint check (config.lint_command 있으면 실행 — 변경 파일 스코프 우선)
     if config and getattr(config, "lint_command", "") and config.lint_command:
         # 변경된 lintable 파일 추출
-        _diff_r = subprocess.run(
+        _diff_r = _run(
             ["git", "diff", "--name-only", "HEAD"],
             capture_output=True, text=True, timeout=5,
         )
@@ -388,7 +391,7 @@ def run_automated_checks(
             _lint_cmd = f"{config.lint_command} {' '.join(_changed_src)}"
         else:
             _lint_cmd = config.lint_command
-        _lint_r = subprocess.run(
+        _lint_r = _run(
             _lint_cmd, shell=True, capture_output=True, text=True, timeout=60,
         )
         if _lint_r.returncode != 0:
@@ -400,7 +403,7 @@ def run_automated_checks(
 
     # 6. build / type-check (config.build_command 있으면 실행)
     if config and getattr(config, "build_command", "") and config.build_command:
-        _build_r = subprocess.run(
+        _build_r = _run(
             config.build_command, shell=True, capture_output=True, text=True, timeout=120,
         )
         if _build_r.returncode != 0:

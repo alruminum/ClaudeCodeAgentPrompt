@@ -112,10 +112,17 @@ def get_state_dir():
     return "/tmp"
 
 
-def get_flags_dir():
-    """플래그 전용 숨김 디렉토리 반환. .claude/harness-state/.flags/"""
+def get_flags_dir(issue_num=""):
+    """플래그 전용 숨김 디렉토리 반환.
+    issue_num이 있으면 이슈별 서브디렉토리. HARNESS_ISSUE_NUM env var도 참조."""
     state_dir = get_state_dir()
-    flags_dir = os.path.join(state_dir, ".flags")
+    if not issue_num:
+        issue_num = os.environ.get("HARNESS_ISSUE_NUM", "")
+    if issue_num:
+        prefix = get_prefix()
+        flags_dir = os.path.join(state_dir, ".flags", f"{prefix}_{issue_num}")
+    else:
+        flags_dir = os.path.join(state_dir, ".flags")
     os.makedirs(flags_dir, exist_ok=True)
     return flags_dir
 
