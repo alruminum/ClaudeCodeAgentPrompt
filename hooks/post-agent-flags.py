@@ -109,7 +109,13 @@ def main():
         remove(FLAGS.HARNESS_ACTIVE)
 
     # ── 에이전트 완료 → {agent}_active 삭제 (agent-boundary.py 연동) ──
-    remove(f"{agent}_active")
+    # 숨김파일 active 플래그 삭제: .{prefix}_{agent}_active (에이전트 glob 회피)
+    try:
+        _af = os.path.join(get_state_dir(), f".{PREFIX}_{agent}_active")
+        if os.path.exists(_af):
+            os.remove(_af)
+    except Exception:
+        pass
 
     # ── architect 완료 후 문서 신선도 경고 ──
     if agent == "architect":

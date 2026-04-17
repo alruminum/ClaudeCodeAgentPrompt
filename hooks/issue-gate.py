@@ -27,11 +27,11 @@ def _is_issue_creator_active():
     now = time.time()
     for agent in ISSUE_CREATORS:
         # 정확한 prefix 매칭
-        flag_file = os.path.join(state_dir, f"{PREFIX}_{agent}_active")
+        flag_file = os.path.join(state_dir, f".{PREFIX}_{agent}_active")
         if os.path.exists(flag_file):
             return True
         # prefix 불일치 대비 glob 탐색 (900초 TTL)
-        for f in glob.glob(os.path.join(state_dir, f"*_{agent}_active")):
+        for f in glob.glob(os.path.join(state_dir, f".*_{agent}_active")):
             try:
                 if now - os.path.getmtime(f) < 900:
                     return True
