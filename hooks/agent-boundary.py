@@ -94,13 +94,22 @@ def main():
         import datetime
         _state_dir_path = get_state_dir()
         _all_files = os.listdir(_state_dir_path) if os.path.isdir(_state_dir_path) else []
+        _active_files = [f for f in _all_files if "_active" in f]
+        _direct_checks = {}
+        for _ag in ("product-planner", "engineer", "architect", "ux-architect", "test-engineer", "designer"):
+            _flag_name = f"{prefix}_{_ag}_active"
+            _flag_full = os.path.join(_state_dir_path, _flag_name)
+            if os.path.exists(_flag_full):
+                _direct_checks[_ag] = True
+                if _flag_name not in _active_files:
+                    _active_files.append(_flag_name)
         _dbg = {
             "ts": datetime.datetime.now().isoformat(),
             "prefix": prefix,
-            "cwd": os.getcwd(),
             "state_dir": _state_dir_path,
             "HARNESS_PREFIX": os.environ.get("HARNESS_PREFIX", ""),
-            "active_flags": [f for f in _all_files if "_active" in f],
+            "active_flags": _active_files,
+            "direct_exists": _direct_checks,
             "tool": tool_name,
             "fp": fp,
         }
