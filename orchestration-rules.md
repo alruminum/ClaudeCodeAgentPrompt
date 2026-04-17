@@ -164,6 +164,20 @@ hooks가 "현재 에이전트인지" 판별할 때 파일 플래그가 아닌 **
 - 메인 Claude 세션에는 이 env var가 없으므로 에이전트로 오인 불가
 - `{prefix}_{agent}_active` 파일은 정보성 로그용으로만 유지 (판별에 사용 안 함)
 
+### 이슈별 Worktree 격리 (동시 이슈 작업)
+`config.isolation = "worktree"` 설정 시, 이슈별 git worktree를 생성하여 동시에 여러 이슈를 작업할 수 있다.
+- `WorktreeManager`가 `{project_root}/.worktrees/{prefix}/issue-{N}/` 경로에 worktree 생성
+- `create_feature_branch()`가 worktree 모드일 때 `git worktree add` 사용, 아니면 기존 `git checkout -b`
+- `agent_call()`에 `cwd=worktree_path` 전달 → 에이전트가 worktree에서 실행
+- `StateDir`에 `issue_num` 파라미터 추가 → `.flags/{prefix}_{issue}/` 이슈별 플래그 디렉토리
+- PID 잠금도 이슈별: `{prefix}_{issue}_harness_active` → 같은 이슈만 중복 차단
+- `HARNESS_ISSUE_NUM` env var로 hooks가 이슈별 플래그 디렉토리 자동 참조
+- merge 후 `WorktreeManager.remove()`로 worktree 정리
+- worktree 활성 시 `os.chdir(work_cwd)` + `atexit`로 프로세스 종료 시 cwd 복원 보장
+- executor는 이슈별 독립 프로세스이므로 os.chdir이 다른 세션에 영향 없음
+- `merge_to_main`은 메인 repo에서 실행해야 하므로 merge 전 `os.chdir(_orig_cwd)` 복원
+- `config.isolation` 미설정 시 기존 동작 100% 유지 (호환성)
+
 ### 에이전트 Read 제한 (READ_DENY_MATRIX)
 agent-boundary.py가 에이전트별 Read 접근을 제한한다. Write/Edit 허용 경로와 별개.
 - product-planner: src/** 읽기 금지 (기획자가 코드 레벨 결정을 하는 것 방지)

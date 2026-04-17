@@ -183,9 +183,17 @@ def _main_inner():
         log(prefix, f"PASS(pasted_content) prompt={prompt[:60]!r}")
         sys.exit(0)
 
+    # 이슈 번호 추출 → 이슈별 플래그 디렉토리 사용 (worktree 격리 지원)
+    _issue_m = re.search(r'#(\d+)', prompt)
+    _issue_for_flags = _issue_m.group(1) if _issue_m else ""
+    _fdir = get_flags_dir(_issue_for_flags)
+    # 이슈별 디렉토리가 없으면 글로벌 fallback
+    if _issue_for_flags and not os.path.isdir(_fdir):
+        _fdir = get_flags_dir()
+
     # stale designer_ran 감지
-    dr_path = f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"
-    dc_path = f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"
+    dr_path = f"{_fdir}/{prefix}_{FLAGS.DESIGNER_RAN}"
+    dc_path = f"{_fdir}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"
     if os.path.exists(dr_path) and not os.path.exists(dc_path):
         age_min = (time.time() - os.path.getmtime(dr_path)) / 60
         if age_min > 30:
@@ -199,13 +207,13 @@ def _main_inner():
 
     # 현재 플래그 상태
     flags = {
-        FLAGS.HARNESS_ACTIVE:         os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}"),
-        FLAGS.PLAN_VALIDATION_PASSED: os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.PLAN_VALIDATION_PASSED}"),
-        FLAGS.DESIGNER_RAN:           os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"),
-        FLAGS.DESIGN_CRITIC_PASSED:   os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"),
-        FLAGS.TEST_ENGINEER_PASSED:   os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.TEST_ENGINEER_PASSED}"),
-        FLAGS.VALIDATOR_B_PASSED:     os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.VALIDATOR_B_PASSED}"),
-        FLAGS.PR_REVIEWER_LGTM:       os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.PR_REVIEWER_LGTM}"),
+        FLAGS.HARNESS_ACTIVE:         os.path.exists(f"{_fdir}/{prefix}_{FLAGS.HARNESS_ACTIVE}"),
+        FLAGS.PLAN_VALIDATION_PASSED: os.path.exists(f"{_fdir}/{prefix}_{FLAGS.PLAN_VALIDATION_PASSED}"),
+        FLAGS.DESIGNER_RAN:           os.path.exists(f"{_fdir}/{prefix}_{FLAGS.DESIGNER_RAN}"),
+        FLAGS.DESIGN_CRITIC_PASSED:   os.path.exists(f"{_fdir}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"),
+        FLAGS.TEST_ENGINEER_PASSED:   os.path.exists(f"{_fdir}/{prefix}_{FLAGS.TEST_ENGINEER_PASSED}"),
+        FLAGS.VALIDATOR_B_PASSED:     os.path.exists(f"{_fdir}/{prefix}_{FLAGS.VALIDATOR_B_PASSED}"),
+        FLAGS.PR_REVIEWER_LGTM:       os.path.exists(f"{_fdir}/{prefix}_{FLAGS.PR_REVIEWER_LGTM}"),
     }
     any_active = any(flags.values())
 
@@ -261,7 +269,7 @@ def _main_inner():
             ]
             cleared = []
             for f in all_flag_keys:
-                p = f"{get_flags_dir()}/{prefix}_{f}"
+                p = f"{_fdir}/{prefix}_{f}"
                 if os.path.exists(p):
                     os.remove(p)
                     cleared.append(f)
@@ -295,7 +303,7 @@ def _main_inner():
             ctx = (
                 f"⚠️ [HARNESS] {FLAGS.HARNESS_ACTIVE} 플래그 설정됨.\n"
                 f"이전 실행이 진행 중이거나 비정상 종료됨.\n"
-                f"중복 실행 전 확인: ls {get_flags_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}\n\n"
+                f"중복 실행 전 확인: ls {_fdir}/{prefix}_{FLAGS.HARNESS_ACTIVE}\n\n"
                 f"[현재 플래그]\n{flag_lines}"
             )
             log(prefix, f"INJECT(impl/harness_active_warn) prompt={prompt[:60]!r}")

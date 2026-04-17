@@ -59,7 +59,7 @@ def run_plan(
             from config import load_config
         config = load_config()
     if state_dir is None:
-        state_dir = StateDir(Path.cwd(), prefix)
+        state_dir = StateDir(Path.cwd(), prefix, issue_num=issue_num)
     if run_logger is None:
         run_logger = RunLogger(prefix, "plan", issue_num)
 
