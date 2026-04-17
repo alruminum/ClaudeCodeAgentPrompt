@@ -19,6 +19,7 @@ try:
         RunLogger, StateDir, HUD,
         agent_call, parse_marker, kill_check,
         build_loop_context, run_ux_validation,
+        generate_handoff, write_handoff,
     )
 except ImportError:
     from config import HarnessConfig
@@ -26,6 +27,7 @@ except ImportError:
         RunLogger, StateDir, HUD,
         agent_call, parse_marker, kill_check,
         build_loop_context, run_ux_validation,
+        generate_handoff, write_handoff,
     )
 
 
@@ -212,17 +214,21 @@ def run_plan(
         uxa_out_file = str(state_dir.path / f"{prefix}_uxa_out.txt")
 
         if _uxa_mode == "UX_SYNC":
-            agent_call(
+            _uxa_exit = agent_call(
                 "ux-architect", 600,
                 f"@MODE:UX_ARCHITECT:UX_SYNC\nprd_path: {prd_path}\nsrc_dir: src/\nissue: #{issue_num}",
                 uxa_out_file, run_logger, config,
             )
         else:
-            agent_call(
+            _uxa_exit = agent_call(
                 "ux-architect", 600,
                 f"@MODE:UX_ARCHITECT:UX_FLOW\nprd_path: {prd_path}\nissue: #{issue_num}",
                 uxa_out_file, run_logger, config,
             )
+
+        # 타임아웃 감지 (exit 124/142)
+        if _uxa_exit in (124, 142):
+            print(f"[HARNESS] ux-architect 타임아웃 (exit {_uxa_exit})")
 
         _uxa_cost = 0.0
         try:
@@ -266,6 +272,20 @@ def run_plan(
             if Path("docs/ux-flow.md").exists():
                 ux_flow_doc = "docs/ux-flow.md"
         print(f"[HARNESS] ux_flow_doc: {ux_flow_doc or 'N/A'}")
+
+        # ================================================================
+        # 3.5. handoff: ux-architect -> validator(UX)
+        # ================================================================
+        try:
+            uxa_content = Path(uxa_out_file).read_text(encoding="utf-8", errors="replace") if Path(uxa_out_file).exists() else ""
+            handoff_content = generate_handoff(
+                "ux-architect", "validator",
+                uxa_content[-2000:],
+                ux_flow_doc or "N/A", 0, issue_num,
+            )
+            write_handoff(state_dir, prefix, 0, "ux-architect", "validator", handoff_content)
+        except Exception:
+            pass  # handoff 실패해도 루프 중단하지 않음
 
         # ================================================================
         # 4. validator UX Validation
