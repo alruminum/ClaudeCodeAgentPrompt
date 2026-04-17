@@ -103,9 +103,15 @@ SPEC_GAP_FOUND
 
 ---
 
-## Designer Handoff 수신 (디자인 워크플로우 연동 시)
+## Design Ref / Designer Handoff 수신
 
-`DESIGN_HANDOFF` 패키지를 받은 경우 아래 순서로 처리한다:
+impl 파일에 `## Design Ref` 섹션이 있으면 (설계 루프에서 designer 시안이 생성된 경우):
+1. **Pencil Frame ID**로 `batch_get`을 호출해 시안의 레이아웃·컴포넌트 구조를 참조
+2. **Design Tokens**에 명시된 색상·서체·간격을 코드에 반영
+3. **Animation Spec**에 명시된 트랜지션/모션을 구현
+4. **Handoff 문서 경로**(docs/design-handoff.md)가 있으면 상세 내용 참조
+
+`DESIGN_HANDOFF` 패키지를 직접 받은 경우 (ux 스킬 독립 경로) 아래 순서로 처리한다:
 
 1. **Design Tokens → CSS variables 변환**
    - DESIGN_HANDOFF의 tokens 섹션을 읽어 `src/index.css` (또는 프로젝트 CSS 변수 파일)와 비교

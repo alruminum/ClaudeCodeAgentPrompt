@@ -116,6 +116,13 @@ class Marker(str, Enum):
     MERGE_CONFLICT_ESCALATE = "MERGE_CONFLICT_ESCALATE"
     # product-planner (정보 부족 에스컬레이션)
     CLARITY_INSUFFICIENT = "CLARITY_INSUFFICIENT"
+    # ux-architect
+    UX_FLOW_READY = "UX_FLOW_READY"
+    UX_FLOW_ESCALATE = "UX_FLOW_ESCALATE"
+    # validator UX Validation
+    UX_REVIEW_PASS = "UX_REVIEW_PASS"
+    UX_REVIEW_FAIL = "UX_REVIEW_FAIL"
+    UX_REVIEW_ESCALATE = "UX_REVIEW_ESCALATE"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -135,7 +142,7 @@ class HUD:
         "simple": ["engineer", "pr-reviewer", "merge"],
         "std": ["engineer", "test-engineer", "validator", "pr-reviewer", "merge"],
         "deep": ["engineer", "test-engineer", "validator", "security-reviewer", "pr-reviewer", "merge"],
-        "plan": ["product-planner", "architect-sd", "design-validation", "architect-mp", "plan-validation"],
+        "plan": ["product-planner", "ux-architect", "ux-validation"],
     }
 
     def __init__(
@@ -1814,6 +1821,76 @@ def run_design_validation(
         if val_result == "DESIGN_REVIEW_FAIL":
             val_result = "FAIL"
         print(f"[HARNESS] Design Validation 재검증 결과: {val_result}")
+
+        if val_result == "PASS":
+            return True
+
+    return False
+
+
+def run_ux_validation(
+    ux_flow_doc: str,
+    prd_path: str,
+    issue_num: str | int,
+    prefix: str,
+    max_rework: int = 1,
+    state_dir: Optional[StateDir] = None,
+    run_logger: Optional[RunLogger] = None,
+    config: Optional[HarnessConfig] = None,
+) -> bool:
+    """UX Validation 실행. True=PASS, False=ESCALATE."""
+    if state_dir is None:
+        state_dir = StateDir(Path.cwd(), prefix)
+
+    val_out = str(state_dir.path / f"{prefix}_val_ux_out.txt")
+
+    print("[HARNESS] UX Validation")
+    agent_call(
+        "validator", 300,
+        f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: #{issue_num}",
+        val_out, run_logger, config,
+    )
+    val_result = parse_marker(val_out, "UX_REVIEW_PASS|UX_REVIEW_FAIL|PASS|FAIL")
+    if val_result == "UX_REVIEW_PASS":
+        val_result = "PASS"
+    if val_result == "UX_REVIEW_FAIL":
+        val_result = "FAIL"
+    print(f"[HARNESS] UX Validation 결과: {val_result}")
+
+    if val_result == "PASS":
+        return True
+
+    for rework in range(1, max_rework + 1):
+        kill_check(state_dir)
+        print(f"[HARNESS] UX Validation FAIL -> ux-architect 재설계 ({rework}/{max_rework})")
+        fail_feedback = ""
+        try:
+            lines = Path(val_out).read_text().splitlines()
+            fail_feedback = "\n".join(lines[-20:])
+        except OSError:
+            pass
+
+        uxa_out = str(state_dir.path / f"{prefix}_uxa_fix_out.txt")
+        agent_call(
+            "ux-architect", 600,
+            f"@MODE:UX_ARCHITECT:UX_FLOW\nprd_path: {prd_path}\n"
+            f"재설계 -- UX Validation FAIL 피드백 반영. feedback: {fail_feedback}",
+            uxa_out, run_logger, config,
+        )
+        kill_check(state_dir)
+
+        val_out2 = str(state_dir.path / f"{prefix}_val_ux_out{rework}.txt")
+        agent_call(
+            "validator", 300,
+            f"@MODE:VALIDATOR:UX_VALIDATION\nux_flow_doc: {ux_flow_doc}\nprd_path: {prd_path}\nissue: #{issue_num}",
+            val_out2, run_logger, config,
+        )
+        val_result = parse_marker(val_out2, "UX_REVIEW_PASS|UX_REVIEW_FAIL|PASS|FAIL")
+        if val_result == "UX_REVIEW_PASS":
+            val_result = "PASS"
+        if val_result == "UX_REVIEW_FAIL":
+            val_result = "FAIL"
+        print(f"[HARNESS] UX Validation 재검증 결과: {val_result}")
 
         if val_result == "PASS":
             return True
