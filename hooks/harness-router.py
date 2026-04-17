@@ -2,7 +2,7 @@
 """
 Harness Router — UserPromptSubmit hook
 Usage: python3 harness-router.py <PREFIX>
-  PREFIX: project-specific flag prefix (e.g. "mb" → .claude/harness-state/mb_plan_validation_passed)
+  PREFIX: project-specific flag prefix (e.g. "mb" → .claude/harness-state/.flags/mb_plan_validation_passed)
 
 3카테고리 분류: BUG / UI / IMPLEMENTATION → 힌트 주입
 나머지 → 즉시 통과 (스킬이 정밀 라우팅 담당)
@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness_common import get_state_dir, FLAGS
+from harness_common import get_state_dir, get_flags_dir, FLAGS
 
 LOG_FILE = "/tmp/harness-router.log"
 
@@ -164,7 +164,7 @@ def _main_inner():
         sys.exit(0)
 
     # Kill Switch
-    if os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.HARNESS_KILL}"):
+    if os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.HARNESS_KILL}"):
         log(prefix, "KILL_SWITCH — pass-through")
         sys.exit(0)
 
@@ -184,8 +184,8 @@ def _main_inner():
         sys.exit(0)
 
     # stale designer_ran 감지
-    dr_path = f"{get_state_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"
-    dc_path = f"{get_state_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"
+    dr_path = f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"
+    dc_path = f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"
     if os.path.exists(dr_path) and not os.path.exists(dc_path):
         age_min = (time.time() - os.path.getmtime(dr_path)) / 60
         if age_min > 30:
@@ -199,13 +199,13 @@ def _main_inner():
 
     # 현재 플래그 상태
     flags = {
-        FLAGS.HARNESS_ACTIVE:         os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}"),
-        FLAGS.PLAN_VALIDATION_PASSED: os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.PLAN_VALIDATION_PASSED}"),
-        FLAGS.DESIGNER_RAN:           os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"),
-        FLAGS.DESIGN_CRITIC_PASSED:   os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"),
-        FLAGS.TEST_ENGINEER_PASSED:   os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.TEST_ENGINEER_PASSED}"),
-        FLAGS.VALIDATOR_B_PASSED:     os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.VALIDATOR_B_PASSED}"),
-        FLAGS.PR_REVIEWER_LGTM:       os.path.exists(f"{get_state_dir()}/{prefix}_{FLAGS.PR_REVIEWER_LGTM}"),
+        FLAGS.HARNESS_ACTIVE:         os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}"),
+        FLAGS.PLAN_VALIDATION_PASSED: os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.PLAN_VALIDATION_PASSED}"),
+        FLAGS.DESIGNER_RAN:           os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGNER_RAN}"),
+        FLAGS.DESIGN_CRITIC_PASSED:   os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.DESIGN_CRITIC_PASSED}"),
+        FLAGS.TEST_ENGINEER_PASSED:   os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.TEST_ENGINEER_PASSED}"),
+        FLAGS.VALIDATOR_B_PASSED:     os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.VALIDATOR_B_PASSED}"),
+        FLAGS.PR_REVIEWER_LGTM:       os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.PR_REVIEWER_LGTM}"),
     }
     any_active = any(flags.values())
 
@@ -261,7 +261,7 @@ def _main_inner():
             ]
             cleared = []
             for f in all_flag_keys:
-                p = f"{get_state_dir()}/{prefix}_{f}"
+                p = f"{get_flags_dir()}/{prefix}_{f}"
                 if os.path.exists(p):
                     os.remove(p)
                     cleared.append(f)
@@ -295,7 +295,7 @@ def _main_inner():
             ctx = (
                 f"⚠️ [HARNESS] {FLAGS.HARNESS_ACTIVE} 플래그 설정됨.\n"
                 f"이전 실행이 진행 중이거나 비정상 종료됨.\n"
-                f"중복 실행 전 확인: ls {get_state_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}\n\n"
+                f"중복 실행 전 확인: ls {get_flags_dir()}/{prefix}_{FLAGS.HARNESS_ACTIVE}\n\n"
                 f"[현재 플래그]\n{flag_lines}"
             )
             log(prefix, f"INJECT(impl/harness_active_warn) prompt={prompt[:60]!r}")

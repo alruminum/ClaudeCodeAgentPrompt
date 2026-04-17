@@ -48,7 +48,7 @@ class FLAGS:
 HARNESS_ONLY_AGENTS = ("engineer",)
 
 # 이슈 생성 가능 에이전트 — issue-gate.py에서 harness_active 없이도 허용
-ISSUE_CREATORS = ("qa", "designer", "architect")
+ISSUE_CREATORS = ("qa", "designer", "architect", "product-planner")
 
 # 이슈 번호 필수 에이전트 — 프롬프트에 #NNN 없으면 차단
 ISSUE_REQUIRED_AGENTS = ("architect", "engineer")
@@ -112,9 +112,17 @@ def get_state_dir():
     return "/tmp"
 
 
+def get_flags_dir():
+    """플래그 전용 숨김 디렉토리 반환. .claude/harness-state/.flags/"""
+    state_dir = get_state_dir()
+    flags_dir = os.path.join(state_dir, ".flags")
+    os.makedirs(flags_dir, exist_ok=True)
+    return flags_dir
+
+
 def flag_path(prefix, name):
     """플래그 파일 경로 반환."""
-    return os.path.join(get_state_dir(), f"{prefix}_{name}")
+    return os.path.join(get_flags_dir(), f"{prefix}_{name}")
 
 
 def flag_exists(prefix, name):

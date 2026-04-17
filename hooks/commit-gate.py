@@ -15,20 +15,20 @@ import re
 import subprocess
 import glob
 import time
-from harness_common import get_prefix, get_state_dir, deny, FLAGS, ISSUE_CREATORS
+from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, FLAGS, ISSUE_CREATORS
 
 PREFIX = get_prefix()
 
 
 def _is_issue_creator_active():
     """ISSUE_CREATORS 에이전트 중 하나라도 활성 상태인지 확인."""
-    state_dir = get_state_dir()
+    flags_dir = get_flags_dir()
     now = time.time()
     for agent in ISSUE_CREATORS:
-        flag_file = os.path.join(state_dir, f".{PREFIX}_{agent}_active")
+        flag_file = os.path.join(flags_dir, f"{PREFIX}_{agent}_active")
         if os.path.exists(flag_file):
             return True
-        for f in glob.glob(os.path.join(state_dir, f".*_{agent}_active")):
+        for f in glob.glob(os.path.join(flags_dir, f"*_{agent}_active")):
             try:
                 if now - os.path.getmtime(f) < 900:
                     return True
@@ -106,8 +106,8 @@ def main():
         sys.exit(0)
 
     # src 변경이 있으면 LGTM 필요
-    if not os.path.exists(f"{get_state_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM}"):
-        deny(f"❌ git commit 전 pr-reviewer LGTM 필요. {get_state_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.")
+    if not os.path.exists(f"{get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM}"):
+        deny(f"❌ git commit 전 pr-reviewer LGTM 필요. {get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.")
 
     sys.exit(0)
 

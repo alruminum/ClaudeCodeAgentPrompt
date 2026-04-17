@@ -166,21 +166,36 @@ UX_SKIP → 유저에게 알림:
 - **비기능 변경** → planner(PRODUCT_PLAN_CHANGE)만 재실행
   - 체크포인트 리셋: `{prefix}_plan_metadata.json`에서 `prd_path` 키만 삭제
 
+### 5.5단계: 이슈 동기화 (ISSUE_SYNC)
+
+유저 승인 ① 확정 후, 설계 루프 진입 전에 planner ISSUE_SYNC 모드를 호출하여 stories.md ↔ GitHub 이슈를 동기화한다.
+
+```
+subagent_type: product-planner
+prompt: |
+  @MODE:PLANNER:ISSUE_SYNC
+  @PARAMS: { "stories_path": "[stories.md 경로]", "prd_path": "prd.md" }
+```
+
+결과: `ISSUES_SYNCED` 마커 + 이슈 번호 목록. stories.md에 `관련 이슈: #NNN` 추가.
+
+**첫 실행 (이슈 없음)**: 모든 스토리에 대해 GitHub 이슈 신규 생성.
+**재호출 (수정 후 재승인)**: diff 비교 → 추가된 스토리 이슈 생성 / 삭제된 스토리 이슈 close / 변경된 스토리 이슈 body 업데이트.
+
 ### 6단계: 설계 루프 트리거
 
-유저 승인 ① 후 메인 Claude가 Agent 도구 2개를 **병렬**로 직접 호출한다.
+ISSUE_SYNC 완료 후 메인 Claude가 Agent 도구 2개를 **병렬**로 직접 호출한다.
 **executor.py 경유 아님 — 메인 Claude가 직접 오케스트레이션.**
 상세: [orchestration/system-design.md](../orchestration/system-design.md)
 
 ```
 # Agent 도구 2개를 단일 메시지에서 병렬 호출:
 
-# 1) architect(SD) — Agent 도구
+# 1) architect(SD) — Agent 도구 (이슈 번호 불필요 — SYSTEM_DESIGN은 전체 구조 설계)
 subagent_type: architect
 prompt: |
   @MODE:ARCHITECT:SYSTEM_DESIGN
   @PARAMS: { "plan_doc": "prd.md", "ux_flow_doc": "docs/ux-flow.md" }
-  issue: #[이슈번호]
 
 # 2) designer — Agent 도구 (UX Flow 디자인 테이블 화면별 ONE_WAY 순차)
 subagent_type: designer
@@ -194,7 +209,13 @@ prompt: |
 architect(SD) SYSTEM_DESIGN_READY + designer DESIGN_HANDOFF 완료 후:
 - validator Design Validation 실행
 - DESIGN_REVIEW_PASS → 유저에게 architecture.md + Pencil 캔버스 확인 요청
-- 유저 승인 → 8단계
+- 유저 승인 후 `design_critic_passed` 플래그 세팅:
+  ```bash
+  PREFIX=$(python3 -c "import json; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix','mb'))" 2>/dev/null || echo "mb")
+  mkdir -p "$(pwd)/.claude/harness-state/.flags"
+  touch "$(pwd)/.claude/harness-state/.flags/${PREFIX}_design_critic_passed"
+  ```
+- → 8단계
 
 ### 8단계: 구현 루프 트리거
 

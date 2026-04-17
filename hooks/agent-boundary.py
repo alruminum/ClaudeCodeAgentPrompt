@@ -16,7 +16,7 @@ import glob
 import json
 import re
 import time
-from harness_common import get_prefix, get_state_dir, deny
+from harness_common import get_prefix, get_state_dir, get_flags_dir, deny
 
 # 하네스 인프라 파일 패턴 — 모든 에이전트에서 Read/Write/Edit 차단
 HARNESS_INFRA_PATTERNS = [
@@ -73,6 +73,7 @@ READ_DENY_MATRIX = {
         r'(^|/)src/',                   # 소스 코드 읽기 금지 — 디자인은 Pencil + 스펙 기반
     ],
     "test-engineer": [
+        r'(^|/)src/',                   # TDD: impl 기반 테스트 선작성 — 구현 코드 읽기 금지
         r'(^|/)docs/(architecture|game-logic|db-schema|sdk|domain-logic|reference)',  # domain 문서 금지
     ],
 }
@@ -93,13 +94,13 @@ def main():
     # 진단 로그: prefix/CWD/env/active 플래그 기록 → 훅 오진단 시 분석용
     try:
         import datetime
-        _state_dir_path = get_state_dir()
-        _all_files = os.listdir(_state_dir_path) if os.path.isdir(_state_dir_path) else []
+        _flags_dir_path = get_flags_dir()
+        _all_files = os.listdir(_flags_dir_path) if os.path.isdir(_flags_dir_path) else []
         _active_files = [f for f in _all_files if "_active" in f]
         _direct_checks = {}
         for _ag in ("product-planner", "engineer", "architect", "ux-architect", "test-engineer", "designer"):
-            _flag_name = f".{prefix}_{_ag}_active"
-            _flag_full = os.path.join(_state_dir_path, _flag_name)
+            _flag_name = f"{prefix}_{_ag}_active"
+            _flag_full = os.path.join(_flags_dir_path, _flag_name)
             if os.path.exists(_flag_full):
                 _direct_checks[_ag] = True
                 if _flag_name not in _active_files:
@@ -107,7 +108,7 @@ def main():
         _dbg = {
             "ts": datetime.datetime.now().isoformat(),
             "prefix": prefix,
-            "state_dir": _state_dir_path,
+            "flags_dir": _flags_dir_path,
             "HARNESS_PREFIX": os.environ.get("HARNESS_PREFIX", ""),
             "active_flags": _active_files,
             "direct_exists": _direct_checks,
@@ -123,7 +124,7 @@ def main():
     active_agent = None
     # 1차: 계산된 prefix로 정확 매칭
     for agent in ALLOW_MATRIX:
-        if os.path.exists(os.path.join(get_state_dir(), f".{prefix}_{agent}_active")):
+        if os.path.exists(os.path.join(get_flags_dir(), f"{prefix}_{agent}_active")):
             active_agent = agent
             break
 
@@ -132,7 +133,7 @@ def main():
     if active_agent is None:
         now = time.time()
         for agent in ALLOW_MATRIX:
-            for f in glob.glob(os.path.join(get_state_dir(), f".*_{agent}_active")):
+            for f in glob.glob(os.path.join(get_flags_dir(), f"*_{agent}_active")):
                 try:
                     if now - os.path.getmtime(f) < 900:
                         active_agent = agent

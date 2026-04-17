@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Optional
 
 # 테스트 대상 패키지 경로 설정
 HARNESS_DIR = Path(__file__).resolve().parent.parent
@@ -84,6 +85,19 @@ class TestStateDirOperations(unittest.TestCase):
             self.assertTrue(sd.flag_exists("harness_active"))
             sd.flag_rm("harness_active")
             self.assertFalse(sd.flag_exists("harness_active"))
+
+    def test_flags_dir_is_hidden_subdir(self):
+        """플래그 파일이 .flags/ 숨김 디렉토리 안에 생성되는지 확인."""
+        with tempfile.TemporaryDirectory() as td:
+            sd = StateDir(Path(td), "mb")
+            sd.flag_touch("pr_reviewer_lgtm")
+            # .flags/ 디렉토리 존재
+            flags_dir = sd.path / ".flags"
+            self.assertTrue(flags_dir.is_dir())
+            # 플래그 파일이 .flags/ 안에 있음
+            self.assertTrue((flags_dir / "mb_pr_reviewer_lgtm").exists())
+            # harness-state/ 루트에는 없음 (glob 삭제 대상 X)
+            self.assertFalse((sd.path / "mb_pr_reviewer_lgtm").exists())
 
 
 class TestRunLoggerJsonl(unittest.TestCase):
@@ -1133,6 +1147,82 @@ class TestTDDHUDOrder(unittest.TestCase):
         from harness.core import HUD
         hud = HUD("simple", "t", "1", 3, 10.0)
         self.assertNotIn("test-engineer", hud.agents)
+
+
+class TestLoopVarsInitialized(unittest.TestCase):
+    """루프 함수에서 budget_check(... total_cost ...) 호출 전에 total_cost가 초기화되는지 AST 검증.
+
+    `total_cost = budget_check(..., total_cost, ...)` 같은 패턴은
+    RHS의 total_cost(Load)가 LHS 할당(Store)보다 먼저 평가되므로,
+    이 줄이 '최초 할당'이면서 동시에 '최초 참조'이면 초기화 누락 버그이다.
+    """
+
+    def _get_func_ast(self, func_name: str):
+        import ast
+        src = (HARNESS_DIR / "impl_loop.py").read_text()
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name:
+                return node
+        self.fail(f"{func_name} not found in impl_loop.py")
+
+    def _first_pure_assign_line(self, func_node, var_name: str) -> Optional[int]:
+        """var_name에 값을 할당하되, RHS에서 var_name을 읽지 않는 최초 줄 번호.
+
+        `total_cost = 0.0` → pure assign (반환)
+        `total_cost = budget_check(..., total_cost, ...)` → 자기참조, 순수 초기화 아님 (스킵)
+        """
+        import ast
+        min_line = None
+        for node in ast.walk(func_node):
+            if isinstance(node, ast.Assign):
+                targets_have_var = any(
+                    isinstance(t, ast.Name) and t.id == var_name
+                    for t in node.targets
+                )
+                if not targets_have_var:
+                    continue
+                # RHS에서 var_name을 Load하는지 확인
+                rhs_reads_var = any(
+                    isinstance(n, ast.Name) and n.id == var_name and isinstance(n.ctx, ast.Load)
+                    for n in ast.walk(node.value)
+                )
+                if rhs_reads_var:
+                    continue  # 자기참조 — 순수 초기화 아님
+                if min_line is None or node.lineno < min_line:
+                    min_line = node.lineno
+        return min_line
+
+    def _first_read_line(self, func_node, var_name: str) -> Optional[int]:
+        """함수 내에서 var_name을 Load 컨텍스트로 최초 참조하는 줄 번호."""
+        import ast
+        min_line = None
+        for node in ast.walk(func_node):
+            if isinstance(node, ast.Name) and node.id == var_name and isinstance(node.ctx, ast.Load):
+                if min_line is None or node.lineno < min_line:
+                    min_line = node.lineno
+        return min_line
+
+    def test_total_cost_initialized_before_use_in_run_std_deep(self):
+        func = self._get_func_ast("_run_std_deep")
+        init_line = self._first_pure_assign_line(func, "total_cost")
+        read_line = self._first_read_line(func, "total_cost")
+        self.assertIsNotNone(read_line, "total_cost가 _run_std_deep에서 한 번도 참조되지 않음")
+        self.assertIsNotNone(init_line,
+                             f"total_cost 순수 초기화가 없음 — 최초 참조(line {read_line})에서 UnboundLocalError 발생")
+        self.assertLess(init_line, read_line,
+                        f"total_cost 초기화(line {init_line})가 최초 참조(line {read_line})보다 먼저 와야 함")
+
+    def test_total_cost_initialized_before_use_in_run_simple(self):
+        func = self._get_func_ast("run_simple")
+        init_line = self._first_pure_assign_line(func, "total_cost")
+        read_line = self._first_read_line(func, "total_cost")
+        if read_line is None:
+            return  # total_cost 미사용이면 OK
+        self.assertIsNotNone(init_line,
+                             f"total_cost 순수 초기화가 없음 — 최초 참조(line {read_line})에서 UnboundLocalError 발생")
+        self.assertLess(init_line, read_line,
+                        f"total_cost 초기화(line {init_line})가 최초 참조(line {read_line})보다 먼저 와야 함")
 
 
 if __name__ == "__main__":
