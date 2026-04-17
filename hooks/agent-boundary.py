@@ -61,6 +61,21 @@ ALLOW_MATRIX = {
     "security-reviewer": [],
 }
 
+# 에이전트별 Read 금지 경로 (regex) — 매치되면 Read deny
+# HARNESS_INFRA_PATTERNS는 전 에이전트 공통이므로 여기에 포함하지 않음
+READ_DENY_MATRIX = {
+    "product-planner": [
+        r'(^|/)src/',                   # 소스 코드 읽기 금지 — 기획자가 코드 레벨 결정 방지
+        r'(^|/)docs/impl/',             # impl 계획 파일 — architect 소유
+    ],
+    "designer": [
+        r'(^|/)src/',                   # 소스 코드 읽기 금지 — 디자인은 Pencil + 스펙 기반
+    ],
+    "test-engineer": [
+        r'(^|/)docs/(architecture|game-logic|db-schema|sdk|domain-logic|reference)',  # domain 문서 금지
+    ],
+}
+
 def main():
     try:
         d = json.load(sys.stdin)
@@ -144,8 +159,13 @@ def main():
             deny(f"❌ [agent-boundary] {active_agent}는 하네스 인프라 파일 접근 금지: "
                  f"{os.path.basename(fp)}. 프로젝트 소스(src/, docs/)만 분석 대상.")
 
-    # Read 도구는 하네스 인프라만 차단, 나머지 프로젝트 파일은 허용
-    if tool_name == "Read":
+    # Read 도구: 하네스 인프라 차단 + 에이전트별 READ_DENY_MATRIX 적용
+    if tool_name in ("Read", "Glob", "Grep"):
+        deny_patterns = READ_DENY_MATRIX.get(active_agent, [])
+        for pattern in deny_patterns:
+            if re.search(pattern, fp):
+                deny(f"❌ [agent-boundary] {active_agent}는 {os.path.basename(fp)} 읽기 금지. "
+                     f"이 에이전트의 역할 범위 밖 파일입니다.")
         sys.exit(0)
 
     # ── 이하 Write/Edit 전용: 허용 경로 매트릭스 확인 ──

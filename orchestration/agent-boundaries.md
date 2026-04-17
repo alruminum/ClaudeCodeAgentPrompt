@@ -35,6 +35,16 @@ PreToolUse 훅 `agent-boundary.py`가 아래 매트릭스를 물리적으로 차
 | product-planner | `prd.md`, `trd.md` | 설계 문서 금지 |
 | validator, design-critic, pr-reviewer, qa, security-reviewer | *(없음 — ReadOnly)* | 모든 Write/Edit deny |
 
+## Read 금지 경로 (에이전트별)
+
+PreToolUse 훅 `agent-boundary.py`의 `READ_DENY_MATRIX`가 아래를 물리적으로 차단한다.
+
+| 에이전트 | Read 금지 경로 | 이유 |
+|----------|----------------|------|
+| product-planner | `src/**`, `docs/impl/**` | 기획자가 코드/구현 계획을 읽으면 구현 수준 언어로 기획함 |
+| designer | `src/**` | 디자인은 Pencil + 스펙 문서 기반, 코드 참조 금지 |
+| test-engineer | `docs/{architecture,game-logic,db-schema,sdk,domain-logic,reference}*` | impl + src만 참조 |
+
 ## 인프라 파일 접근 금지 (전 에이전트 공통)
 
 아래 경로는 하네스 인프라 파일로, 모든 에이전트가 Read/Glob/Grep 대상에서 제외해야 한다.

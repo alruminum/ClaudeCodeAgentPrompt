@@ -136,6 +136,13 @@
 
 ## 구현 루프 내부 기능
 
+### 에이전트 Read 제한 (READ_DENY_MATRIX)
+agent-boundary.py가 에이전트별 Read 접근을 제한한다. Write/Edit 허용 경로와 별개.
+- product-planner: src/** 읽기 금지 (기획자가 코드 레벨 결정을 하는 것 방지)
+- designer: src/** 읽기 금지 (디자인은 Pencil 캔버스 + 스펙 문서 기반)
+- test-engineer: docs/ domain 문서 읽기 금지 (impl + src만 참조)
+- 공통: .claude/harness* 인프라 파일 금지 (기존 HARNESS_INFRA_PATTERNS)
+
 ### TDD 게이트 (std/deep -- test-engineer 선행, Phase 2 구현 완료)
 - attempt 0 + test_command 설정: test-engineer TDD 모드(@MODE:TEST_ENGINEER:TDD) -> RED 확인 -> engineer 구현 + 자체 vitest -> GREEN 확인
 - attempt 1+: test-engineer 스킵 (테스트 이미 존재) -> engineer 재시도 + 자체 vitest -> GREEN 확인
