@@ -58,7 +58,7 @@ flowchart TD
 
 ---
 
-## ���렬 실행 상세
+## 병렬 실행 상세
 
 ### architect(SD) — 하네스 경유
 
