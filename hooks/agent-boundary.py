@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import time
-from harness_common import get_prefix, get_state_dir, get_flags_dir, get_active_agent, deny
+from harness_common import get_prefix, get_state_dir, get_flags_dir, get_active_agent, deny, CUSTOM_AGENTS
 
 # Agent 툴 경로 폴백 플래그 TTL (crash/Ctrl+C 잔재 무효화)
 FALLBACK_FLAG_TTL_SEC = 15 * 60
@@ -23,11 +23,15 @@ FALLBACK_FLAG_TTL_SEC = 15 * 60
 
 def _resolve_active_agent(prefix):
     """env var 1순위, 플래그 파일 폴백. 15분 TTL로 stale 제외.
-    orchestration-rules.md 'Agent 툴 경로 폴백' 규칙에 따라
-    issue-gate.py:_is_issue_creator_active와 동일한 형식 사용."""
+    CUSTOM_AGENTS 화이트리스트로 필터 — Claude Code 내장 서브에이전트(Explore/Plan 등)는
+    우리 권한 제어 대상이 아니므로 이름을 반환하지 않는다. 메인 Claude와 동일 경로로 통과.
+
+    이 필터가 없으면 ALLOW_MATRIX.get(unknown, [])가 []를 돌려주어
+    "ReadOnly 에이전트"로 오인, 내장 서브에이전트 활성 중에는 모든 Write가 차단됨.
+    """
     a = get_active_agent()
     if a:
-        return a
+        return a if a in CUSTOM_AGENTS else None
     flags_dir = get_flags_dir()
     if not os.path.isdir(flags_dir):
         return None
@@ -50,8 +54,9 @@ def _resolve_active_agent(prefix):
         if (now - mtime) > FALLBACK_FLAG_TTL_SEC:
             continue
         name = fname[len(prefix_):-len(suffix)]
-        # harness_active 같은 비에이전트 플래그 배제 (에이전트는 소문자 + hyphen)
-        if name == "harness":
+        # 커스텀 에이전트만 판별 대상 — harness_active 등 비에이전트 플래그,
+        # 그리고 과거 잔재로 남은 CC 내장 에이전트 플래그를 함께 배제.
+        if name not in CUSTOM_AGENTS:
             continue
         candidates.append((mtime, name))
     if not candidates:

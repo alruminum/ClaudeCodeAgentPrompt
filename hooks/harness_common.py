@@ -53,6 +53,25 @@ ISSUE_CREATORS = ("qa", "designer", "architect", "product-planner")
 # 이슈 번호 필수 에이전트 — 프롬프트에 #NNN 없으면 차단
 ISSUE_REQUIRED_AGENTS = ("architect", "engineer")
 
+# 하네스가 소유하는 커스텀 에이전트 화이트리스트 (Single Source of Truth).
+# Claude Code 내장 서브에이전트(Explore, Plan, general-purpose, claude-code-guide,
+# statusline-setup 등)는 이 집합 밖이며, 훅은 이들에 관여하지 않는다.
+# - agent-gate.py: 이 집합 밖의 에이전트에는 {prefix}_{agent}_active 플래그를 만들지 않음.
+# - agent-boundary.py: 이 집합 밖이면 active_agent로 인정하지 않고 메인 Claude와 동일 경로로 통과.
+CUSTOM_AGENTS = frozenset({
+    "architect",
+    "engineer",
+    "designer",
+    "ux-architect",
+    "validator",
+    "pr-reviewer",
+    "qa",
+    "test-engineer",
+    "security-reviewer",
+    "design-critic",
+    "product-planner",
+})
+
 
 def get_prefix():
     """프로젝트별 prefix를 env → harness.config.json (상위 순환) → 디렉토리명 → "proj" 폴백으로 유도."""
