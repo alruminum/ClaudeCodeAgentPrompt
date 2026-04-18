@@ -13,15 +13,32 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import subprocess
-from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, FLAGS, ISSUE_CREATORS
+import time
+from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, flag_path, flag_exists, FLAGS, ISSUE_CREATORS
 
 PREFIX = get_prefix()
 
+# 폴백 플래그 TTL — 크래시/Ctrl+C로 남은 잔재 플래그 무효화 (15분)
+FALLBACK_FLAG_TTL_SEC = 15 * 60
+
 
 def _is_issue_creator_active():
-    """ISSUE_CREATORS 에이전트 중 하나라도 활성 상태인지 확인. env var 기반."""
+    """ISSUE_CREATORS 에이전트 중 하나라도 활성 상태인지 확인.
+    우선순위: env var(HARNESS_AGENT_NAME) → 플래그 파일({prefix}_{agent}_active, TTL 15분).
+    env var는 harness/core.py subprocess 경로, 플래그는 Agent 툴 경로 폴백.
+    플래그 cleanup은 post-agent-flags.py가 PostToolUse(Agent)에서 처리하며,
+    크래시 잔재는 mtime TTL로 무시한다."""
     agent = os.environ.get("HARNESS_AGENT_NAME")
-    return agent in ISSUE_CREATORS
+    if agent in ISSUE_CREATORS:
+        return True
+    now = time.time()
+    for a in ISSUE_CREATORS:
+        p = flag_path(PREFIX, f"{a}_active")
+        if not os.path.exists(p):
+            continue
+        if (now - os.path.getmtime(p)) < FALLBACK_FLAG_TTL_SEC:
+            return True
+    return False
 
 
 def main():

@@ -11,9 +11,13 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from harness_common import get_state_dir
+
+# .flags/ 내 _active 플래그 stale 기준 — 1시간 초과 시 세션 시작 시 제거
+STALE_ACTIVE_FLAG_SEC = 60 * 60
 
 
 def get_prefix(raw):
@@ -81,11 +85,24 @@ def main():
     raw = sys.argv[1] if len(sys.argv) > 1 else "auto"
     prefix = get_prefix(raw)
 
-    # 플래그 초기화 (last_issue는 보존)
+    # 플래그 초기화 (last_issue는 보존) — top-level state_dir
     for f in glob.glob(os.path.join(get_state_dir(), f'{prefix}_*')):
         if not f.endswith('_last_issue'):
             try:
                 os.remove(f)
+            except Exception:
+                pass
+
+    # .flags/ 디렉토리의 stale _active 플래그 cleanup
+    # (agent-gate.py가 쓰고 post-agent-flags.py가 PostToolUse에서 지우지만,
+    #  크래시/Ctrl+C 잔재는 여기서 쓸어담음. TTL 1시간 — 정상 Agent 실행을 상회)
+    flags_dir = os.path.join(get_state_dir(), ".flags")
+    if os.path.isdir(flags_dir):
+        now = time.time()
+        for f in glob.glob(os.path.join(flags_dir, f'{prefix}_*_active')):
+            try:
+                if (now - os.path.getmtime(f)) > STALE_ACTIVE_FLAG_SEC:
+                    os.remove(f)
             except Exception:
                 pass
 
