@@ -472,13 +472,9 @@ def detect_waste(timeline, agent_stats, stream_tools, stream_files, decisions, e
                         has_handoff = True
                         break
             if has_handoff:
-                patterns.append({
-                    "type": "WASTE_DUPLICATE_READ",
-                    "severity": "LOW",
-                    "agent": readers[0],
-                    "detail": f"`{os.path.basename(filepath)}` {len(readers)}개 에이전트가 중복 읽기: {', '.join(readers)} (핸드오프 있음)",
-                    "fix": "에이전트 프롬프트에서 핸드오프 문서 우선 참조 지시 강화",
-                })
+                # 핸드오프가 있으면 정당한 중복 읽기 — validator/pr-reviewer는
+                # 역할상 원본 파일을 직접 읽어야 하므로 WASTE가 아님
+                pass
             else:
                 patterns.append({
                     "type": "WASTE_DUPLICATE_READ",
