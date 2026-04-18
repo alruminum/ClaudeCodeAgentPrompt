@@ -1,12 +1,14 @@
 # 설계 루프 (System Design)
 
-진입 조건: 유저 승인 ① 완료 (기획-UX 루프에서 전달)
+진입 조건: 유저 승인 ① 완료 + **planner ISSUE_SYNC 완료** (stories.md ↔ GitHub 이슈 동기화)
 종료 게이트: **디자인 승인** (architecture.md + design-handoff.md 확정)
 
-> 이전: [기획-UX 루프](plan.md)
+> 이전: [기획-UX 루프](plan.md) → 유저 승인 ① → planner ISSUE_SYNC
 > 다음: [구현 루프](impl.md)
 
 **오케스트레이션 주체**: 메인 Claude (하네스 자동이 아닌 메인 Claude가 직접 병렬 호출)
+
+> **Note**: 설계 루프 진입 전에 planner `@MODE:PLANNER:ISSUE_SYNC`가 반드시 실행되어야 한다. stories.md의 스토리별 GitHub 이슈가 생성되고 `관련 이슈: #NNN`이 할당된 상태에서 architect/engineer가 작업.
 
 ---
 
