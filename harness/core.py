@@ -776,8 +776,8 @@ def agent_call(
         "--disallowedTools", disallowed,
         "--fallback-model", "haiku",
     ]
-    if config and getattr(config, "isolation", ""):
-        base_cmd += ["--isolation", config.isolation]
+    # isolation은 WorktreeManager가 cwd 전달로 처리 — CLI에 --isolation 플래그 전달 금지
+    # (claude CLI에는 --isolation 옵션이 없음, --worktree만 존재)
     cmd = base_cmd + ["-p", full_prompt]
 
     env = os.environ.copy()
