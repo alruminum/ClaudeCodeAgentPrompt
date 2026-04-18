@@ -28,7 +28,7 @@ import json
 import re
 import subprocess
 from datetime import datetime
-from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS, HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS
+from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS, HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS, CUSTOM_AGENTS
 
 PREFIX = get_prefix()
 
@@ -106,11 +106,14 @@ def main():
     except Exception:
         pass
 
-    # 7. 에이전트 활성 플래그 설정 (정보성 로그용 — 판별에는 HARNESS_AGENT_NAME env var 사용)
-    try:
-        open(f"{get_flags_dir()}/{PREFIX}_{agent}_active", "w").close()
-    except Exception:
-        pass
+    # 7. 에이전트 활성 플래그 설정 — 커스텀 에이전트 화이트리스트로만 한정.
+    #    CC 내장 서브에이전트(Explore, Plan 등)는 우리 권한 제어 대상이 아니므로 플래그를 만들지 않는다.
+    #    → PostToolUse 정리 누락 시 잔재 플래그가 agent-boundary.py 폴백을 오도하는 문제 원천 차단.
+    if agent in CUSTOM_AGENTS:
+        try:
+            open(f"{get_flags_dir()}/{PREFIX}_{agent}_active", "w").close()
+        except Exception:
+            pass
 
     sys.exit(0)
 
