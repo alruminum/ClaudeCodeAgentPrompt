@@ -21,6 +21,7 @@
 |------|------|
 | 신규 프로젝트 / PRD 변경 | → **[기획-UX 루프](orchestration/plan.md)** → 유저 승인 ① → **[설계 루프](orchestration/system-design.md)** → 디자인 승인 → **[구현 루프](orchestration/impl.md)** |
 | UI 변경 요청 (독립) | → **ux 스킬** → designer 에이전트 직접 호출 (Pencil 캔버스, 하네스 루프 없음). 상세: [orchestration/design.md](orchestration/design.md) |
+| 화면 레이아웃 리디자인 (REFINE) | → **ux 스킬** (REFINE 감지) → ux-architect(UX_REFINE) → 유저 와이어프레임 승인 → designer SCREEN 모드. 기능/플로우 변경 없이 배치·비주얼만 개편. 화면 단위만 지원. 상세: [orchestration/design.md](orchestration/design.md) |
 | 구현 요청 (READY_FOR_IMPL 또는 plan_validation_passed) | → **[구현 루프 개요](orchestration/impl.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>] [--depth simple\|std\|deep]`<br>depth 상세: [simple](orchestration/impl_simple.md) / [std](orchestration/impl_std.md) / [deep](orchestration/impl_deep.md) |
 | 버그 보고 | → **qa 스킬** → QA 에이전트 직접 분류 + 라우팅. 상세: [orchestration/impl.md](orchestration/impl.md) (QA/DESIGN_HANDOFF 진입 흐름 섹션)<br>FUNCTIONAL_BUG → `executor.sh impl --issue <N>` (architect LIGHT_PLAN) / DESIGN_ISSUE → ux 스킬 / SCOPE_ESCALATE → 유저 보고 |
 | 기술 에픽 / 리팩 / 인프라 | → **[기술 에픽 루프](orchestration/tech-epic.md)** — `bash ~/.claude/harness/executor.sh impl --impl <path> --issue <N> [--prefix <P>]` |
@@ -124,6 +125,7 @@
 | 마커 | 발행 주체 | 처리 |
 |------|-----------|------|
 | `UX_FLOW_READY` | ux-architect (UX Flow Doc 완성) | 기획-UX 루프에서 validator(UX) 호출 |
+| `UX_REFINE_READY` | ux-architect (UX_REFINE — 리디자인 와이어프레임 완성) | 유저 와이어프레임 승인 → designer SCREEN 모드 호출 |
 | `UX_FLOW_ESCALATE` | ux-architect (PRD 범위 초과/모순) | 메인 Claude 보고 — planner 재호출 또는 유저 판단 |
 | `UX_REVIEW_PASS` | validator UX Validation (UX Flow Doc 검증 통과) | 유저 승인 ① 게이트 |
 | `UX_REVIEW_FAIL` | validator UX Validation (UX Flow Doc 검증 실패) | ux-architect 재설계 (max 1회) |
@@ -184,6 +186,13 @@ agent-boundary.py가 에이전트별 Read 접근을 제한한다. Write/Edit 허
 - designer: src/** 읽기 금지 (디자인은 Pencil 캔버스 + 스펙 문서 기반)
 - test-engineer: docs/ domain 문서 읽기 금지 (impl + src만 참조)
 - 공통: .claude/harness* 인프라 파일 금지 (기존 HARNESS_INFRA_PATTERNS)
+
+### ux-architect Pencil MCP 읽기 접근
+UX_REFINE 모드에서 현재 디자인을 분석하기 위해 Pencil MCP 읽기 도구를 사용한다.
+- 허용: get_editor_state, batch_get, get_screenshot, get_variables
+- 금지: batch_design (쓰기는 designer 전용)
+- UX_FLOW/UX_SYNC 모드에서도 읽기 도구 사용 가능 (기존 텍스트 와이어프레임이 주력이지만 참고용 읽기는 허용)
+- frontmatter tools에 Pencil 읽기 도구 포함됨 → agent-boundary.py 별도 설정 불필요
 
 ### TDD 게이트 (std/deep -- test-engineer 선행, Phase 2 구현 완료)
 - attempt 0 + test_command 설정: test-engineer TDD 모드(@MODE:TEST_ENGINEER:TDD) -> RED 확인 -> engineer 구현 + 자체 vitest -> GREEN 확인

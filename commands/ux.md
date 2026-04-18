@@ -1,6 +1,6 @@
 ---
 name: ux
-description: 디자인/UX 변경 요청을 2×2 포맷 매트릭스(SCREEN/COMPONENT × ONE_WAY/THREE_WAY)로 정의한 뒤 designer 에이전트를 직접 호출하는 스킬. harness 루프 없음. 유저가 "디자인 바꾸고 싶어", "시안 뽑아줘", "화면 개선하고 싶어", "디자인 이터레이션", "UX 이상해", "디자이너야", "디자인팀", "모양 바꿔", "디자인이 구려", "디자인이 심플해", "디자인 별로야", "@designer" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
+description: 디자인/UX 변경 요청을 2×2 포맷 매트릭스(SCREEN/COMPONENT × ONE_WAY/THREE_WAY)로 정의한 뒤 designer 에이전트를 직접 호출하는 스킬. harness 루프 없음. 유저가 "디자인 바꾸고 싶어", "시안 뽑아줘", "화면 개선하고 싶어", "디자인 이터레이션", "UX 이상해", "디자이너야", "디자인팀", "모양 바꿔", "디자인이 구려", "디자인이 심플해", "디자인 별로야", "@designer", "레이아웃 개선", "레이아웃 구림", "배치 구림", "배치 개선", "리디자인", "화면 정리", "화면 리팩토링", "레이아웃이 별로", "재배치" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
 ---
 
 # UX Loop Skill
@@ -20,9 +20,87 @@ description: 디자인/UX 변경 요청을 2×2 포맷 매트릭스(SCREEN/COMPO
 | **문제/요청** (WHAT) | 무엇이 이상하거나 어떻게 바꾸고 싶은가 | "너무 심심해", "칸이 안 맞아", "더 임팩트 있게" |
 | **참고** (REF) | 스크린샷, 기준 시안, 원하는 방향 | 이미지 첨부, "레트로 아케이드 느낌" |
 
+## 모드 감지 (REFINE / 현행화 / 일반)
+
+정보 추출 후 **REFINE → 현행화 → 일반** 순서로 판별한다.
+
+### REFINE 감지 (화면 레이아웃 리디자인)
+
+#### 감지 조건 (하나라도 해당하면 REFINE)
+
+- "레이아웃 개선", "레이아웃 구림", "배치 구림", "배치 개선", "리디자인", "화면 정리", "전체적으로 개선", "레이아웃 리팩토링", "화면 리팩토링", "레이아웃이 별로", "재배치"
+- 기존 Pencil 디자인이 있고, 기능/플로우 변경 없이 배치·비주얼만 개편하는 요청
+- 유저가 특정 화면의 전체적인 구조 문제를 지적하는 경우
+
+#### REFINE 판별 기준
+
+| 조건 | REFINE | 일반 디자인 |
+|------|--------|-------------|
+| 기존 Pencil 디자인 있음 | O | O/X |
+| 기능/플로우 변경 | X | O |
+| 레이아웃/배치/비주얼 문제 지적 | O | X |
+| 화면 단위 (SCREEN) | O (필수) | SCREEN/COMPONENT |
+
+#### REFINE 시 달라지는 점
+
+| 항목 | 일반 모드 | REFINE 모드 |
+|------|-----------|-------------|
+| 경유 에이전트 | designer 직접 | **ux-architect(UX_REFINE) → designer** |
+| 대상 유형 | SCREEN/COMPONENT | **SCREEN만** (화면 단위 필수) |
+| 시안 수 선택 시점 | 정보 추출 직후 | **와이어프레임 승인 후** |
+| ux_goal 내용 | 유저 피드백 직접 | **리디자인 노트 (와이어프레임 + 컴포넌트별 지침)** |
+
+#### REFINE 라우팅 플로우
+
+```
+1. WHERE (화면), WHAT (피드백), REF (스크린샷/노드ID) 수집
+   - TYPE은 SCREEN 고정 (COMPONENT면 REFINE 아닌 일반 모드로 분기)
+   - 노드 ID가 있으면 포함, 없으면 유저에게 질문
+   - pen_file: get_editor_state로 현재 열린 .pen 파일 자동 감지. 없으면 유저에게 질문
+
+2. ux-architect(UX_REFINE) 호출 (Agent 도구)
+   @MODE:UX_ARCHITECT:UX_REFINE
+   @PARAMS: {
+     "pen_file": "<.pen 파일 경로>",
+     "screen_node_id": "<대상 화면 노드 ID>",
+     "prd_path": "<prd.md 경로 — 있으면>",
+     "ux_flow_path": "<docs/ux-flow.md 경로 — 있으면>",
+     "user_feedback": "<유저 피드백 원문>"
+   }
+
+3. 마커 판별:
+   - UX_REFINE_READY → 4단계로
+   - UX_FLOW_ESCALATE → 유저에게 에스컬레이션 사유 안내:
+     "이 변경은 기능/플로우 수정이 필요해서 레이아웃 리디자인만으로는 처리할 수 없습니다."
+     → 유저 선택: (a) 기획-UX 루프로 전환 (product-plan 스킬) / (b) 요청 범위 축소 후 REFINE 재시도
+   - UNKNOWN → 에스컬레이션 (마커 없으면 진행 금지)
+
+4. UX_REFINE_READY → 유저에게 와이어프레임 + 리디자인 노트 표시
+   - ux-flow.md의 해당 화면 섹션을 보여줌
+
+5. 유저 확인:
+   - APPROVE → 아래 "시안 수 선택" 진행 (ONE_WAY/THREE_WAY)
+   - REJECT + 피드백 → ux-architect 재호출 (피드백 반영, max 2회)
+   - 2회 초과 → 유저에게 직접 와이어프레임 수정 요청 또는 일반 모드 전환
+
+6. 시안 수 선택 후 designer 호출
+   @MODE:DESIGNER:SCREEN_[ONE_WAY|THREE_WAY]
+   @PARAMS: {
+     "target": "<화면명>",
+     "ux_goal": "<리디자인 노트 전문 — ux-flow.md의 와이어프레임 + 리디자인 노트 섹션>",
+     "ui_spec": "<docs/ui-spec.md 경로 — 있으면>"
+   }
+
+7. 이후는 기존 ONE_WAY/THREE_WAY 플로우와 동일
+```
+
+> **COMPONENT 요청이 들어왔는데 REFINE 키워드가 감지된 경우**: "컴포넌트 단독 수정은 REFINE 모드 없이 바로 진행합니다" 안내 후 일반 COMPONENT 모드로 분기.
+
+---
+
 ## 현행화 모드 감지
 
-정보 추출 후 **현행화 요청인지** 먼저 판별한다.
+정보 추출 후 REFINE이 아니면 **현행화 요청인지** 판별한다.
 
 ### 감지 조건 (하나라도 해당하면 현행화)
 
@@ -186,19 +264,44 @@ executor.py 호출 전 DESIGN_HANDOFF를 보고 depth를 추천한다. 기준: *
 
 대부분의 디자인 반영은 `simple`이다.
 
-### 3. design_critic_passed 플래그 생성
+### 3. design_critic_passed 플래그 + DESIGN_HANDOFF 파일 저장
 
-UX 스킬은 design 루프를 거치지 않으므로, executor.py impl 호출 전 플래그를 직접 생성한다.
-impl_router.py UI 키워드 게이트(`design_critic_passed` 체크)를 통과하기 위해 필수.
+UX 스킬은 design 루프를 거치지 않으므로, executor.py impl 호출 전 플래그와 핸드오프 파일을 직접 생성한다.
+impl_router.py가 이 파일을 자동 감지해 architect 프롬프트에 주입한다.
 
 ```bash
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
 FLAGS_DIR="$(pwd)/.claude/harness-state/.flags"
 mkdir -p "$FLAGS_DIR"
+
+# 3-1. 플래그 생성 (UI 키워드 게이트 통과용)
 touch "${FLAGS_DIR}/${PREFIX:-mb}_design_critic_passed"
+
+# 3-2. DESIGN_HANDOFF 파일 저장 (impl_router.py가 자동 감지 → architect 주입)
+cat > "${FLAGS_DIR}/${PREFIX:-mb}_design_handoff.md" << 'HANDOFF_EOF'
+<designer가 반환한 DESIGN_HANDOFF 전문을 여기에 그대로 붙여넣기>
+HANDOFF_EOF
 ```
 
-### 4. executor.sh impl 호출
+> **중요**: 3-2를 빠뜨리면 architect가 디자인 스펙 없이 자체 판단으로 impl을 작성한다.
+> impl_router.py가 플래그만 있고 핸드오프 파일이 없으면 경고 로그를 출력한다.
+
+### 3.5. 이슈 본문에 DESIGN_HANDOFF append (감사 추적용)
+
+```bash
+ISSUE_NUM=<DESIGN_HANDOFF의 Issue 번호>
+CURRENT_BODY=$(gh issue view "$ISSUE_NUM" --json body -q '.body')
+gh issue edit "$ISSUE_NUM" --body "$(cat <<BODY_EOF
+${CURRENT_BODY}
+
+---
+
+$(cat "${FLAGS_DIR}/${PREFIX:-mb}_design_handoff.md")
+BODY_EOF
+)"
+```
+
+### 4. executor.py impl 호출
 
 DESIGN_HANDOFF 패키지의 `## Issue: #N`에서 이슈 번호를 읽고, 위에서 판단한 depth를 `--depth`로 전달한다.
 
@@ -210,4 +313,4 @@ python3 ~/.claude/harness/executor.py impl \
   $PREFIX_FLAG
 ```
 
-engineer가 GitHub 이슈에서 DESIGN_HANDOFF 패키지를 읽고 `batch_get`으로 Pencil 프레임을 참조해 `src/`에 구현한다.
+engineer가 architect의 impl 파일을 읽고 `batch_get`으로 Pencil 프레임을 참조해 `src/`에 구현한다.

@@ -127,6 +127,7 @@ class Marker(str, Enum):
     # ux-architect
     UX_FLOW_READY = "UX_FLOW_READY"
     UX_FLOW_ESCALATE = "UX_FLOW_ESCALATE"
+    UX_REFINE_READY = "UX_REFINE_READY"
     # validator UX Validation
     UX_REVIEW_PASS = "UX_REVIEW_PASS"
     UX_REVIEW_FAIL = "UX_REVIEW_FAIL"

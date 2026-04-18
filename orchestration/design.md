@@ -12,6 +12,55 @@
 
 ---
 
+## REFINE Flow (화면 레이아웃 리디자인)
+
+기능/플로우 변경 없이 기존 화면의 레이아웃·비주얼을 개편할 때 사용.
+**화면 단위만 지원** (컴포넌트 단독 → 기존 COMPONENT 모드 직접).
+
+```mermaid
+flowchart TD
+    USER["유저: 레이아웃 개선 요청
+(REFINE 감지)"]
+    UXA["ux-architect
+@MODE:UX_ARCHITECT:UX_REFINE
+Pencil 읽기 → 문제 진단 → 와이어프레임 + 리디자인 노트"]
+    UXA_OUT{"UX_REFINE_READY"}
+    USER_WF{{"유저 와이어프레임 확인
+APPROVE / REJECT"}}
+    UXA_RETRY["ux-architect 재시도
+(피드백 반영, max 2회)"]
+    UXA_EXHAUST{{"2회 초과 — 유저 선택
+직접 수정 / 일반 모드 전환 / 현재안 진행"}}
+
+    MODE_SEL{{"시안 수 선택
+ONE_WAY / THREE_WAY"}}
+
+    DES["designer
+@MODE:DESIGNER:SCREEN_[ONE_WAY|THREE_WAY]
+ux_goal = 리디자인 노트"]
+    EXISTING["기존 ONE_WAY/THREE_WAY 플로우
+(이 문서 하단 참조)"]
+
+    USER --> UXA
+    UXA --> UXA_OUT
+    UXA_OUT --> USER_WF
+    USER_WF -->|"APPROVE"| MODE_SEL
+    USER_WF -->|"REJECT"| UXA_RETRY
+    UXA_RETRY -->|"2회 이내"| UXA
+    UXA_RETRY -->|"2회 초과"| UXA_EXHAUST
+    UXA_EXHAUST -->|"현재안 진행"| MODE_SEL
+    UXA_EXHAUST -->|"일반 모드"| DES
+    MODE_SEL --> DES
+    DES --> EXISTING
+```
+
+**핵심 차이점 (일반 디자인 vs REFINE):**
+- ux-architect가 **Pencil 읽기**(batch_get, get_screenshot)로 현재 디자인을 직접 분석
+- designer에게 유저 피드백이 아닌 **구조화된 리디자인 노트**(와이어프레임 + 컴포넌트별 지침)를 전달
+- 유저가 와이어프레임을 먼저 승인한 후 designer 진입 — 이중 확인으로 방향 잘못 잡는 것 방지
+
+---
+
 ## 2×2 포맷 매트릭스
 
 | | ONE_WAY (1개) | THREE_WAY (3개) |
@@ -163,6 +212,7 @@ executor.sh impl
 
 | 마커 | 발행 주체 | 다음 행동 |
 |------|-----------|-----------|
+| `UX_REFINE_READY` | ux-architect (UX_REFINE) | 유저 와이어프레임 승인 → designer SCREEN 모드 호출 |
 | `DESIGN_READY_FOR_REVIEW` | designer | ONE_WAY: 유저 직접 확인 / THREE_WAY: design-critic 호출 |
 | `VARIANTS_APPROVED` | design-critic (THREE_WAY) | 1개 이상 PASS — Phase 3 유저 PICK 안내 |
 | `VARIANTS_ALL_REJECTED` | design-critic (THREE_WAY) | 전체 REJECT — designer 재시도 (max 3회, 피드백 누적) |

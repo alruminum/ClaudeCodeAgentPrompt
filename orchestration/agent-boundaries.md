@@ -14,8 +14,8 @@
 | designer | 2×2 포맷 매트릭스 기반 variant 생성 (SCREEN/COMPONENT × ONE_WAY/THREE_WAY), DESIGN_HANDOFF 패키지 출력. ux 스킬이 직접 호출 — 하네스 루프 밖 | src/** 수정, 코드 생성 |
 | design-critic | PICK/ITERATE/ESCALATE 판정 | 파일 수정 |
 | qa | 원인 분석 + 라우팅 추천 | 코드·문서 수정 |
-| ux-architect | UX Flow Doc 작성 (화면 구조·플로우·인터랙션) | 시각 디자인, 시스템 설계, 코드 작성, Pencil MCP |
-| product-planner | PRD/TRD 작성 | 코드·설계 문서 수정 |
+| ux-architect | UX Flow Doc 작성 (화면 구조·플로우·인터랙션) + UX_REFINE (기존 디자인 레이아웃 개선) | 시각 디자인 실행(batch_design), 시스템 설계, 코드 작성 |
+| product-planner | PRD/TRD 작성 + ISSUE_SYNC(stories ↔ GitHub 이슈 동기화) | 코드·설계 문서 수정 |
 | test-engineer | 테스트 코드 작성 (TDD: impl 기반 선작성, 실행은 하네스) | 소스 수정, 테스트 실행 |
 | pr-reviewer | 코드 품질 리뷰 | 파일 수정 |
 | security-reviewer | OWASP+WebView 보안 감사 | 파일 수정 |
@@ -70,3 +70,4 @@ Write 도구(`batch_design`, `batch_design` 등) 는 designer 전용.
 | engineer | get_editor_state, batch_get, get_screenshot, get_guidelines, get_variables |
 | architect | get_editor_state, batch_get, get_screenshot, get_guidelines, get_variables |
 | qa | get_editor_state, batch_get, get_screenshot, get_guidelines, get_variables |
+| ux-architect | get_editor_state, batch_get, get_screenshot, get_variables |
