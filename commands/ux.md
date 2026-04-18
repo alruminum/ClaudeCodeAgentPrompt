@@ -76,7 +76,10 @@ description: 디자인/UX 변경 요청을 2×2 포맷 매트릭스(SCREEN/COMPO
    - UNKNOWN → 에스컬레이션 (마커 없으면 진행 금지)
 
 4. UX_REFINE_READY → 유저에게 와이어프레임 + 리디자인 노트 표시
-   - ux-flow.md의 해당 화면 섹션을 보여줌
+   - 에이전트 출력의 `--- BEGIN UX_FLOW SECTION ---` ~ `--- END UX_FLOW SECTION ---` 블록을 **원문 그대로** 출력.
+   - 섹션이 누락됐으면 ux-flow.md를 Read하여 `### SXX`부터 다음 `### ` 직전까지 직접 추출 후 통째로 출력.
+   - **요약·테이블 압축·재가공 금지**. ASCII 와이어프레임과 리디자인 노트 표를 한 번에 모두 노출.
+   - 문서 경로는 **절대경로**로 표기 (예: `/Users/dc.kim/project/.../docs/ux-flow.md`) — 터미널 클릭 가능
 
 5. 유저 확인:
    - APPROVE → 아래 "시안 수 선택" 진행 (ONE_WAY/THREE_WAY)

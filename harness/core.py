@@ -735,12 +735,35 @@ def agent_call(
     print(f"  → {agent}: {preview}")
 
     # 에이전트별 불필요 도구 차단 (bypassPermissions가 frontmatter tools를 무시하므로 여기서 강제)
+    # 단일 소스: orchestration-rules.md "에이전트 도구 차단 매트릭스" 섹션
+    _PENCIL_WRITE = (
+        "mcp__pencil__batch_design,"
+        "mcp__pencil__set_variables,"
+        "mcp__pencil__open_document,"
+        "mcp__pencil__find_empty_space_on_canvas,"
+        "mcp__pencil__snapshot_layout,"
+        "mcp__pencil__export_nodes,"
+        "mcp__pencil__replace_all_matching_properties,"
+        "mcp__pencil__search_all_unique_properties,"
+        "mcp__pencil__get_guidelines"
+    )
     _AGENT_DISALLOWED: Dict[str, str] = {
+        # ReadOnly + 시스템 명령 차단
         "product-planner": "Agent,Bash,NotebookEdit",
         "validator": "Agent,Bash,Write,Edit,NotebookEdit",
         "pr-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
         "design-critic": "Agent,Bash,Write,Edit,NotebookEdit",
         "security-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
+        # H3: qa = ReadOnly 분류, 시스템 명령 금지
+        "qa": "Agent,Bash,Write,Edit,NotebookEdit",
+        # H1: ux-architect = Pencil 읽기 4종만, 캔버스 쓰기 차단
+        "ux-architect": f"Agent,Bash,NotebookEdit,{_PENCIL_WRITE}",
+        # H2: engineer = 디자인 핸드오프 읽기만, 캔버스 쓰기 차단 (Bash는 빌드/테스트 유지)
+        "engineer": f"Agent,NotebookEdit,{_PENCIL_WRITE}",
+        # M1: test-engineer = 테스트 실행은 하네스가 vitest 직접 호출, Bash 불필요
+        "test-engineer": "Agent,Bash,NotebookEdit",
+        # H4: architect = Read/Write/Edit + gh + Pencil 읽기로 충분, Bash 사용 흔적 없음
+        "architect": "Agent,Bash,NotebookEdit",
     }
     disallowed = _AGENT_DISALLOWED.get(agent, "Agent")
 

@@ -194,6 +194,38 @@ UX_REFINE 모드에서 현재 디자인을 분석하기 위해 Pencil MCP 읽기
 - UX_FLOW/UX_SYNC 모드에서도 읽기 도구 사용 가능 (기존 텍스트 와이어프레임이 주력이지만 참고용 읽기는 허용)
 - frontmatter tools에 Pencil 읽기 도구 포함됨 → agent-boundary.py 별도 설정 불필요
 
+### UX_REFINE 모드 제약 (src/ 금지 + Pencil 호출 상한)
+UX_REFINE 모드에서 Stream idle timeout(~11분)을 방지하기 위해 아래를 강제한다. hook 차단 없이 에이전트 자율 규약으로 운영.
+- **src/ 코드 읽기 금지**: *.ts/*.tsx/*.js/*.jsx 등 구현 코드 Read/Glob/Grep 금지. UX_REFINE은 시각 레이아웃만 개편하므로 코드 동작 분석 불필요.
+- **Pencil MCP 호출 상한**: get_editor_state 1회 + batch_get 1회(screen_node_id 루트, readDepth ≤ 3) + get_screenshot 1회 + get_variables 1회. 동일 노드 재조회·readDepth 4 이상 금지.
+- 정보 부족 시 추가 조회 대신 UX_FLOW_ESCALATE.
+- 근거: 실측에서 첫 호출 699s(timeout), 제약 포함 retry 219s. 약 3배 차이.
+
+### 에이전트 도구 차단 매트릭스 (_AGENT_DISALLOWED)
+`harness/core.py`의 `agent_call()`이 claude CLI를 `bypassPermissions` 모드로 실행하므로 frontmatter `tools:`가 무시된다. 따라서 `_AGENT_DISALLOWED` 매트릭스에서 에이전트별로 명시 차단해야 안전하다.
+
+| 에이전트 | 차단 도구 | 사유 |
+|---|---|---|
+| product-planner | Agent, Bash, NotebookEdit | 기획자가 시스템 명령 실행 금지 |
+| validator | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 검증 |
+| pr-reviewer | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 리뷰 |
+| design-critic | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 심사 |
+| security-reviewer | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 보안 |
+| **qa** | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 분류 — 시스템 명령 금지 |
+| **ux-architect** | Agent, Bash, NotebookEdit, Pencil 쓰기 7종 (batch_design, set_variables, open_document, find_empty_space_on_canvas, snapshot_layout, export_nodes, replace_all_matching_properties, search_all_unique_properties, get_guidelines) | 캔버스 쓰기는 designer 전용. ux-architect는 Pencil 읽기 4종(get_editor_state, batch_get, get_screenshot, get_variables)만. |
+| **engineer** | Agent, NotebookEdit, Pencil 쓰기 7종 | 디자인 핸드오프 참조용 읽기만 허용. 캔버스 수정 금지. Bash는 빌드/테스트 필요해 유지. |
+| **test-engineer** | Agent, Bash, NotebookEdit | 테스트 실행은 하네스가 직접 vitest 호출 — test-engineer는 작성만. agent.md "테스트 실행 금지" 명시. |
+| **architect** | Agent, Bash, NotebookEdit | architect는 Read/Write/Edit + gh + Pencil 읽기로 충분. 본문에 Bash 사용 지시 없음. |
+| designer | Agent (기본만) | gh 이슈 생성에 Bash 필요 — 유지 |
+
+근거: ux-architect/engineer는 frontmatter에 Pencil 읽기 도구만 있는데 bypassPermissions에서 batch_design 등 쓰기 도구 호출 가능. designer 전용 캔버스를 다른 에이전트가 수정하는 경계 위반 방지.
+
+### UX_REFINE 출력 규칙 (원문 echo + 절대경로)
+UX_REFINE 완료 시 메인 Claude가 재요약 없이 유저에게 전달할 수 있도록 아래를 강제.
+- ux-flow.md 해당 화면 섹션(`### SXX`부터 다음 `### ` 직전까지)을 마커 출력부에 **원문 그대로 echo**.
+- 모든 문서 경로는 **절대경로** (예: `/Users/.../docs/ux-flow.md`). 상대경로 금지 — 터미널 클릭 가능성 확보.
+- ux 스킬(commands/ux.md) REFINE 라우팅도 동일 — 요약·테이블 압축 금지, 원문 ASCII 와이어프레임 + 리디자인 노트 테이블 통째로 노출.
+
 ### TDD 게이트 (std/deep -- test-engineer 선행, Phase 2 구현 완료)
 - attempt 0 + test_command 설정: test-engineer TDD 모드(@MODE:TEST_ENGINEER:TDD) -> RED 확인 -> engineer 구현 + 자체 vitest -> GREEN 확인
 - attempt 1+: test-engineer 스킵 (테스트 이미 존재) -> engineer 재시도 + 자체 vitest -> GREEN 확인
