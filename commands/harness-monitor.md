@@ -1,33 +1,29 @@
 ---
-description: 하네스 이벤트 로그를 깔끔하게 표시. 에이전트 시작/완료 이벤트를 텍스트로 출력.
+description: 하네스 이벤트 로그 확인. 현재 스냅샷 출력 + 실시간 스트리밍 안내.
 argument-hint: ""
 ---
 
 # /harness-monitor
 
-하네스 이벤트 로그를 읽어서 텍스트 메시지로 출력한다.
+하네스 이벤트 로그의 현재 스냅샷을 출력하고, 실시간 모니터링 명령어를 안내한다.
 
 ## 실행
 
-1. `.claude/harness-state/.{prefix}_events` 파일을 **Read 도구**로 읽는다 (prefix는 harness.config.json에서 확인).
-2. 내용을 아래처럼 텍스트 메시지로 출력한다 (Bash 출력이 아님):
+**Bash 도구 단일 호출**로 아래 스크립트를 실행한다.
 
-```
-📡 하네스 이벤트 로그:
-
-[10:23:15] architect 시작
-[10:25:01] architect → LIGHT_PLAN_READY
-[10:25:01] architect 완료 (97s, $0.30)
-[10:25:02] Plan Validation → PASS
-[10:25:03] engineer 시작
-[10:26:20] engineer 완료 (77s, $0.36)
-[10:26:20] pr-reviewer → LGTM
-[10:26:21] HARNESS_DONE (attempt 1)
+```bash
+PREFIX=$(jq -r '.prefix // "hl"' .claude/harness.config.json 2>/dev/null || echo "hl")
+EVENTS=".claude/harness-state/.${PREFIX}_events"
+if [[ ! -f "$EVENTS" ]]; then echo "하네스 미실행"; exit 0; fi
+echo "📡 이벤트 로그 스냅샷:"
+echo "────────────────────────────────────────"
+cat "$EVENTS"
+echo "────────────────────────────────────────"
+echo ""
+echo "실시간 스트리밍: ! tail -f $EVENTS"
 ```
 
-3. 파일이 없으면 "하네스 미실행" 메시지를 출력한다.
-4. 파일이 비어있으면 "이벤트 없음 — 하네스 시작 대기" 메시지를 출력한다.
-
-## 주의
-- Bash 도구가 아니라 **Read 도구 + 텍스트 출력**으로 처리한다
-- prefix 확인은 Bash로 하되, 이벤트 로그 자체는 Read로 읽어 텍스트로 표시
+## 절대 규칙
+- **Bash 도구 단일 호출만** 사용. Read 도구 사용 금지.
+- Bash 실행 **전후로 텍스트 메시지를 절대 출력하지 않는다.** 해석, 요약, 상태 설명 일체 금지.
+- 종료 후에도 추가 코멘트 없이 유저 입력을 기다린다.

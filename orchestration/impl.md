@@ -43,8 +43,23 @@ qa 스킬 → QA 에이전트 (이슈 생성 #N)
 ux 스킬 DESIGN_HANDOFF도 동일한 흐름:
 ```
 ux 스킬 → designer → DESIGN_HANDOFF → GitHub 이슈 생성 (#N)
-→ 유저 확인 → executor.sh impl --issue <N>
+→ 유저 확인
+→ design_critic_passed 플래그 생성
+→ design_handoff.md 파일 저장 (.claude/harness-state/.flags/{prefix}_design_handoff.md)
+→ 이슈 본문에 DESIGN_HANDOFF append
+→ executor.py impl --issue <N>
 ```
+
+### DESIGN_HANDOFF 자동 주입 (impl_router.py)
+
+`impl_router.py`가 LIGHT_PLAN 분기 진입 시 **자동으로** 핸드오프 파일을 감지해 architect 프롬프트에 주입한다.
+메인 Claude가 `--context`를 빠뜨려도 코드 레벨에서 보장된다.
+
+| 조건 | 동작 |
+|---|---|
+| `design_critic_passed` 플래그 O + `{prefix}_design_handoff.md` O | architect 프롬프트에 `## DESIGN_HANDOFF` 섹션 자동 추가 |
+| `design_critic_passed` 플래그 O + `{prefix}_design_handoff.md` X | 경고 로그 출력 (`⚠️ design_handoff.md 없음`) |
+| `design_critic_passed` 플래그 X | 아무것도 안 함 (일반 bug/feat 경로) |
 
 ---
 
@@ -69,7 +84,7 @@ flowchart TD
 
 ## impl 파일 Design Ref 섹션
 
-architect가 Module Plan 작성 시 `docs/design-handoff.md`가 존재하면, impl 파일에 `## Design Ref` 섹션을 포함한다:
+architect가 impl 파일 작성 시 DESIGN_HANDOFF가 프롬프트에 포함되어 있으면, impl 파일에 `## Design Ref` 섹션을 포함한다:
 
 ```markdown
 ## Design Ref
@@ -77,8 +92,11 @@ architect가 Module Plan 작성 시 `docs/design-handoff.md`가 존재하면, im
 - **Design Tokens**: [주요 토큰 요약 — 색상, 서체 등]
 - **Component Structure**: [컴포넌트 트리 요약]
 - **Animation Spec**: [애니메이션 요약]
-- **Handoff 문서**: docs/design-handoff.md
 ```
+
+DESIGN_HANDOFF 주입 경로:
+- **MODULE_PLAN**: `docs/design-handoff.md` 파일 존재 시 architect 프롬프트에 경로 전달
+- **LIGHT_PLAN**: `.claude/harness-state/.flags/{prefix}_design_handoff.md` 파일 존재 시 architect 프롬프트에 내용 자동 주입
 
 engineer는 이 섹션을 참조해 `batch_get`으로 Pencil 프레임을 직접 읽고 구현한다.
 
