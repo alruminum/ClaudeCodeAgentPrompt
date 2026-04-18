@@ -14,7 +14,50 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
 import re
+import time
 from harness_common import get_prefix, get_state_dir, get_flags_dir, get_active_agent, deny
+
+# Agent 툴 경로 폴백 플래그 TTL (crash/Ctrl+C 잔재 무효화)
+FALLBACK_FLAG_TTL_SEC = 15 * 60
+
+
+def _resolve_active_agent(prefix):
+    """env var 1순위, 플래그 파일 폴백. 15분 TTL로 stale 제외.
+    orchestration-rules.md 'Agent 툴 경로 폴백' 규칙에 따라
+    issue-gate.py:_is_issue_creator_active와 동일한 형식 사용."""
+    a = get_active_agent()
+    if a:
+        return a
+    flags_dir = get_flags_dir()
+    if not os.path.isdir(flags_dir):
+        return None
+    prefix_ = f"{prefix}_"
+    suffix = "_active"
+    now = time.time()
+    candidates = []
+    try:
+        entries = os.listdir(flags_dir)
+    except OSError:
+        return None
+    for fname in entries:
+        if not (fname.startswith(prefix_) and fname.endswith(suffix)):
+            continue
+        full = os.path.join(flags_dir, fname)
+        try:
+            mtime = os.path.getmtime(full)
+        except OSError:
+            continue
+        if (now - mtime) > FALLBACK_FLAG_TTL_SEC:
+            continue
+        name = fname[len(prefix_):-len(suffix)]
+        # harness_active 같은 비에이전트 플래그 배제 (에이전트는 소문자 + hyphen)
+        if name == "harness":
+            continue
+        candidates.append((mtime, name))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    return candidates[0][1]
 
 # 하네스 인프라 파일 패턴 — 모든 에이전트에서 Read/Write/Edit 차단
 HARNESS_INFRA_PATTERNS = [
@@ -34,6 +77,7 @@ ALLOW_MATRIX = {
     "architect": [
         r'(^|/)docs/',                  # docs/** 전체 (impl 포함)
         r'(^|/)backlog\.md$',           # backlog.md
+        r'(^|/)trd\.md$',               # trd.md — architect 단독 소유 (PRD 기반 기술 설계)
     ],
     "designer": [
         r'(^|/)design-variants/',       # design-variants/** (Pencil MCP 코드 출력)
@@ -45,9 +89,9 @@ ALLOW_MATRIX = {
         r'(^|/)src/.*\.spec\.[jt]sx?$',     # co-located *.spec.{js,jsx,ts,tsx}
     ],
     "product-planner": [
-        r'(^|/)prd\.md$',              # prd.md
-        r'(^|/)trd\.md$',              # trd.md
+        r'(^|/)prd\.md$',              # prd.md — product-planner 소유
         r'stories\.md$',               # stories.md (에픽 스토리)
+        # trd.md 제외: architect 단독 소유 (기술 세부가 기획에 간섭 못 하게)
     ],
     "ux-architect": [
         r'(^|/)docs/ux-flow\.md$',     # docs/ux-flow.md만
@@ -66,6 +110,7 @@ READ_DENY_MATRIX = {
     "product-planner": [
         r'(^|/)src/',                   # 소스 코드 읽기 금지 — 기획자가 코드 레벨 결정 방지
         r'(^|/)docs/impl/',             # impl 계획 파일 — architect 소유
+        r'(^|/)trd\.md$',               # TRD 읽기 금지 — 기술 세부가 기획에 간섭 방지. architect가 PRD 기반으로 번역
     ],
     "designer": [
         r'(^|/)src/',                   # 소스 코드 읽기 금지 — 디자인은 Pencil + 스펙 기반
@@ -106,8 +151,8 @@ def main():
     except Exception:
         pass
 
-    # 활성 에이전트 판별 — env var 기반 (파일 플래그 불사용)
-    active_agent = get_active_agent()
+    # 활성 에이전트 판별 — env var 1순위 + 플래그 파일 폴백 (Agent 툴 경로 대응)
+    active_agent = _resolve_active_agent(prefix)
 
     # 에이전트 활성화 안 됨 → 메인 Claude 직접 수정 제한 (file-ownership 통합)
     if active_agent is None:
