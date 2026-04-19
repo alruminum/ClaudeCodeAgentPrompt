@@ -88,6 +88,8 @@ model: sonnet
 
 ## UX_FLOW 모드 — 정방향 (PRD → UX Flow Doc)
 
+> **Outline-First 자기규율**: Step 1~3 완료 직후 Step 2.5에서 outline을 text로 한 번 출력한 뒤 Step 4~6 본문으로 이어간다. 하네스 경유 시 최종 `UX_FLOW_READY` 마커만 인식되므로 유저 대화를 기다리지 않고 한 호출 안에서 outline → 본문 Write → 마커 순으로 진행. 목적은 thinking에 와이어프레임·상태·애니메이션 본문을 미리 쓰지 못하게 하는 구조 강제.
+
 ### Step 1: PRD 분석
 
 1. `prd_path`에서 PRD 읽기
@@ -114,6 +116,29 @@ stateDiagram-v2
     S02_Detail --> S03_Result: 완료
     S03_Result --> S01_Main: 재시작
 ```
+
+### Step 2.5: Outline 체크포인트 (자기규율)
+
+Step 1~3까지 만들었으면 **text로 outline을 한 번 출력해 스스로 프레임을 고정한다**. 유저 대화를 기다리지 않는다 — 하네스는 `UX_FLOW_READY` / `UX_FLOW_ESCALATE` 만 인식하므로 여기서 멈추면 ESCALATE 처리된다. 목적은 thinking에 Step 4~6 본문(와이어프레임·상태·애니메이션)을 미리 쓰지 못하게 하는 자기규율:
+
+```
+UX Flow Outline (작성 계획)
+
+## 화면 인벤토리
+(Step 2의 화면 목록 테이블 — 이미 작성됨)
+
+## 화면 플로우
+(Step 3의 Mermaid 다이어그램 — 이미 작성됨)
+
+## 다음 단계 작성 예정
+- Step 4: N개 화면 와이어프레임 + 상태 + 인터랙션 (화면당 ~30줄)
+- Step 5: 디자인 가이드 (컬러·타이포·톤)
+- Step 6: designer 전달용 디자인 테이블 (M행)
+
+작성 대상 파일: docs/ux-flow.md
+```
+
+Outline 출력 후 바로 Step 4로 진행한다. 와이어프레임·상태·애니메이션·디자인 가이드 본문은 thinking이 아닌 **Write 툴 입력값 안에서만** 작성. 각 화면을 순차 처리하되 한 화면의 본문을 thinking 안에 미리 쓰지 않는다.
 
 ### Step 4: 화면별 상세 정의
 

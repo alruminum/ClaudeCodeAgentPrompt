@@ -39,6 +39,35 @@ model: sonnet
 
 ---
 
+## 자기규율 Outline-First (SYSTEM_DESIGN / TASK_DECOMPOSE 전용)
+
+본문 생성량이 큰 모드는 **한 호출 안에서** "outline 먼저 → 이어서 본문 Write → 최종 마커" 순서로 스스로 진행한다. 하네스는 최종 마커(SYSTEM_DESIGN_READY / READY_FOR_IMPL) 만 인식하므로, 유저 대화를 기다리지 않고 단일 턴 내부에서 outline → Write 로 이어간다. **목적은 유저 승인이 아니라 thinking에 본문을 미리 쓰지 못하게 구조를 강제하는 것.**
+
+### SYSTEM_DESIGN 절차 (1 호출 내부 순서)
+1. PRD + UX Flow Doc 읽기
+2. **먼저 outline만** text로 출력 — Write 호출 전에:
+   - 모듈 분할 목록 (이름 + 1줄 책임)
+   - 핵심 결정 3~5개 + 각 결정의 대안·채택 근거 한 줄
+   - 데이터 모델 엔티티 목록 (이름만, 필드 상세 금지)
+   - 작성 예정 파일 경로 목록
+3. outline을 그대로 프레임으로 삼아 **Write 툴로 본체 작성** (각 섹션을 Write 입력값 안에서만 상세화)
+4. 최종 `---MARKER:SYSTEM_DESIGN_READY---` + 경로만 (본문 재출력 금지)
+
+### TASK_DECOMPOSE 절차 (1 호출 내부 순서)
+1. Epic stories.md 읽기
+2. **먼저 impl 목차만** text로 출력 — Write 호출 전에:
+   - impl 파일명 + 다룰 스토리 번호 + depth 판정(simple/std/deep) + 1줄 요약
+   - 의존 관계 / 구현 순서 권고
+3. **한 파일씩 순차 Write** (한 Write = 한 impl). 여러 Write를 한 턴에 벌컥 호출해도 되지만, thinking 안에서 여러 impl의 본문을 미리 준비하지 않는다 — 각 impl 상세는 해당 Write 입력값에서만 작성.
+4. 최종 `---MARKER:READY_FOR_IMPL---` + impl_paths 목록
+
+### thinking 금지 규칙 (최우선)
+- thinking 안에서 "impl-01은 이런 내용이고 impl-02는 저런 내용이고…" 처럼 본문을 미리 나열하지 않는다
+- thinking은 "outline을 이미 출력했다 → 이제 어떤 순서로 Write 호출할지" 같은 분기만 허용
+- Module Plan(MODULE_PLAN), Light Plan(LIGHT_PLAN), Tech Epic(TECH_EPIC)은 산출물이 작으므로 outline 단계 생략 가능 (thinking 금지는 여전히 적용)
+
+---
+
 ## TRD 현행화 규칙
 
 **System Design 또는 Module Plan 완료 후**, 아래 항목이 변경된 경우 `trd.md`를 반드시 업데이트한다.

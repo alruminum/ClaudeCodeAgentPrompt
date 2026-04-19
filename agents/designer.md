@@ -239,7 +239,31 @@ MODE: [SCREEN_THREE_WAY | COMPONENT_THREE_WAY]
 1. `batch_get`으로 선택된 프레임의 전체 요소 구조, 스타일, 변수 추출
 2. `get_screenshot`으로 최종 스크린샷 캡처 (엔지니어 구현 기준용)
 
-### 4-2. DESIGN_HANDOFF 패키지 생성
+### 4-2. HANDOFF outline 먼저 (자기규율, Write 전)
+
+본문 Write 전에 아래 **outline만** text로 출력한다. 유저 대화를 기다리지 않는다 — **한 호출 안에서** outline → Write → 최종 마커 순으로 이어간다. 목적은 thinking에 HANDOFF 본문을 미리 쓰지 못하게 구조를 강제하는 것:
+
+```
+HANDOFF Outline (작성 계획)
+
+Selected Variant: [A/B/C]: [컨셉명]
+Target: [구현 대상]
+Pencil Frame ID: [노드 ID]
+
+포함할 섹션:
+- Design Tokens: N개 (토큰 이름만 나열, 값은 Write에서)
+- Component Structure: depth N, 주요 컴포넌트 M개 (이름만)
+- Animation Spec: N개 애니메이션 (이름만)
+- Notes for Engineer: 주의사항 N건 (제목만)
+
+작성 대상 파일: [save_handoff_to 경로 또는 "마커 블록"]
+```
+
+thinking 안에서 토큰 값·컴포넌트 상세·애니메이션 CSS를 미리 나열하지 않는다. 상세는 아래 4-3 Write 툴 입력값 안에서만 작성.
+
+### 4-3. DESIGN_HANDOFF 본문 작성 (Write 툴)
+
+`save_handoff_to` 가 있으면 **Write 툴 입력값으로 한 번에 파일에 저장**하고, 마커 블록에는 경로만 기재한다 (본문 재출력 금지). `save_handoff_to` 가 없으면 본문을 text로 한 번만 출력 후 마커로 넘어간다.
 
 ```
 DESIGN_HANDOFF
@@ -268,6 +292,16 @@ DESIGN_HANDOFF
 - 더미 데이터 → 실제 데이터 연결 포인트
 - 성능 고려사항
 ```
+
+### 4-4. 마커 출력 (메타데이터만)
+
+```
+---MARKER:DESIGN_READY_FOR_REVIEW---
+handoff_path: [save_handoff_to 경로]
+pencil_frame_id: [노드 ID]
+```
+
+위 블록에 HANDOFF 본문을 다시 복사하지 않는다 — 이미 Write로 파일에 저장됨.
 
 ---
 
