@@ -145,6 +145,13 @@ def run_simple(
         print(f"[HARNESS] 오류: impl 파일을 찾을 수 없음: {impl_file}")
         return "ERROR"
 
+    # 상대경로 → 절대경로. 아래에서 os.chdir(worktree)로 cwd가 이동하는데,
+    # build_smart_context가 impl_file을 현재 cwd 기준으로 해석하면 worktree 안에
+    # 파일이 없을 때(예: feature branch가 main에서 새로 만들어졌고 impl은 아직
+    # 현재 브랜치에만 존재) OSError로 ctx=""가 되어버린다. 그 결과 engineer는
+    # impl 본문 사전 주입 없이 시작하고, retry 시 실패 컨텍스트도 섞여 들어가지 않는다.
+    impl_file = str(Path(impl_file).resolve())
+
     # Phase 0: setup
     constraints = load_constraints(config)
     hlog_fn = setup_hlog(state_dir, prefix)
@@ -762,6 +769,10 @@ def _run_std_deep(
     if not Path(impl_file).exists():
         print(f"[HARNESS] 오류: impl 파일을 찾을 수 없음: {impl_file}")
         return "ERROR"
+
+    # 상대경로 → 절대경로. run_simple 주석 참조: worktree cwd로 chdir 이후에도
+    # build_smart_context가 안정적으로 impl을 읽도록 보장.
+    impl_file = str(Path(impl_file).resolve())
 
     constraints = load_constraints(config)
     hlog_fn = setup_hlog(state_dir, prefix)
