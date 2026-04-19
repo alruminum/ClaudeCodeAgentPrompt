@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-orch-rules-first.py — PreToolUse(Edit/Write) 전역 훅
-단일 소스 원칙 강제: 하네스 인프라 파일 수정 시 orchestration-rules.md 선행 수정 확인.
+orch-rules-first.py — PreToolUse(Edit/Write) 전역 훅 (경고형)
+단일 소스 원칙 유도: 하네스 인프라 파일 수정 시 orchestration-rules.md 선행
+수정을 권장한다. 차단은 하지 않고 경고만 주입한다(버그픽스·구현 디테일까지
+규칙 파일에 억지로 밀어 넣는 것을 방지).
 
 대상 파일 (하네스 인프라):
-  - harness/executor.sh, harness/impl.sh, harness/impl_{simple,std,deep}.sh, harness/design.sh
-  - harness/plan.sh, setup-harness.sh, setup-agents.sh
-  - hooks/harness-router.py, hooks/harness-session-start.py
-  - agents/*.md (에이전트 정의 파일)
+  - harness/*.py, harness/*.sh, setup-{harness,agents}.sh, hooks/*.py
+  - agents/*.md
 
 동작:
   - orchestration-rules.md 수정 감지 → /tmp/_orch_rules_touched 플래그 생성
-  - 하네스 인프라 파일 수정 시 플래그 없으면 → deny + 안내 메시지
-  - orchestration-rules.md 자체 수정은 항상 허용 (플래그 설정만)
+  - 하네스 인프라 파일 수정 시 플래그 없으면 → additionalContext 경고 주입 (통과)
+  - orchestration-rules.md 자체 수정은 항상 통과 (플래그 설정만)
 """
 import sys
 import json
@@ -75,18 +75,18 @@ def main():
         open(FLAG, "w").close()
         sys.exit(0)
 
-    # 하네스 인프라 또는 에이전트 정의 파일 수정 → 플래그 확인
+    # 하네스 인프라 또는 에이전트 정의 파일 수정 → 플래그 없으면 경고만 주입
     if is_harness_infra(fp) or is_agent_def(fp):
         if not flag_is_fresh():
             fname = os.path.basename(fp)
             print(json.dumps({
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": (
-                        f"❌ [orch_rules_first] {fname} 수정 전 orchestration-rules.md를 먼저 업데이트하세요.\n"
-                        "단일 소스 원칙: orchestration-rules.md → 스크립트/에이전트 순서.\n"
-                        "orchestration-rules.md를 먼저 수정하면 이 게이트가 자동 해제됩니다."
+                    "additionalContext": (
+                        f"⚠️ [orch_rules_first] {fname} 수정 중 — orchestration-rules.md "
+                        "선행 업데이트는 권장이지만 강제는 아닙니다. 규칙 수준의 변경이면 "
+                        "먼저 orchestration-rules.md를 고치고, 버그픽스·구현 디테일이면 "
+                        "이 메시지를 무시해도 됩니다."
                     )
                 }
             }))
