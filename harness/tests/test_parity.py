@@ -428,6 +428,134 @@ class TestBuildSmartContextResolvesImpl(unittest.TestCase):
             self.assertEqual(ctx, "")
 
 
+class TestPlanValidationEscalateWritesRunEnd(unittest.TestCase):
+    """PLAN_VALIDATION_ESCALATE 경로에서 run_end 이벤트가 기록되는지.
+
+    회귀 재현 (run_20260419_130005): 이전에는 run_plan_validation이 False를 반환한 뒤
+    impl_router가 PLAN_VALIDATION_ESCALATE 반환하면서 run_logger.write_run_end를
+    호출하지 않아 harness-review가 result=빈값, dur=0s로 집계했다.
+    """
+
+    def test_write_run_end_called_on_escalate(self):
+        from unittest.mock import patch, MagicMock
+        import harness.impl_router as ir
+        import harness.core as core
+
+        rl = MagicMock()
+        rl.write_run_end = MagicMock()
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / ".claude").mkdir()
+            impl = proj / "impl.md"
+            impl.write_text("---\ndepth: simple\n---\n# impl")
+
+            os.chdir(td)
+            sd = StateDir(proj, "test")
+
+            # run_plan_validation가 무조건 False(=ESCALATE) 반환하도록 mock
+            with patch.object(ir, "run_plan_validation", return_value=False), \
+                 patch.object(ir, "ensure_depth_frontmatter", return_value=None), \
+                 patch.object(core, "HUD") as MockHUD:
+                mock_hud = MagicMock()
+                MockHUD.return_value = mock_hud
+
+                # run_impl 엔트리로 진입. branch_create 호출은 mock
+                with patch("harness.impl_router.subprocess") as mock_sub:
+                    mock_sub.run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+                    try:
+                        result = ir.run_impl(
+                            impl_file=str(impl),
+                            issue_num="999",
+                            prefix="test",
+                            depth="simple",
+                            run_logger=rl,
+                            state_dir=sd,
+                        )
+                    except Exception:
+                        # 불필요한 에러는 상관없음 — write_run_end 호출만 확인
+                        pass
+
+        # PLAN_VALIDATION_ESCALATE 경로에서 write_run_end 최소 1회 호출
+        calls = rl.write_run_end.call_args_list
+        matched = [c for c in calls if c.args and c.args[0] == "PLAN_VALIDATION_ESCALATE"]
+        self.assertTrue(
+            matched,
+            f"PLAN_VALIDATION_ESCALATE run_end 미기록. 호출 내역: {calls}",
+        )
+
+
+class TestSaveImplMetaChangedFilesMergeBase(unittest.TestCase):
+    """save_impl_meta의 changed_files가 merge-base 기준으로 산출되는지.
+
+    회귀 재현 (run_20260419_150018 attempt-2): 이전에는 git diff HEAD~1이 단일
+    직전 커밋만 비교해, 여러 attempt 커밋이 쌓이면 일부 변경만 보거나 관련 없는
+    파일(.claude/harness.config.json 등)이 집계됐다.
+    """
+
+    def setUp(self):
+        import subprocess
+        self._td = tempfile.TemporaryDirectory()
+        self.repo = Path(self._td.name)
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=self.repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=self.repo, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=self.repo, check=True)
+        # main 초기 커밋
+        (self.repo / "base.txt").write_text("base\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=self.repo, check=True)
+        # feature branch 생성 + 여러 attempt 커밋 쌓기
+        subprocess.run(["git", "checkout", "-qb", "feat/x"], cwd=self.repo, check=True)
+        (self.repo / "a.ts").write_text("a\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "attempt1"], cwd=self.repo, check=True)
+        (self.repo / "b.ts").write_text("b\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "attempt2"], cwd=self.repo, check=True)
+
+        self.attempt_dir = self.repo / "attempt-2"
+        self.attempt_dir.mkdir()
+
+        try:
+            self._prev_cwd = os.getcwd()
+        except FileNotFoundError:
+            self._prev_cwd = os.path.expanduser("~")
+        os.chdir(self.repo)
+
+    def tearDown(self):
+        # cleanup 전에 반드시 safe dir 로 chdir (tempdir 안에서 삭제하면 FileNotFoundError)
+        safe_dir = tempfile.gettempdir()
+        for candidate in (self._prev_cwd, safe_dir, "/"):
+            try:
+                os.chdir(candidate)
+                break
+            except Exception:
+                continue
+        self._td.cleanup()
+
+    def test_merge_base_captures_all_feature_commits(self):
+        """merge-base 기준이면 attempt1, attempt2 둘 다의 변경을 다 봐야 한다."""
+        from harness.helpers import save_impl_meta
+
+        save_impl_meta(str(self.attempt_dir), 2, "PASS", "simple")
+
+        meta = json.loads((self.attempt_dir / "meta.json").read_text())
+        changed = meta.get("changed_files", "")
+        self.assertIn("a.ts", changed, f"merge-base 기준이면 a.ts 포함되어야 함: {changed}")
+        self.assertIn("b.ts", changed, f"merge-base 기준이면 b.ts 포함되어야 함: {changed}")
+
+    def test_base_txt_not_in_changed(self):
+        """base 브랜치에만 있는 파일(base.txt)은 changed에 없어야 한다."""
+        from harness.helpers import save_impl_meta
+
+        save_impl_meta(str(self.attempt_dir), 2, "PASS", "simple")
+
+        meta = json.loads((self.attempt_dir / "meta.json").read_text())
+        changed = meta.get("changed_files", "")
+        self.assertNotIn("base.txt", changed)
+
+
 class TestConfigTestCommand(unittest.TestCase):
     def test_empty_test_command_means_skip(self):
         cfg = HarnessConfig(test_command="")
