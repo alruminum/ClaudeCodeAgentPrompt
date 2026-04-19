@@ -83,8 +83,11 @@ def ensure_depth_frontmatter(
         f"@MODE:ARCHITECT:SPEC_GAP\n"
         f"이 impl 파일에 YAML frontmatter depth 필드가 누락됐다.\n"
         f"파일 첫 줄부터 --- 블록을 추가하고 depth: simple|std|deep 중 하나를 선언하라.\n"
-        f"기준: behavior 불변(이름·텍스트·스타일·색상·애니메이션·설정값)=simple, "
+        f"기준: behavior 불변(색상·애니메이션·설정값)=simple, "
         f"behavior 변경(로직·API·DB)=std, 보안 민감=deep.\n"
+        f"주의: 기존 테스트가 assertion하는 DOM 구조/텍스트 리터럴/testid/role을 바꾸는 경우 "
+        f"(이모지→SVG, 버튼 텍스트 변경, 엘리먼트 교체 등) simple 금지 — std로 분류. "
+        f"TDD 선행이 있어야 회귀를 잡는다.\n"
         f"impl: {impl_file}\nissue: #{issue_num}\n"
         f"기존 frontmatter 유무: {fm_status}\n"
         f"파일 내용 확인 후 depth만 추가하라. 다른 내용은 수정하지 마라.",
@@ -291,9 +294,12 @@ def run_impl(
                 f"context: {context}\n\n"
                 f"[DEPTH 선택 — frontmatter depth: 필드 필수]\n"
                 f"기준: 이 이슈의 구현이 기존 코드 구조 수정으로 완결되는가, 새 로직 구조를 신설해야 하는가?\n"
-                f"- simple: 기존 구조 수정 — 값·조건·스타일·요소 변경, 코드 제거/정리\n"
-                f"- std: 새 로직 구조 신설 — 새 함수·모듈·상태·API·데이터 흐름\n"
+                f"- simple: 기존 구조 수정 — 값·조건·스타일 변경, 코드 제거/정리\n"
+                f"- std: 새 로직 구조 신설 OR 기존 테스트가 assertion하는 대상 변경\n"
+                f"  (DOM 구조/텍스트 리터럴/testid/role 변경 — 이모지→SVG, 버튼 텍스트, 엘리먼트 교체 등)\n"
                 f"- deep: 보안·결제·인증\n"
+                f"주의: DOM/텍스트 변경은 simple로 분류하지 마라 — TDD 선행이 스킵되어 기존 테스트 회귀를 잡지 못한다. "
+                f"touched 파일을 assertion하는 __tests__ 파일이 있는지 grep 후 결정.\n"
                 f"{depth_prompt}"
                 f"{_dh_prompt}",
                 arch_out, run_logger, config,

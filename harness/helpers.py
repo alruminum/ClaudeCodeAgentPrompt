@@ -264,8 +264,13 @@ def run_automated_checks(
     state_dir: StateDir,
     prefix: str,
     cwd: Optional[str] = None,
+    run_tests: bool = False,
 ) -> Tuple[bool, str]:
-    """자동화된 체크. (성공여부, 에러메시지) 반환."""
+    """자동화된 체크. (성공여부, 에러메시지) 반환.
+
+    run_tests=True 시 config.test_command로 회귀 테스트 실행 (depth=simple 전용 —
+    std/deep는 TDD GREEN 단계에서 별도 실행하므로 중복 회피).
+    """
     import subprocess
     from functools import partial as _partial
     _run = _partial(subprocess.run, cwd=cwd) if cwd else subprocess.run
@@ -411,6 +416,18 @@ def run_automated_checks(
             msg = f"build_fail: {config.build_command} 실패\n{_build_err}"
             out_file.write_text(msg, encoding="utf-8")
             print(f"AUTOMATED_CHECKS_FAIL: build ({config.build_command})")
+            return False, msg
+
+    # 7. test regression (run_tests=True인 경로에서만 — simple depth용 회귀 차단)
+    if run_tests and config and getattr(config, "test_command", "") and config.test_command:
+        _test_r = _run(
+            config.test_command, shell=True, capture_output=True, text=True, timeout=300,
+        )
+        if _test_r.returncode != 0:
+            _test_err = (_test_r.stdout[-2000:] or "") + (_test_r.stderr[-2000:] or "")
+            msg = f"test_fail: {config.test_command} 실패\n{_test_err}"
+            out_file.write_text(msg, encoding="utf-8")
+            print(f"AUTOMATED_CHECKS_FAIL: test ({config.test_command})")
             return False, msg
 
     print("AUTOMATED_CHECKS_PASS")
