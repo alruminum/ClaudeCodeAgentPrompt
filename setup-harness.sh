@@ -8,7 +8,7 @@
 #    프로젝트 settings.json에는 env + allowedTools만 작성.
 #
 # 전역 훅 (모두 ~/.claude/hooks/*.py 참조):
-#   PreToolUse(Edit/Write) — orch-rules-first.py + agent-boundary.py
+#   PreToolUse(Edit/Write) — plugin-write-guard.py + orch-rules-first.py + agent-boundary.py
 #   PreToolUse(Read)       — agent-boundary.py
 #   PreToolUse(Bash)       — harness-drift-check.py + commit-gate.py
 #   PreToolUse(Agent)      — agent-gate.py
@@ -17,7 +17,7 @@
 #   PostToolUse(Edit)      — harness-settings-watcher.py
 #   PostToolUse(Bash)      — post-commit-cleanup.py + harness-review-trigger.py
 #   PostToolUse(Agent)     — post-agent-flags.py
-#   Stop                   — afplay Glass.aiff + harness-review-stop.py
+#   Stop                   — afplay Glass.aiff + ralph-session-stop.py + harness-review-stop.py
 #
 # prefix 결정: 각 훅이 harness_common.get_prefix()로 harness.config.json → dirname → "proj" 폴백
 #

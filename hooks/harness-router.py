@@ -237,7 +237,7 @@ def _main_inner():
         flag_lines = "\n".join(f"  {'OK' if v else 'NG'} {k}" for k, v in flags.items())
         ctx = "[HARNESS ROUTER] 진행 중인 워크플로우 있음\n" + flag_lines
         log(prefix, f"INJECT(active-flags) prompt={prompt[:60]!r}")
-        print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": ctx}}))
         sys.exit(0)
 
     is_bug = (cat == "BUG")
@@ -338,7 +338,7 @@ def _main_inner():
         if memory_patterns:
             ctx += "\n\n[HARNESS MEMORY] Known Failure Patterns:\n" + "\n---\n".join(memory_patterns)
 
-    print(json.dumps({"hookSpecificOutput": {"additionalContext": ctx}}))
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": ctx}}))
 
 
 if __name__ == "__main__":

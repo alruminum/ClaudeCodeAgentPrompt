@@ -630,7 +630,42 @@ def initialize_session(
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 13. 디버그/진단
+# 13. Ralph 세션 작업 디렉토리 — /tmp 글로벌 경로의 세션 교차오염 차단
+# ═══════════════════════════════════════════════════════════════════════
+
+def ralph_dir(
+    session_id: str,
+    project_root: Optional[Path] = None,
+    create: bool = True,
+) -> Path:
+    """세션 스코프 ralph 작업 디렉토리.
+    기존 `/tmp/ralph_task_*.md`, `/tmp/ralph_{slug}_progress.md`가 세션 간에 공유돼
+    stop-hook이 다른 세션 transcript를 claim하는 버그(ralph 루프2 오작동)를 일으켰기에,
+    `.sessions/{sid}/ralph/` 하위로 옮겨 격리한다. session_id 무효 시 `_global` 폴백."""
+    sd = session_dir(session_id, project_root, create=create)
+    d = sd / "ralph"
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def ralph_task_path(session_id: str, project_root: Optional[Path] = None) -> Path:
+    """구조화된 프롬프트(task.md) 경로 — /tmp/ralph_task_*.md 대체."""
+    return ralph_dir(session_id, project_root) / "task.md"
+
+
+def ralph_progress_path(session_id: str, project_root: Optional[Path] = None) -> Path:
+    """회차별 진행 상태(progress.md) 경로 — /tmp/ralph_{slug}_progress.md 대체."""
+    return ralph_dir(session_id, project_root) / "progress.md"
+
+
+def ralph_state_path(session_id: str, project_root: Optional[Path] = None) -> Path:
+    """stop-hook이 참조하는 세션별 claim/iteration 상태(state.json)."""
+    return ralph_dir(session_id, project_root) / "state.json"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 14. 디버그/진단
 # ═══════════════════════════════════════════════════════════════════════
 
 def diagnostic_snapshot(project_root: Optional[Path] = None) -> Dict[str, Any]:

@@ -113,3 +113,32 @@ TTL · 재강화 횟수는 OMC 값 참고 (light: 5분/3회, medium: 15분/5회,
 | 스킬 스택 구조 (중첩 추적) | 필요 시 추가 — 현재 middle-case 적음 |
 | 스킬별 권한 매트릭스 | 현재 훅은 에이전트 기준. 스킬 기준 별도 매트릭스는 과함 |
 | 스킬 실행 로그 집계 | harness-review 범위 |
+
+---
+
+## Phase 4 진입 전 해결해야 할 Ralph 잔여 TODO
+
+Phase 3 이후 Ralph 세션 격리 WIP에서 의도적으로 미뤄둔 항목. Phase 4.A에서 `live.json.skill` 기록이 추가되면 아래도 자연스럽게 해결되거나 해결 경로가 열린다.
+
+### T1. 오피셜 ralph-loop stop-hook의 최초 claim 가로채기 (인지된 한계)
+**증상**: 세션 A가 ralph-loop를 시작했지만 첫 Stop 훅이 돌기 전에(state의 `transcript_path` 비어 있음) 세션 B에서 Stop이 먼저 발동하면, 오피셜 `plugins/cache/.../ralph-loop/1.0.0/hooks/stop-hook.sh`가 세션 B의 transcript에 `"Ralph loop activated"` 문자열이 있기만 하면 claim을 탈취한다.
+
+**현재 완화책** (`~/.claude/hooks/ralph-session-stop.py`):
+- state 파일에 우리 필드 `cc_session_id:` 를 기록하고, 다른 세션에서 발견하면 stderr 경고만 출력.
+- **claim 자체는 막지 못함** — 오피셜 훅이 전역 shell script라 선행 훅이 그 로직을 대체할 수 없다.
+
+**Phase 4에서 시도할 옵션**:
+- (a) `live.json.skill == "ralph-loop"` 이면 PreToolUse(Skill)에서 state 파일 경로를 **세션 스코프**(`.sessions/{sid}/ralph/state.md`)로 symlink/rename해 오피셜 훅이 해당 세션 것만 보게 함. 세션 종료 시 cleanup.
+- (b) 오피셜 훅을 `disabledHooks` 같은 CC 메커니즘으로 비활성화하고 우리 wrapper 훅이 claim/loop 전체 대행. 플러그인 디렉토리 수정 금지 원칙과 일관되려면 `settings.json` 레벨에서만 조작.
+- (c) 더 나은 옵션이 있는지 OMC 구현을 재조사 (레퍼런스 우선 원칙).
+
+**의사결정 포인트**: Phase 4.A (Skill 상태 기록) 완성 후 (a)가 저비용 해결인지 재평가.
+
+### T2. plugin-write-guard와 ralph state 파일
+`~/.claude/plugins/` 차단은 이미 작동하지만, 오피셜 훅을 그대로 두는 한 state 파일 경로(`.claude/ralph-loop.local.md`)는 프로젝트 루트 공유다. Phase 4에서 세션 스코프 이전을 시도하면 가드 우회 경로(env flag 또는 symlink 생성)의 설계 지점이 생긴다.
+
+### T3. ralph-session-stop.py 진단/메트릭 추가
+현재는 state 파일 mismatch 시 stderr 경고만 찍는데, `.claude/harness-state/.logs/` 에 event JSONL로 남기면 harness-review가 교차오염 시도를 자동 감지 가능. Phase 4.B Stop 보호와 함께 작업.
+
+### T4. 프로세스 고유 폴백(`_pid-$$-$(date +%s)`) 청소 정책
+`commands/ralph.md`가 session_id 없을 때 `.sessions/_pid-<pid>-<ts>/ralph/`에 저장한다. `session_state.cleanup_stale_sessions`는 정규 session_id 형식만 기대하므로 이 폴백 슬롯이 청소 대상에서 빠질 수 있다. Phase 4에서 cleanup 규칙을 `.sessions/*` 전체로 확장하거나 `_pid-*` 패턴 명시 처리.

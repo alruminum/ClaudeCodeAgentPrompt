@@ -322,6 +322,41 @@ class SkeletonAndPointerTests(unittest.TestCase):
         self.assertEqual(ss.read_session_pointer(self.root), "")
 
 
+class RalphPathTests(unittest.TestCase):
+    """ralph 스킬 세션 경로 격리 — /tmp 교차오염 버그 회귀 방지."""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.root = _touch_claude(Path(self._td.name))
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def test_ralph_dir_under_session(self):
+        d = ss.ralph_dir("sessA", project_root=self.root)
+        expected = self.root / ".claude" / "harness-state" / ".sessions" / "sessA" / "ralph"
+        self.assertEqual(d.resolve(), expected.resolve())
+        self.assertTrue(d.is_dir())
+
+    def test_ralph_paths_have_correct_filenames(self):
+        self.assertEqual(ss.ralph_task_path("sessA", self.root).name, "task.md")
+        self.assertEqual(ss.ralph_progress_path("sessA", self.root).name, "progress.md")
+        self.assertEqual(ss.ralph_state_path("sessA", self.root).name, "state.json")
+
+    def test_ralph_sessions_are_isolated(self):
+        a = ss.ralph_dir("sessA", project_root=self.root)
+        b = ss.ralph_dir("sessB", project_root=self.root)
+        self.assertNotEqual(a, b)
+        (a / "task.md").write_text("A의 작업")
+        (b / "task.md").write_text("B의 작업")
+        self.assertEqual((a / "task.md").read_text(), "A의 작업")
+        self.assertEqual((b / "task.md").read_text(), "B의 작업")
+
+    def test_ralph_fallback_to_global_when_sid_invalid(self):
+        d = ss.ralph_dir("", project_root=self.root)
+        self.assertEqual(d.parent.name, "_global")
+
+
 class GlobalSignalTests(unittest.TestCase):
     def setUp(self):
         self._td = tempfile.TemporaryDirectory()
