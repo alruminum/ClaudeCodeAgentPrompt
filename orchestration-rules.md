@@ -120,6 +120,43 @@
 - 워크플로우 플래그는 세션 × 이슈 스코프에만 기록. 전역 신호(`harness_kill`)만 `.global.json`에 기록.
 - 두 세션이 같은 이슈를 동시 진입 시 후발 세션 거부 (이슈 lock — PID alive + heartbeat TTL).
 
+### Ralph 세션 격리 (스킬 교차오염 방지)
+ralph 스킬이 `/tmp/ralph_task_*.md`, `/tmp/ralph_{slug}_progress.md`를 글로벌 경로에 쓰면 세션 A의 루프가 세션 B의 transcript/progress를 claim하는 사고가 난다. 모든 ralph 작업 파일은 세션 스코프에만 둔다.
+- 경로: `.sessions/{sid}/ralph/{task.md, progress.md, state.json}` — `session_state.ralph_{dir,task_path,progress_path,state_path}` 헬퍼로만 접근.
+- SID 획득 우선순위: `HARNESS_SESSION_ID` env → `.session-id` 포인터. **둘 다 없을 때 `_global` 공유 슬롯으로 폴백 금지** — 프로세스 고유 `_pid-<pid>-<ts>` 슬롯 사용(재발 경로 차단).
+- 오피셜 `ralph-loop@claude-plugins-official` stop-hook은 전역 스크립트라 직접 수정하지 않는다. 선행 훅(`~/.claude/hooks/ralph-session-stop.py`)이 `.claude/ralph-loop.local.md`에 `cc_session_id` 필드를 기록해 교차 claim 시 경고만 출력. 완전 차단은 Phase 4 T1에서 처리.
+
+### 플러그인 디렉토리 직접 수정 금지
+`~/.claude/plugins/{cache,marketplaces,data}/**`는 CC 플러그인 매니저가 관리하는 영역. 유저 스킬/커맨드/에이전트 파일을 이 안에 추가하거나 오피셜 플러그인 파일을 손으로 고치면 재설치 시 증발하거나 원본과 drift가 생겨 추적 불가능한 오염을 남긴다.
+- 유저 스킬/커맨드는 `~/.claude/commands/*.md`에만 둔다.
+- 에이전트 프로젝트 컨텍스트는 `.claude/agent-config/*.md`에 둔다.
+- 오피셜 플러그인 버그는 그 안의 파일을 손대지 말고 `~/.claude/hooks/`에 선행 훅을 추가해 우회한다.
+- `plugin-write-guard.py`가 PreToolUse(Write/Edit)에서만 물리적으로 차단한다 — **플러그인 안의 스크립트 실행(Bash)은 정상이며 차단 대상 아님**. 예외 편집이 꼭 필요하면 `CLAUDE_ALLOW_PLUGIN_EDIT=1` env로 일시 허용.
+
+### 스킬 컨텍스트 보호 (Phase 4)
+`/ux`, `/qa`, `/product-plan`, `/ralph` 같은 스킬이 다중 에이전트를 부르거나 장시간 루프를 돌 때, 훅이 "지금 어떤 스킬이 활성인지" 모르면 정당한 Bash/Edit를 오인 차단하거나 Stop 훅이 조기 종료시키는 사고가 난다. Phase 3 `live.json` 위에 `skill` 필드를 얹어 해결한다. 상세: **[docs/session-isolation/phase4-skill-context-protection.md](docs/session-isolation/phase4-skill-context-protection.md)**.
+- 상태 스키마: `live.json.skill = {name, level, started_at, reinforcements}`. 레벨 매핑은 `hooks/skill_protection.SKILL_LEVELS`(SSoT) — `get_skill_level(name)` 호출. 매핑 없는 스킬은 `DEFAULT_LEVEL = light`(보수적 보호).
+- 보호 레벨 정책(OMC 벤치마크): **none** 0/0, **light** 300s/3회, **medium** 900s/5회, **heavy** 1800s/10회. 모두 `LEVEL_POLICIES` dict 한 곳에서 변경.
+- 기록 단일 진입점: `hooks/skill-gate.py`(PreToolUse Skill).
+- 청소 책임자(분산 금지 — OMC `cancel-skill-active-state-gap` 학습):
+  - none/light/medium → `hooks/post-skill-flags.py`(PostToolUse Skill) 즉시 청소.
+  - heavy → PostToolUse가 청소하지 **않음**. `hooks/skill-stop-protect.py`(Stop 훅)가 TTL/max_reinforcements/`harness_kill` 신호로 lifecycle 관리.
+- Stop 훅 동작: 활성 스킬이 medium/heavy면 `{decision: block, reason: ...}`로 차단 + reinforcements +1. `reinforcements >= max` 또는 `age >= ttl`이면 강제 청소 + 통과. 모든 결정은 `.claude/harness-state/.logs/skill-protect.jsonl`에 박제.
+- **자체 lifecycle 관리 스킬 예외** (`SELF_MANAGED_LIFECYCLE`): `ralph-loop:ralph-loop`처럼 자기 stop-hook이 prompt 재주입으로 다음 iteration을 트리거하는 스킬은 Stop 차단을 하면 그 재주입이 막혀 루프가 망가진다. heavy로 등록은 하되 `should_block_stop()`에서 항상 False — 차단하지 않고 자체 메커니즘에 위임. 우리 wrapper인 `ralph` 스킬은 차단 대상(자기 lifecycle 관리 메커니즘 없음).
+- 중첩 스킬: last-write-wins(스택 비스코프). `clear_active_skill(expect_name=...)`로 race 방지.
+- `/harness-kill` 등 전역 kill 신호 — `skill-stop-protect.py`가 1순위로 처리, 즉시 청소 후 통과.
+- 활성 스킬 판정은 `session_state.active_skill(stdin_data)` 하나 — `active_agent`와 대칭. 별도 폴백/TTL 로직 추가 금지.
+- 다른 훅의 적응:
+  - `agent-boundary.py` 메인 Claude 경로 deny 메시지에 `(스킬 '<이름>' 진행 중)` 컨텍스트 부착 → 유저가 원인 즉시 파악.
+  - `harness-router.py`는 활성 스킬이면 라우팅 힌트 주입 억제(스킬이 자체 라우팅 담당).
+  - `orch-rules-first.py`는 활성 스킬이면 경고 톤 완화(스킬 안에서 시스템 파일 정당하게 손대는 경우 흔함).
+
+#### Phase 4 잔여 TODO 처리 결과
+- T1 오피셜 ralph-loop claim 가로채기 → **해결**. ralph-session-stop이 state.session_id에 시작자 SID 또는 placeholder를 박아 오피셜의 격리 분기를 발동시킨다 (`stop-hook.sh:31-35`). 시작자 식별은 `live.json.skill.name == "ralph-loop:ralph-loop"` 신뢰. 검증: `test_ralph_isolation.py` 8 tests.
+- T2 plugin-write-guard와 ralph state 파일 → 자동 해소. T1 해결로 state 파일이 첫 Stop부터 격리되므로 별도 우회 불필요.
+- T3 ralph 교차오염 진단 → `.claude/harness-state/.logs/ralph-cross-session.jsonl` 박제(`ralph-session-stop.py`). claim_self / claim_block_pending / claim_promote / cross_session_state_attempt 4종 이벤트.
+- T4 `_pid-<pid>-<ts>` 폴백 슬롯 청소 → 활성 PID 보존, 죽은 PID 즉시 제거 (`session_state.cleanup_stale_sessions`).
+
 ### 이슈별 Worktree 격리 (동시 이슈 작업)
 `config.isolation = "worktree"` 설정 시, 이슈별 git worktree를 생성하여 동시에 여러 이슈를 작업할 수 있다.
 - worktree 경로: `{project_root}/.worktrees/{prefix}/issue-{N}/`. 각 에이전트는 해당 worktree에서 실행.
@@ -221,6 +258,8 @@ automated_checks에 lint/build 실행. `config.lint_command` / `config.build_com
 | config.py 필드 추가 | `harness/config.py` (필드) + `harness/impl_loop.py`/`helpers.py` (사용처) + `harness/tests/test_parity.py` (테스트) + `orchestration/changelog.md` (변경 로그) + `setup-harness.sh` (기본 템플릿) |
 | 훅 패턴/매핑 변경 | `hooks/*.py` 대상 파일 + `setup-harness.sh` 주석 |
 | 세션 상태 스키마 변경 (live.json 필드 등) | `hooks/session_state.py` (API) + `hooks/tests/test_session_state.py` (테스트) + `docs/session-isolation/phase3-session-isolation.md` (설계) + orchestration-rules.md 세션 격리 섹션 |
+| 스킬 보호 레벨 매핑 변경 (신규 스킬 추가/제거 등) | `hooks/skill_protection.py` (SKILL_LEVELS / LEVEL_POLICIES) + `hooks/tests/test_skill_protection.py` (테스트) + orchestration-rules.md "스킬 컨텍스트 보호" 섹션 + `docs/session-isolation/phase4-skill-context-protection.md` |
+| 스킬 훅 추가/변경 (skill-gate / post-skill-flags / skill-stop-protect) | 해당 훅 파일 + `~/.claude/settings.json` Skill/Stop 매처 + `~/.claude/setup-harness.sh` 주석 + `hooks/tests/test_skill_hooks.py` |
 | agent-boundary.py ALLOW_MATRIX 변경 | `hooks/agent-boundary.py` + `orchestration/agent-boundaries.md` 동기 |
 | architect @MODE 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
 | 디자인 도구 변경 (Pencil MCP 등) | `agents/designer.md`, `agents/design-critic.md`, `orchestration/design.md`, `commands/ux.md` |

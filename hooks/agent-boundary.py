@@ -128,13 +128,23 @@ def main():
 
     # 에이전트 활성화 안 됨 → 메인 Claude 직접 수정 제한 (file-ownership 통합)
     if active_agent is None:
+        # Phase 4: 활성 스킬이 있으면 스킬 맥락 — 메인 Claude 일반 규칙 완화.
+        # 정당한 스킬 작업(예: /ux의 designer 호출 전 docs 읽기, /qa의 src/ 분석)이
+        # 메인 Claude 규칙에 막히는 사고 방지. file-ownership은 여전히 적용해 PRD/src
+        # 직접 수정은 차단하되, "메인 Claude가 막무가내로 수정 중"이라는 진단 메시지를
+        # "스킬 맥락" 진단으로 바꿔 유저에게 정확한 원인을 알린다.
+        active_skill = ss.active_skill(stdin_data=d)
+        skill_ctx = ""
+        if active_skill:
+            skill_ctx = f" (스킬 '{active_skill.get('name')}' 진행 중)"
+
         # Read는 제한 없음
         if tool_name == "Read":
             sys.exit(0)
 
         # src/** 소스 코드 직접 수정 차단 (src/__tests__/ 포함)
         if re.search(r'(^|/)src/', fp):
-            deny("❌ [file-ownership] src/** 는 engineer 에이전트 소유. "
+            deny(f"❌ [file-ownership] src/** 는 engineer 에이전트 소유.{skill_ctx} "
                  "직접 수정 금지 → harness/executor.py를 통해 루프 C 진입.")
 
         # 설계 문서 직접 수정 차단
@@ -144,7 +154,7 @@ def main():
             r"|(^|/)trd[.]md)"
         )
         if DOCS_PATTERN.search(fp):
-            deny("❌ [file-ownership] 설계 문서는 에이전트 소유. "
+            deny(f"❌ [file-ownership] 설계 문서는 에이전트 소유.{skill_ctx} "
                  "직접 수정 금지 → architect/designer/product-planner 에이전트 호출.")
 
         # 그 외 파일은 메인 Claude 수정 허용

@@ -60,6 +60,18 @@ def flag_is_fresh():
     age = time.time() - os.path.getmtime(FLAG)
     return age < SESSION_TIMEOUT
 
+def _active_skill():
+    """Phase 4: 활성 스킬 dict 또는 None. session_state 미가용 시 None 폴백."""
+    try:
+        import sys as _sys
+        import os as _os
+        _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+        import session_state as _ss  # type: ignore
+        return _ss.active_skill()
+    except Exception:
+        return None
+
+
 def main():
     try:
         d = json.load(sys.stdin)
@@ -78,15 +90,19 @@ def main():
     # 하네스 인프라 또는 에이전트 정의 파일 수정 → 플래그 없으면 경고만 주입
     if is_harness_infra(fp) or is_agent_def(fp):
         if not flag_is_fresh():
+            # Phase 4: 활성 스킬이 있으면 경고 톤을 그 맥락에 맞게 다듬어 노이즈 감소.
+            # 스킬(/ux, /qa 등)이 정당한 흐름으로 시스템 파일을 손대는 경우가 흔하다.
+            sk = _active_skill()
+            sk_ctx = f" (스킬 '{sk.get('name')}' 진행 중)" if sk else ""
             fname = os.path.basename(fp)
             print(json.dumps({
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "additionalContext": (
-                        f"⚠️ [orch_rules_first] {fname} 수정 중 — orchestration-rules.md "
-                        "선행 업데이트는 권장이지만 강제는 아닙니다. 규칙 수준의 변경이면 "
-                        "먼저 orchestration-rules.md를 고치고, 버그픽스·구현 디테일이면 "
-                        "이 메시지를 무시해도 됩니다."
+                        f"⚠️ [orch_rules_first] {fname} 수정 중{sk_ctx} — "
+                        "orchestration-rules.md 선행 업데이트는 권장이지만 강제는 아닙니다. "
+                        "규칙 수준의 변경이면 먼저 orchestration-rules.md를 고치고, "
+                        "버그픽스·구현 디테일이면 이 메시지를 무시해도 됩니다."
                     )
                 }
             }))

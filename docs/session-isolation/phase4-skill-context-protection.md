@@ -120,19 +120,27 @@ TTL · 재강화 횟수는 OMC 값 참고 (light: 5분/3회, medium: 15분/5회,
 
 Phase 3 이후 Ralph 세션 격리 WIP에서 의도적으로 미뤄둔 항목. Phase 4.A에서 `live.json.skill` 기록이 추가되면 아래도 자연스럽게 해결되거나 해결 경로가 열린다.
 
-### T1. 오피셜 ralph-loop stop-hook의 최초 claim 가로채기 (인지된 한계)
-**증상**: 세션 A가 ralph-loop를 시작했지만 첫 Stop 훅이 돌기 전에(state의 `transcript_path` 비어 있음) 세션 B에서 Stop이 먼저 발동하면, 오피셜 `plugins/cache/.../ralph-loop/1.0.0/hooks/stop-hook.sh`가 세션 B의 transcript에 `"Ralph loop activated"` 문자열이 있기만 하면 claim을 탈취한다.
+### T1. 오피셜 ralph-loop stop-hook claim 가로채기 — **해결**
+**원래 증상**: 세션 A가 ralph-loop를 시작했지만 첫 Stop 훅이 돌기 전에 세션 B에서 Stop이 먼저 발동하면, 오피셜 `plugins/cache/.../ralph-loop/1.0.0/hooks/stop-hook.sh`가 세션 B로 claim을 넘긴다.
 
-**현재 완화책** (`~/.claude/hooks/ralph-session-stop.py`):
-- state 파일에 우리 필드 `cc_session_id:` 를 기록하고, 다른 세션에서 발견하면 stderr 경고만 출력.
-- **claim 자체는 막지 못함** — 오피셜 훅이 전역 shell script라 선행 훅이 그 로직을 대체할 수 없다.
+**Root cause** (오피셜 훅 분석 끝 발견):
+- 오피셜 훅(`stop-hook.sh:31-35`)에 이미 격리 로직이 있다 — state.frontmatter의 `session_id:` 필드와 hook stdin의 session_id를 비교해 다르면 `exit 0`.
+- 하지만 `setup-ralph-loop.sh:144`가 `session_id: ${CLAUDE_CODE_SESSION_ID:-}`로 박는데, CC가 이 env를 자식 프로세스에 자동 export하지 않아 빈 값으로 시작.
+- `STATE_SESSION`이 비면 fall-through → 첫 fire 세션 claim.
 
-**Phase 4에서 시도할 옵션**:
-- (a) `live.json.skill == "ralph-loop"` 이면 PreToolUse(Skill)에서 state 파일 경로를 **세션 스코프**(`.sessions/{sid}/ralph/state.md`)로 symlink/rename해 오피셜 훅이 해당 세션 것만 보게 함. 세션 종료 시 cleanup.
-- (b) 오피셜 훅을 `disabledHooks` 같은 CC 메커니즘으로 비활성화하고 우리 wrapper 훅이 claim/loop 전체 대행. 플러그인 디렉토리 수정 금지 원칙과 일관되려면 `settings.json` 레벨에서만 조작.
-- (c) 더 나은 옵션이 있는지 OMC 구현을 재조사 (레퍼런스 우선 원칙).
+**해결 (Phase 4.B 추가 구현, ralph-session-stop.py 강화)**:
+- 시작자 식별 신뢰 소스 = `live.json.skill.name == "ralph-loop:ralph-loop"`. PreToolUse(Skill)이 이미 기록.
+- ralph-session-stop이 state.session_id 빈 값을 만나면:
+  - 내가 시작자면 → 내 SID 박음. 오피셜 정상 진행.
+  - 비시작자면 → `__pending_<short>__` placeholder 박음. 오피셜이 `STATE != HOOK` → exit 0 (claim 차단).
+- placeholder를 만나면:
+  - 내가 시작자면 → 내 SID로 교체.
+  - 비시작자면 → 그대로 둠.
+- 진짜 다른 SID 점유 → cross-session JSONL 박제, state 변경 안 함 (오피셜이 알아서 격리).
 
-**의사결정 포인트**: Phase 4.A (Skill 상태 기록) 완성 후 (a)가 저비용 해결인지 재평가.
+**검증**: `hooks/tests/test_ralph_isolation.py` — T1 race 시나리오 박제 + Case A/B/C 전수 (8 tests).
+
+**원칙 준수**: 오피셜 훅 파일 자체는 0줄 수정. `~/.claude/hooks/ralph-session-stop.py`만 강화 (선행 Stop 훅).
 
 ### T2. plugin-write-guard와 ralph state 파일
 `~/.claude/plugins/` 차단은 이미 작동하지만, 오피셜 훅을 그대로 두는 한 state 파일 경로(`.claude/ralph-loop.local.md`)는 프로젝트 루트 공유다. Phase 4에서 세션 스코프 이전을 시도하면 가드 우회 경로(env flag 또는 symlink 생성)의 설계 지점이 생긴다.
@@ -142,3 +150,57 @@ Phase 3 이후 Ralph 세션 격리 WIP에서 의도적으로 미뤄둔 항목. P
 
 ### T4. 프로세스 고유 폴백(`_pid-$$-$(date +%s)`) 청소 정책
 `commands/ralph.md`가 session_id 없을 때 `.sessions/_pid-<pid>-<ts>/ralph/`에 저장한다. `session_state.cleanup_stale_sessions`는 정규 session_id 형식만 기대하므로 이 폴백 슬롯이 청소 대상에서 빠질 수 있다. Phase 4에서 cleanup 규칙을 `.sessions/*` 전체로 확장하거나 `_pid-*` 패턴 명시 처리.
+
+---
+
+## 구현 상태 (Implementation Notes)
+
+> 이 섹션은 위 계획에서 의도적으로 변경한 부분을 박제한다.
+
+### 단일 상태 통합 — `skill-active-state.json` 폐기
+계획은 `skill-active-state.json` + `live.json.skill` 두 곳에 기록했지만, 구현은 **`live.json.skill` 단일 필드**로 통합했다. 이유:
+- `live.json`은 이미 세션 단일 소스 — 별도 파일은 청소 책임자 분산을 야기 (정확히 OMC `cancel-skill-active-state-gap.md`가 박제한 결함).
+- 단일 필드면 atomic write 한 번으로 충분, race 가능성 ↓.
+
+### 청소 책임자 분리 (단일화 원칙)
+- none/light/medium → `hooks/post-skill-flags.py` (PostToolUse Skill).
+- heavy → `hooks/skill-stop-protect.py` (Stop 훅) — TTL/max_reinforcements/`harness_kill` 신호.
+- PostToolUse(Skill)와 Stop 훅이 같은 스킬을 동시에 청소하는 구조 금지 (heavy는 PostToolUse가 손대지 않음).
+
+### 보호 레벨 — DEFAULT_LEVEL
+`SKILL_LEVELS` 매핑에 없는 신규 스킬은 `DEFAULT_LEVEL = "light"`로 폴백한다(보수적 보호). 등록 누락된 heavy 스킬은 stop 훅 차단을 받지 못하지만, light 보호로 최소한의 lifecycle 추적은 유지.
+
+### Stop 훅 보호 범위
+계획은 "≥ light 모두 재강화"였지만 구현은 **medium/heavy만 재강화**한다(`is_protected(level)`). 이유:
+- light는 PostToolUse가 즉시 청소 — Stop 훅까지 도달하면 비정상 흐름.
+- light 스킬은 정의상 5분 미만의 짧은 상호작용 — Stop 보호 의의 약함.
+- 만약 light가 Stop에 도달하면 단순 통과 처리(decision: 무출력).
+
+### SELF_MANAGED_LIFECYCLE 예외 (3회차 비판 검토에서 발견)
+`ralph-loop:ralph-loop`는 자체 stop-hook이 prompt를 재주입해 다음 iteration을 트리거하는 구조다. `skill-stop-protect`가 `decision: block`을 출력하면 Claude Code가 그 재주입 prompt 처리를 막아 ralph 루프가 망가진다. 따라서:
+- `skill_protection.SELF_MANAGED_LIFECYCLE = {"ralph-loop:ralph-loop", "ralph-loop"}` 집합 도입.
+- `should_block_stop(name, level)`이 이 집합에 속한 스킬은 항상 False 반환 — heavy로 등록은 하되 Stop 차단은 안 함.
+- 우리 자체 wrapper인 `ralph`(commands/ralph.md)는 직접 lifecycle 관리 메커니즘이 없으므로 정상 차단 대상.
+- 본질: 외부 plugin이 Stop hook 기반 루프 메커니즘을 사용하면 우리 보호 훅이 그 메커니즘을 망가뜨릴 수 있음 → 이름 기반 예외로 회피.
+
+### 코드 매핑
+
+| 계획 항목 | 구현 위치 |
+|---|---|
+| live.json.skill 스키마 | `hooks/session_state.py` `set_active_skill / get_active_skill / clear_active_skill / bump_skill_reinforcement / active_skill` |
+| 보호 레벨 매핑(SSoT) | `hooks/skill_protection.py` (`SKILL_LEVELS`, `LEVEL_POLICIES`, `get_skill_level`, `get_policy`, `is_protected`, `clears_on_post`) |
+| PreToolUse(Skill) 기록 | `hooks/skill-gate.py` |
+| PostToolUse(Skill) 청소 | `hooks/post-skill-flags.py` |
+| Stop 훅 보호 | `hooks/skill-stop-protect.py` |
+| 다른 훅의 스킬 컨텍스트 인식 | `hooks/agent-boundary.py` (deny 메시지) + `hooks/harness-router.py` (라우팅 억제) + `hooks/orch-rules-first.py` (경고 톤 완화) |
+| settings.json 등록 | `~/.claude/settings.json` PreToolUse:Skill / PostToolUse:Skill / Stop |
+| setup-harness.sh 주석 | `~/.claude/setup-harness.sh` 헤더 |
+| T3 cross-session JSONL | `hooks/ralph-session-stop.py` `.claude/harness-state/.logs/ralph-cross-session.jsonl` |
+| T4 `_pid-*` 청소 | `hooks/session_state.py` `cleanup_stale_sessions` (정규 PID 슬롯 처리, 활성 PID 보존) |
+| 단위 테스트 | `hooks/tests/test_session_state.py` (SkillStateTests, PidSlotCleanupTests) + `hooks/tests/test_skill_protection.py` + `hooks/tests/test_skill_hooks.py` |
+
+### T1/T2 미해결 — 인지된 한계
+오피셜 ralph-loop stop-hook의 최초 claim 가로채기는 여전히 차단하지 못한다. 현재는 ralph-session-stop.py가 stderr 경고 + JSONL 박제만 한다. Phase 4의 live.json.skill 도입으로 향후 옵션이 열렸다:
+- (a) `live.json.skill == ralph-loop:ralph-loop` 일 때만 state 파일을 세션 스코프로 symlink.
+- (b) `disabledHooks` 메커니즘으로 오피셜 훅 비활성화 + 우리 wrapper가 전체 대행.
+- 결정은 차후 발생 빈도 보고 재평가.
