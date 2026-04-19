@@ -163,9 +163,16 @@ def _main_inner():
         log(prefix, "RATE_LIMIT_BLOCK")
         sys.exit(0)
 
-    # Kill Switch
+    # Kill Switch — Phase 3: 전역 신호 + 레거시 플래그 파일
+    try:
+        import session_state as _ss
+        if _ss.get_global_signal().get("harness_kill"):
+            log(prefix, "KILL_SWITCH(global) — pass-through")
+            sys.exit(0)
+    except ImportError:
+        pass
     if os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.HARNESS_KILL}"):
-        log(prefix, "KILL_SWITCH — pass-through")
+        log(prefix, "KILL_SWITCH(legacy) — pass-through")
         sys.exit(0)
 
     # 2차 방어: 하네스 내부 생성 프롬프트 패턴

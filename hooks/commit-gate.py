@@ -15,30 +15,17 @@ import re
 import subprocess
 import time
 from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, flag_path, flag_exists, FLAGS, ISSUE_CREATORS
+import session_state as ss
 
 PREFIX = get_prefix()
 
-# 폴백 플래그 TTL — 크래시/Ctrl+C로 남은 잔재 플래그 무효화 (15분)
-FALLBACK_FLAG_TTL_SEC = 15 * 60
 
-
-def _is_issue_creator_active():
-    """ISSUE_CREATORS 에이전트 중 하나라도 활성 상태인지 확인.
-    우선순위: env var(HARNESS_AGENT_NAME) → 플래그 파일({prefix}_{agent}_active, TTL 15분).
-    env var는 harness/core.py subprocess 경로, 플래그는 Agent 툴 경로 폴백.
-    플래그 cleanup은 post-agent-flags.py가 PostToolUse(Agent)에서 처리하며,
-    크래시 잔재는 mtime TTL로 무시한다."""
-    agent = os.environ.get("HARNESS_AGENT_NAME")
-    if agent in ISSUE_CREATORS:
-        return True
-    now = time.time()
-    for a in ISSUE_CREATORS:
-        p = flag_path(PREFIX, f"{a}_active")
-        if not os.path.exists(p):
-            continue
-        if (now - os.path.getmtime(p)) < FALLBACK_FLAG_TTL_SEC:
-            return True
-    return False
+def _is_issue_creator_active(stdin_data=None):
+    """Phase 3: live.json 단일 소스로 판정.
+    ISSUE_CREATORS(qa, designer, architect, product-planner) 중 하나라도 활성이면 True.
+    """
+    agent = ss.active_agent(stdin_data=stdin_data)
+    return agent in ISSUE_CREATORS
 
 
 def main():
@@ -57,7 +44,7 @@ def main():
         or re.search(r"gh\s+api\s+.*issues.*-X\s+(POST|PATCH)", cmd)
         or re.search(r"gh\s+api\s+.*issues/\d+.*-X\s+PATCH", cmd)
     )
-    if _IS_GH_ISSUE_MUTATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active():
+    if _IS_GH_ISSUE_MUTATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active(d):
         deny(
             "❌ gh issue create/edit 직접 호출 금지.\n"
             "이슈 생성/수정은 QA 에이전트가, 디자인 이슈는 designer 에이전트가 처리한다.\n"

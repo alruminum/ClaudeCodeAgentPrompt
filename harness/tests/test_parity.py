@@ -1225,44 +1225,80 @@ class TestLoopVarsInitialized(unittest.TestCase):
                         f"total_cost 초기화(line {init_line})가 최초 참조(line {read_line})보다 먼저 와야 함")
 
 
-class TestEnvVarAgentDetection(unittest.TestCase):
-    """hooks가 HARNESS_AGENT_NAME env var로 에이전트를 판별하는지 검증."""
+class TestSessionIsolatedAgentDetection(unittest.TestCase):
+    """Phase 3: hooks가 live.json 단일 소스로 에이전트를 판별하는지 검증."""
 
-    def test_get_active_agent_returns_name(self):
-        """env var 설정 시 에이전트 이름 반환."""
-        os.environ["HARNESS_AGENT_NAME"] = "engineer"
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.root = Path(self._td.name)
+        (self.root / ".claude").mkdir(parents=True, exist_ok=True)
         try:
-            sys.path.insert(0, str(HARNESS_DIR.parent / "hooks"))
-            from harness_common import get_active_agent
-            self.assertEqual(get_active_agent(), "engineer")
-        finally:
-            del os.environ["HARNESS_AGENT_NAME"]
-            sys.path.pop(0)
-
-    def test_get_active_agent_returns_none(self):
-        """env var 미설정 시 None 반환 — 메인 Claude 세션."""
-        os.environ.pop("HARNESS_AGENT_NAME", None)
+            self._orig_cwd = os.getcwd()
+        except FileNotFoundError:
+            # 이전 테스트가 tmp dir을 남긴 채 cleanup한 경우
+            self._orig_cwd = str(Path.home())
+        os.chdir(self.root)
         sys.path.insert(0, str(HARNESS_DIR.parent / "hooks"))
+
+    def tearDown(self):
         try:
-            from harness_common import get_active_agent
-            self.assertIsNone(get_active_agent())
-        finally:
-            sys.path.pop(0)
+            os.chdir(self._orig_cwd)
+        except Exception:
+            pass
+        sys.path.pop(0)
+        self._td.cleanup()
+        os.environ.pop("HARNESS_AGENT_NAME", None)
+        os.environ.pop("HARNESS_SESSION_ID", None)
 
-    def test_agent_call_sets_env_var(self):
-        """agent_call이 HARNESS_AGENT_NAME을 env에 설정하는지 AST 검증."""
-        import ast
+    def test_active_agent_reads_live_json(self):
+        """live.json.agent 기록 후 active_agent가 그 값을 반환."""
+        import session_state as ss
+        ss.initialize_session("sidA")
+        ss.update_live("sidA", agent="engineer")
+        os.environ["HARNESS_SESSION_ID"] = "sidA"
+        from harness_common import get_active_agent
+        self.assertEqual(get_active_agent(), "engineer")
+
+    def test_active_agent_returns_none_without_live(self):
+        """live.json.agent 없으면 None — 메인 Claude 세션."""
+        import session_state as ss
+        ss.initialize_session("sidB")
+        os.environ["HARNESS_SESSION_ID"] = "sidB"
+        from harness_common import get_active_agent
+        self.assertIsNone(get_active_agent())
+
+    def test_stdin_session_id_wins_over_env(self):
+        """훅 stdin의 session_id가 env/pointer보다 우선."""
+        import session_state as ss
+        ss.initialize_session("sidA")
+        ss.initialize_session("sidB")
+        ss.update_live("sidA", agent="engineer")
+        ss.update_live("sidB", agent="architect")
+        os.environ["HARNESS_SESSION_ID"] = "sidA"
+        # stdin이 sidB를 가리키면 architect가 반환되어야 함
+        self.assertEqual(
+            ss.active_agent({"session_id": "sidB"}), "architect"
+        )
+
+    def test_agent_call_propagates_session_id(self):
+        """agent_call이 HARNESS_SESSION_ID env를 자식 subprocess에 전파."""
         src = (HARNESS_DIR / "core.py").read_text()
-        self.assertIn('env["HARNESS_AGENT_NAME"]', src,
-                       "agent_call()에 HARNESS_AGENT_NAME env 설정이 없음")
+        self.assertIn('env["HARNESS_SESSION_ID"]', src,
+                       "agent_call에 HARNESS_SESSION_ID 전파가 없음")
 
-    def test_agent_boundary_uses_env_not_files(self):
-        """agent-boundary.py가 파일 기반 glob 탐색 대신 env var를 사용하는지."""
+    def test_agent_boundary_single_source(self):
+        """Phase 3: agent-boundary.py가 live.json 단일 소스로 판정.
+        15분 TTL glob 탐색 / 화이트리스트 필터 / env var 폴백 제거 확인.
+        """
         boundary_src = (HARNESS_DIR.parent / "hooks" / "agent-boundary.py").read_text()
-        # env var 방식 사용
-        self.assertIn("get_active_agent", boundary_src,
-                       "agent-boundary.py가 get_active_agent()를 사용하지 않음")
-        # 900초 TTL glob 탐색 제거됨
+        self.assertIn("session_state", boundary_src,
+                       "agent-boundary.py가 session_state를 import하지 않음")
+        self.assertIn("ss.active_agent", boundary_src,
+                       "agent-boundary.py가 ss.active_agent를 호출하지 않음")
+        # 15분 TTL 폴백 제거
+        self.assertNotIn("FALLBACK_FLAG_TTL_SEC", boundary_src,
+                          "Phase 3: 15분 TTL 폴백이 남아있음 — 제거 필요")
+        # 900초 TTL glob 탐색 제거됨 (legacy)
         self.assertNotIn("900", boundary_src,
                           "agent-boundary.py에 900초 TTL glob 탐색이 아직 남아있음")
 

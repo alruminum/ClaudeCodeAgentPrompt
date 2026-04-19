@@ -68,7 +68,6 @@
   "hooks": {
     "UserPromptSubmit": [
       {
-        "_meta": "harness",
         "hooks": [
           {
             "type": "command",
@@ -78,7 +77,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "hooks": [
           {
             "type": "command",
@@ -90,7 +88,6 @@
     ],
     "SessionStart": [
       {
-        "_meta": "harness",
         "hooks": [
           {
             "type": "command",
@@ -102,7 +99,6 @@
     ],
     "Stop": [
       {
-        "_meta": "harness",
         "hooks": [
           {
             "type": "command",
@@ -111,7 +107,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "hooks": [
           {
             "type": "command",
@@ -123,7 +118,6 @@
     ],
     "PostToolUse": [
       {
-        "_meta": "harness",
         "matcher": "Edit",
         "hooks": [
           {
@@ -134,7 +128,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "Agent",
         "hooks": [
           {
@@ -145,7 +138,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "Bash",
         "hooks": [
           {
@@ -163,7 +155,6 @@
     ],
     "PreToolUse": [
       {
-        "_meta": "harness",
         "matcher": "Edit",
         "hooks": [
           {
@@ -179,7 +170,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "Write",
         "hooks": [
           {
@@ -195,7 +185,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "Read",
         "hooks": [
           {
@@ -206,7 +195,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "Bash",
         "hooks": [
           {
@@ -222,7 +210,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "Agent",
         "hooks": [
           {
@@ -233,7 +220,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "mcp__github__create_issue",
         "hooks": [
           {
@@ -244,7 +230,6 @@
         ]
       },
       {
-        "_meta": "harness",
         "matcher": "mcp__github__update_issue",
         "hooks": [
           {
@@ -270,5 +255,6 @@
     }
   },
   "effortLevel": "high",
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "skipAutoPermissionPrompt": true
 }

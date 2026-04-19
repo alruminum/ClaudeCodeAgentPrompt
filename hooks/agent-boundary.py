@@ -15,54 +15,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import json
 import re
 import time
-from harness_common import get_prefix, get_state_dir, get_flags_dir, get_active_agent, deny, CUSTOM_AGENTS
-
-# Agent 툴 경로 폴백 플래그 TTL (crash/Ctrl+C 잔재 무효화)
-FALLBACK_FLAG_TTL_SEC = 15 * 60
+from harness_common import get_prefix, get_state_dir, deny, CUSTOM_AGENTS
+import session_state as ss
 
 
-def _resolve_active_agent(prefix):
-    """env var 1순위, 플래그 파일 폴백. 15분 TTL로 stale 제외.
-    CUSTOM_AGENTS 화이트리스트로 필터 — Claude Code 내장 서브에이전트(Explore/Plan 등)는
-    우리 권한 제어 대상이 아니므로 이름을 반환하지 않는다. 메인 Claude와 동일 경로로 통과.
+def _resolve_active_agent(stdin_data):
+    """Phase 3: live.json 단일 소스로 활성 에이전트 판정.
+    훅 stdin의 session_id → live.json.agent 경로.
+    env var 폴백 / 15분 TTL / 화이트리스트 필터 모두 제거 — live.json이 SSOT.
 
-    이 필터가 없으면 ALLOW_MATRIX.get(unknown, [])가 []를 돌려주어
-    "ReadOnly 에이전트"로 오인, 내장 서브에이전트 활성 중에는 모든 Write가 차단됨.
+    live.json은 agent-gate.py(PreToolUse Agent)가 기록, post-agent-flags.py(PostToolUse)가 해제.
+    CC 내장 서브에이전트(Explore/Plan 등)는 agent-gate가 애초에 기록하지 않으므로 별도 필터 불필요.
     """
-    a = get_active_agent()
-    if a:
-        return a if a in CUSTOM_AGENTS else None
-    flags_dir = get_flags_dir()
-    if not os.path.isdir(flags_dir):
-        return None
-    prefix_ = f"{prefix}_"
-    suffix = "_active"
-    now = time.time()
-    candidates = []
-    try:
-        entries = os.listdir(flags_dir)
-    except OSError:
-        return None
-    for fname in entries:
-        if not (fname.startswith(prefix_) and fname.endswith(suffix)):
-            continue
-        full = os.path.join(flags_dir, fname)
-        try:
-            mtime = os.path.getmtime(full)
-        except OSError:
-            continue
-        if (now - mtime) > FALLBACK_FLAG_TTL_SEC:
-            continue
-        name = fname[len(prefix_):-len(suffix)]
-        # 커스텀 에이전트만 판별 대상 — harness_active 등 비에이전트 플래그,
-        # 그리고 과거 잔재로 남은 CC 내장 에이전트 플래그를 함께 배제.
-        if name not in CUSTOM_AGENTS:
-            continue
-        candidates.append((mtime, name))
-    if not candidates:
-        return None
-    candidates.sort(reverse=True)
-    return candidates[0][1]
+    return ss.active_agent(stdin_data=stdin_data)
 
 # 하네스 인프라 파일 패턴 — 모든 에이전트에서 Read/Write/Edit 차단
 HARNESS_INFRA_PATTERNS = [
@@ -139,13 +104,15 @@ def main():
 
     prefix = get_prefix()
 
-    # 진단 로그: env var 기반 에이전트 판별 기록
+    # 진단 로그: Phase 3 세션 판정 경로 기록 (env / stdin / pointer)
     try:
         import datetime
         _dbg = {
             "ts": datetime.datetime.now().isoformat(),
             "prefix": prefix,
             "HARNESS_AGENT_NAME": os.environ.get("HARNESS_AGENT_NAME", ""),
+            "HARNESS_SESSION_ID": os.environ.get("HARNESS_SESSION_ID", ""),
+            "stdin_sid": ss.session_id_from_stdin(d),
             "HARNESS_PREFIX": os.environ.get("HARNESS_PREFIX", ""),
             "HARNESS_INTERNAL": os.environ.get("HARNESS_INTERNAL", ""),
             "tool": tool_name,
@@ -156,8 +123,8 @@ def main():
     except Exception:
         pass
 
-    # 활성 에이전트 판별 — env var 1순위 + 플래그 파일 폴백 (Agent 툴 경로 대응)
-    active_agent = _resolve_active_agent(prefix)
+    # Phase 3: 활성 에이전트 판별 — live.json 단일 소스
+    active_agent = _resolve_active_agent(d)
 
     # 에이전트 활성화 안 됨 → 메인 Claude 직접 수정 제한 (file-ownership 통합)
     if active_agent is None:
