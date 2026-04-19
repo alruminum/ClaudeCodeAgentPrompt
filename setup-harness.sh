@@ -242,6 +242,59 @@ else
   echo "⚠️  전역 settings.json 없음 — harness-review-inject.py 훅 수동 등록 필요"
 fi
 
+# ── session-agent-cleanup 훅 등록 (UserPromptSubmit 체인 맨 앞) ────────────
+# agent-gate.py(PreToolUse Agent)가 live.json.agent를 기록한 뒤 유저가 tool use를 reject하면
+# PostToolUse(post-agent-flags.py)가 돌지 않아 agent 필드가 고아로 남는 버그 방어.
+# 새 유저 프롬프트가 들어오는 시점엔 이전 Agent tool은 종료 상태이므로 agent 필드를 무조건 해제.
+CLEANUP_HOOK_MARKER="session-agent-cleanup.py"
+
+if [ -f "$GLOBAL_SETTINGS" ]; then
+  if grep -qF "$CLEANUP_HOOK_MARKER" "$GLOBAL_SETTINGS" 2>/dev/null; then
+    echo "ℹ️  session-agent-cleanup.py 훅 이미 등록됨 — 스킵"
+  else
+    python3 << 'CLEANUP_PYEOF'
+import json, sys, os
+
+settings_path = os.path.expanduser("~/.claude/settings.json")
+hook_cmd = "python3 ~/.claude/hooks/session-agent-cleanup.py 2>/dev/null || true"
+
+try:
+    with open(settings_path) as f:
+        cfg = json.load(f)
+except Exception as e:
+    print(f"❌ 전역 settings.json 읽기 실패: {e}", flush=True)
+    sys.exit(0)
+
+ups = cfg.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
+
+already = any(
+    any(h.get("command", "") == hook_cmd for h in block.get("hooks", []))
+    for block in ups
+)
+if already:
+    print("ℹ️  session-agent-cleanup.py 이미 등록됨", flush=True)
+    sys.exit(0)
+
+# 체인 맨 앞에 삽입 — router보다 먼저 돌아야 stale agent 제거 후 router가 올바른 context로 동작
+ups.insert(0, {
+    "_meta": "harness",
+    "hooks": [
+        {
+            "type": "command",
+            "command": hook_cmd,
+            "timeout": 5
+        }
+    ]
+})
+
+with open(settings_path, "w") as f:
+    json.dump(cfg, f, indent=2, ensure_ascii=False)
+
+print("✅ 전역 settings.json에 session-agent-cleanup.py 훅 등록 완료 (UserPromptSubmit 체인 맨 앞)", flush=True)
+CLEANUP_PYEOF
+  fi
+fi
+
 # ── rule-audit pre-commit hook 설치 ────────────────────────────────────
 # harness 관련 파일 변경 시 rule-audit.bats를 자동 실행
 # 이미 pre-commit hook이 있으면 append (덮어쓰기 금지)

@@ -71,6 +71,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/session-agent-cleanup.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "python3 ~/.claude/hooks/harness-router.py auto 2>>/tmp/harness-hook-stderr.log; exit 0",
             "timeout": 30
           }
