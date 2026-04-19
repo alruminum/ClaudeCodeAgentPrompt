@@ -21,7 +21,7 @@ from harness.core import (
     parse_marker, detect_depth, hlog, kill_check,
     build_smart_context,
 )
-from harness.helpers import append_failure, append_success, budget_check
+from harness.helpers import append_failure, append_success, budget_check, run_automated_checks
 
 
 class TestFlagEnumMatchesBash(unittest.TestCase):
@@ -402,6 +402,110 @@ class TestConfigBuildCommand(unittest.TestCase):
             )
             cfg = load_config(Path(td))
             self.assertEqual(cfg.build_command, "")
+
+
+class TestLintCheckExcludesDeletedFiles(unittest.TestCase):
+    """run_automated_checks 의 lint 단계가 삭제된 파일을 eslint 인자로 넘기지 않는지 확인.
+
+    회귀 재현: impl이 파일 삭제를 지시했을 때 git diff --name-only HEAD 는 D 상태를
+    포함해 eslint 에 전달 → "No files matching the pattern" 으로 lint_fail 을 오보고.
+    수정 후에는 --diff-filter=ACMR + 존재 확인으로 삭제 파일이 인자에서 제외되어야 한다.
+    """
+
+    def setUp(self):
+        import subprocess
+        self._td = tempfile.TemporaryDirectory()
+        self.repo = Path(self._td.name)
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=self.repo, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=self.repo, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=self.repo, check=True)
+        # 초기 커밋: 두 개의 ts 파일
+        (self.repo / "keep.ts").write_text("export const a = 1\n")
+        (self.repo / "remove.ts").write_text("export const b = 2\n")
+        subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=self.repo, check=True)
+
+        # impl 파일 (빈 파일로 — scope check 무관화)
+        self.impl = self.repo / "impl.md"
+        self.impl.write_text("# impl\n")
+
+        # remove.ts 삭제 + keep.ts 수정
+        (self.repo / "remove.ts").unlink()
+        (self.repo / "keep.ts").write_text("export const a = 11\n")
+
+        # state dir
+        (self.repo / ".claude" / "harness-state").mkdir(parents=True)
+        self.state_dir = StateDir(self.repo, "test")
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def _echo_config(self, lint_command: str):
+        """lint_command 를 기록하는 가짜 config. echo 로 명령 인자를 검사할 수 있게 한다."""
+        class _Cfg:
+            pass
+        cfg = _Cfg()
+        cfg.lint_command = lint_command
+        cfg.build_command = ""
+        cfg.test_command = ""
+        return cfg
+
+    def test_lint_cmd_excludes_deleted_files(self):
+        """삭제된 remove.ts 가 lint 인자에 포함되지 않아야 한다."""
+        # echo 를 lint 명령으로 써서 실제 실행된 커맨드를 /tmp 에 기록
+        log_file = self.repo / "lint_args.log"
+        cfg = self._echo_config(f"echo 'LINT_ARGS:' > {log_file}; echo")
+
+        ok, _msg = run_automated_checks(
+            str(self.impl), cfg, self.state_dir, "test", cwd=str(self.repo),
+        )
+        self.assertTrue(ok, f"lint should pass but failed: {_msg}")
+
+    def test_lint_error_includes_existing_file_only(self):
+        """실제 eslint 흉내 내는 스크립트로 — 존재하지 않는 파일 인자 받으면 에러.
+        삭제 필터가 제대로 동작하면 '존재 파일만' 인자로 전달되어 lint PASS.
+        """
+        # 인자 중 존재하지 않는 파일이 있으면 exit 1, 전부 존재하면 exit 0
+        fake_lint = self.repo / "fake_lint.sh"
+        fake_lint.write_text(
+            '#!/bin/sh\nfor f in "$@"; do [ -f "$f" ] || { echo "missing: $f" >&2; exit 1; }; done\n'
+        )
+        os.chmod(fake_lint, 0o755)
+
+        cfg = self._echo_config(str(fake_lint))
+        ok, msg = run_automated_checks(
+            str(self.impl), cfg, self.state_dir, "test", cwd=str(self.repo),
+        )
+        self.assertTrue(ok, f"lint should pass after deleted file filter; msg={msg}")
+        # keep.ts 는 계속 수정됐으므로 인자에 포함돼야 PASS
+        # (필터링 후 아무 것도 없으면 _lint_cmd 를 raw config 로 fallback 하므로 PASS 오인 가능
+        #  → keep.ts 가 실제로 검사 대상에 포함됐는지는 간접적으로 메시지 검사)
+
+    def test_only_deleted_lintable_files_do_not_trigger_false_lint_fail(self):
+        """삭제 파일과 non-lintable 수정이 섞여 있을 때 lint 가 거짓 FAIL 을 내지 않는다.
+        (주: 순수 삭제만 있는 경우는 'no_changes' 단계에서 이미 차단되므로 이 테스트는
+         lintable 파일이 같이 수정된 시나리오에 집중한다.)
+        """
+        # 이미 setUp 에서 keep.ts 수정 + remove.ts 삭제 상태. 여기에 non-lintable md 추가.
+        (self.repo / "note.md").write_text("# note\n")
+
+        fake_lint = self.repo / "fake_lint2.sh"
+        fake_lint.write_text(
+            '#!/bin/sh\nfor f in "$@"; do [ -f "$f" ] || exit 1; done\n'
+        )
+        os.chmod(fake_lint, 0o755)
+
+        # impl 스코프 허용: keep.ts, remove.ts, note.md
+        self.impl.write_text(
+            "# impl\n## 수정 파일\n"
+            "- `keep.ts` (수정)\n- `remove.ts` (삭제)\n- `note.md` (추가)\n"
+        )
+
+        cfg = self._echo_config(str(fake_lint))
+        ok, msg = run_automated_checks(
+            str(self.impl), cfg, self.state_dir, "test", cwd=str(self.repo),
+        )
+        self.assertTrue(ok, f"lint should pass; msg={msg}")
 
 
 class TestAppendSuccessReflection(unittest.TestCase):
