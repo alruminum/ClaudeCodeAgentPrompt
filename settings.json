@@ -110,6 +110,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/ralph-session-stop.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "python3 ~/.claude/hooks/harness-review-stop.py 2>/dev/null || true",
             "timeout": 5
           }
@@ -159,6 +168,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/plugin-write-guard.py",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "python3 ~/.claude/hooks/orch-rules-first.py 2>/dev/null || true",
             "timeout": 5
           },
@@ -172,6 +186,11 @@
       {
         "matcher": "Write",
         "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/plugin-write-guard.py",
+            "timeout": 5
+          },
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/orch-rules-first.py 2>/dev/null || true",
@@ -243,8 +262,8 @@
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true,
-    "knowledge-skills@apps-in-toss-skills": true,
-    "ralph-loop@claude-plugins-official": true
+    "ralph-loop@claude-plugins-official": true,
+    "knowledge-skills@apps-in-toss-skills": true
   },
   "extraKnownMarketplaces": {
     "apps-in-toss-skills": {

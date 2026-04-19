@@ -143,6 +143,7 @@ def main():
         ctx = "[HARNESS] 세션 시작\n" + "\n".join(ctx_lines)
         print(json.dumps({
             "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
                 "additionalContext": ctx
             }
         }))
