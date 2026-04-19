@@ -120,19 +120,27 @@ TTL · 재강화 횟수는 OMC 값 참고 (light: 5분/3회, medium: 15분/5회,
 
 Phase 3 이후 Ralph 세션 격리 WIP에서 의도적으로 미뤄둔 항목. Phase 4.A에서 `live.json.skill` 기록이 추가되면 아래도 자연스럽게 해결되거나 해결 경로가 열린다.
 
-### T1. 오피셜 ralph-loop stop-hook의 최초 claim 가로채기 (인지된 한계)
-**증상**: 세션 A가 ralph-loop를 시작했지만 첫 Stop 훅이 돌기 전에(state의 `transcript_path` 비어 있음) 세션 B에서 Stop이 먼저 발동하면, 오피셜 `plugins/cache/.../ralph-loop/1.0.0/hooks/stop-hook.sh`가 세션 B의 transcript에 `"Ralph loop activated"` 문자열이 있기만 하면 claim을 탈취한다.
+### T1. 오피셜 ralph-loop stop-hook claim 가로채기 — **해결**
+**원래 증상**: 세션 A가 ralph-loop를 시작했지만 첫 Stop 훅이 돌기 전에 세션 B에서 Stop이 먼저 발동하면, 오피셜 `plugins/cache/.../ralph-loop/1.0.0/hooks/stop-hook.sh`가 세션 B로 claim을 넘긴다.
 
-**현재 완화책** (`~/.claude/hooks/ralph-session-stop.py`):
-- state 파일에 우리 필드 `cc_session_id:` 를 기록하고, 다른 세션에서 발견하면 stderr 경고만 출력.
-- **claim 자체는 막지 못함** — 오피셜 훅이 전역 shell script라 선행 훅이 그 로직을 대체할 수 없다.
+**Root cause** (오피셜 훅 분석 끝 발견):
+- 오피셜 훅(`stop-hook.sh:31-35`)에 이미 격리 로직이 있다 — state.frontmatter의 `session_id:` 필드와 hook stdin의 session_id를 비교해 다르면 `exit 0`.
+- 하지만 `setup-ralph-loop.sh:144`가 `session_id: ${CLAUDE_CODE_SESSION_ID:-}`로 박는데, CC가 이 env를 자식 프로세스에 자동 export하지 않아 빈 값으로 시작.
+- `STATE_SESSION`이 비면 fall-through → 첫 fire 세션 claim.
 
-**Phase 4에서 시도할 옵션**:
-- (a) `live.json.skill == "ralph-loop"` 이면 PreToolUse(Skill)에서 state 파일 경로를 **세션 스코프**(`.sessions/{sid}/ralph/state.md`)로 symlink/rename해 오피셜 훅이 해당 세션 것만 보게 함. 세션 종료 시 cleanup.
-- (b) 오피셜 훅을 `disabledHooks` 같은 CC 메커니즘으로 비활성화하고 우리 wrapper 훅이 claim/loop 전체 대행. 플러그인 디렉토리 수정 금지 원칙과 일관되려면 `settings.json` 레벨에서만 조작.
-- (c) 더 나은 옵션이 있는지 OMC 구현을 재조사 (레퍼런스 우선 원칙).
+**해결 (Phase 4.B 추가 구현, ralph-session-stop.py 강화)**:
+- 시작자 식별 신뢰 소스 = `live.json.skill.name == "ralph-loop:ralph-loop"`. PreToolUse(Skill)이 이미 기록.
+- ralph-session-stop이 state.session_id 빈 값을 만나면:
+  - 내가 시작자면 → 내 SID 박음. 오피셜 정상 진행.
+  - 비시작자면 → `__pending_<short>__` placeholder 박음. 오피셜이 `STATE != HOOK` → exit 0 (claim 차단).
+- placeholder를 만나면:
+  - 내가 시작자면 → 내 SID로 교체.
+  - 비시작자면 → 그대로 둠.
+- 진짜 다른 SID 점유 → cross-session JSONL 박제, state 변경 안 함 (오피셜이 알아서 격리).
 
-**의사결정 포인트**: Phase 4.A (Skill 상태 기록) 완성 후 (a)가 저비용 해결인지 재평가.
+**검증**: `hooks/tests/test_ralph_isolation.py` — T1 race 시나리오 박제 + Case A/B/C 전수 (8 tests).
+
+**원칙 준수**: 오피셜 훅 파일 자체는 0줄 수정. `~/.claude/hooks/ralph-session-stop.py`만 강화 (선행 Stop 훅).
 
 ### T2. plugin-write-guard와 ralph state 파일
 `~/.claude/plugins/` 차단은 이미 작동하지만, 오피셜 훅을 그대로 두는 한 state 파일 경로(`.claude/ralph-loop.local.md`)는 프로젝트 루트 공유다. Phase 4에서 세션 스코프 이전을 시도하면 가드 우회 경로(env flag 또는 symlink 생성)의 설계 지점이 생긴다.
