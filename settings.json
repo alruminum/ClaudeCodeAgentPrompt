@@ -110,6 +110,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/skill-stop-protect.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "python3 ~/.claude/hooks/ralph-session-stop.py 2>/dev/null || true",
             "timeout": 5
           }
@@ -142,6 +151,16 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/post-agent-flags.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/post-skill-flags.py 2>/dev/null || true",
             "timeout": 5
           }
         ]
@@ -254,6 +273,16 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/issue-gate.py 2>/dev/null || true",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/skill-gate.py 2>/dev/null || true",
             "timeout": 5
           }
         ]

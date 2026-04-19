@@ -505,12 +505,26 @@ def set_global_signal(project_root: Optional[Path] = None, **fields: Any) -> Non
 # 10. Stale cleanup — SessionStart 훅이 호출
 # ═══════════════════════════════════════════════════════════════════════
 
+_PID_SLOT_RE = re.compile(r"^_pid-(\d+)-\d+$")
+
+
 def cleanup_stale_sessions(
     project_root: Optional[Path] = None,
     ttl_sec: int = DEFAULT_SESSION_TTL_SEC,
     keep: Optional[str] = None,
 ) -> int:
-    """오래된 세션 디렉토리 제거. keep=현재 세션은 보호. 반환: 삭제된 세션 수."""
+    """오래된 세션 디렉토리 제거.
+
+    스코프 (Phase 4 T4 명시):
+    - 정규 session_id 디렉토리: live.json 또는 디렉토리 mtime이 ttl_sec 초과 시 제거.
+    - `_pid-<pid>-<ts>` 폴백 슬롯 (commands/ralph.md가 session_id 미가용 시 생성):
+      * holder PID가 살아있으면 보존(작업 중일 가능성).
+      * 죽었거나 mtime이 ttl_sec 초과면 제거.
+    - `_global` 폴백은 항상 보존(여러 일회성 작업이 공유 가능).
+    - keep=현재 세션은 절대 제거하지 않음.
+
+    반환: 삭제된 세션 수.
+    """
     root = state_root(project_root)
     sessions_dir = root / ".sessions"
     if not sessions_dir.is_dir():
@@ -525,14 +539,30 @@ def cleanup_stale_sessions(
         if keep and s.name == keep:
             continue
         try:
-            # live.json 우선, 없으면 디렉토리 mtime
             live = s / "live.json"
             mtime = live.stat().st_mtime if live.exists() else s.stat().st_mtime
-            if (now - mtime) > ttl_sec:
-                shutil.rmtree(s, ignore_errors=True)
-                removed += 1
         except OSError:
             continue
+
+        # `_pid-<pid>-<ts>` 폴백 슬롯: PID 활성 검사 우선
+        m = _PID_SLOT_RE.match(s.name)
+        if m:
+            try:
+                pid = int(m.group(1))
+            except ValueError:
+                pid = 0
+            if pid and _pid_alive(pid):
+                # 작업 중 — 보존. mtime 갱신은 호출자(ralph 등)의 기록이 알아서 함.
+                continue
+            # 죽은 PID — TTL과 무관하게 즉시 제거 (재현 불가)
+            shutil.rmtree(s, ignore_errors=True)
+            removed += 1
+            continue
+
+        # 정규 session_id: TTL 기반 제거
+        if (now - mtime) > ttl_sec:
+            shutil.rmtree(s, ignore_errors=True)
+            removed += 1
     return removed
 
 
@@ -665,7 +695,111 @@ def ralph_state_path(session_id: str, project_root: Optional[Path] = None) -> Pa
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 14. 디버그/진단
+# 14. 활성 스킬 (Phase 4 — 스킬 컨텍스트 보호)
+# ═══════════════════════════════════════════════════════════════════════
+#
+# 메인 Claude가 /ux, /qa, /product-plan, /ralph 같은 스킬을 실행 중일 때
+# 다른 훅(agent-boundary, harness-router, orch-rules-first)이 "지금 어떤
+# 스킬이 돌고 있는지" 알 수 있어야 정당한 Bash/Edit를 오인 차단하지 않는다.
+#
+# OMC `skill-active-state.json`의 분리 파일 모델 대신 `live.json.skill` 단일
+# 필드로 통합한다. 이유:
+# - live.json은 이미 세션 단일 소스 — 별도 파일은 청소 책임자 분산을 야기
+# - OMC `cancel-skill-active-state-gap.md`가 정확히 그 결함을 박제
+# - "쓰는 자가 지운다" 원칙: PreToolUse(Skill)이 쓰고 PostToolUse(Skill)이 지움.
+#
+# heavy 스킬(ralph 등)은 PostToolUse가 청소하지 않는다 — Stop 훅 보호가
+# lifecycle을 관리한다(skill-stop-protect.py).
+
+def set_active_skill(
+    session_id: str,
+    name: str,
+    level: str,
+    project_root: Optional[Path] = None,
+    started_at: Optional[int] = None,
+) -> None:
+    """live.json.skill 기록.
+    skill = {name, level, started_at, reinforcements}.
+    """
+    if not (valid_session_id(session_id) and name):
+        return
+    update_live(session_id, project_root, skill={
+        "name": name,
+        "level": level or "light",
+        "started_at": started_at if started_at is not None else int(time.time()),
+        "reinforcements": 0,
+    })
+
+
+def get_active_skill(
+    session_id: str,
+    project_root: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """live.json.skill 읽기. 없거나 형식 오류면 None."""
+    if not valid_session_id(session_id):
+        return None
+    live = get_live(session_id, project_root)
+    skill = live.get("skill")
+    if isinstance(skill, dict) and skill.get("name"):
+        return skill
+    return None
+
+
+def clear_active_skill(
+    session_id: str,
+    expect_name: Optional[str] = None,
+    project_root: Optional[Path] = None,
+) -> bool:
+    """live.json.skill 삭제. expect_name 지정 시 이름 일치할 때만 삭제(중첩 안전).
+    반환: 실제로 삭제됐는지."""
+    if not valid_session_id(session_id):
+        return False
+    live = get_live(session_id, project_root)
+    skill = live.get("skill")
+    if not isinstance(skill, dict):
+        return False
+    if expect_name and skill.get("name") != expect_name:
+        return False
+    update_live(session_id, project_root, skill=None)
+    return True
+
+
+def bump_skill_reinforcement(
+    session_id: str,
+    project_root: Optional[Path] = None,
+) -> int:
+    """reinforcements 카운트 +1 후 반환. 활성 스킬 없으면 -1."""
+    if not valid_session_id(session_id):
+        return -1
+    live = get_live(session_id, project_root)
+    skill = live.get("skill")
+    if not isinstance(skill, dict) or not skill.get("name"):
+        return -1
+    skill = dict(skill)
+    skill["reinforcements"] = int(skill.get("reinforcements", 0)) + 1
+    update_live(session_id, project_root, skill=skill)
+    return skill["reinforcements"]
+
+
+def active_skill(
+    stdin_data: Optional[Dict[str, Any]] = None,
+    project_root: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
+    """현재 세션의 활성 스킬 dict 또는 None.
+    훅이 active_agent와 대칭으로 사용한다.
+    """
+    sid = ""
+    if stdin_data is not None:
+        sid = session_id_from_stdin(stdin_data)
+    if not sid:
+        sid = current_session_id(project_root)
+    if not sid:
+        return None
+    return get_active_skill(sid, project_root)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 15. 디버그/진단
 # ═══════════════════════════════════════════════════════════════════════
 
 def diagnostic_snapshot(project_root: Optional[Path] = None) -> Dict[str, Any]:

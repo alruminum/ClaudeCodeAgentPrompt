@@ -171,6 +171,19 @@ def _main_inner():
             sys.exit(0)
     except ImportError:
         pass
+
+    # Phase 4: 활성 스킬이 있으면 라우팅 힌트 억제 (스킬이 자체 라우팅 담당).
+    # 예: /ux 스킬이 진행 중인데 라우터가 또 "/ux 스킬을 사용하세요" 안내를 주입하면
+    # 컨텍스트 낭비 + 모순.
+    try:
+        if "_ss" not in dir():
+            import session_state as _ss  # type: ignore
+        active_sk = _ss.active_skill(d)
+        if active_sk:
+            log(prefix, f"PASS(active_skill={active_sk.get('name')})")
+            sys.exit(0)
+    except Exception:
+        pass
     if os.path.exists(f"{get_flags_dir()}/{prefix}_{FLAGS.HARNESS_KILL}"):
         log(prefix, "KILL_SWITCH(legacy) — pass-through")
         sys.exit(0)

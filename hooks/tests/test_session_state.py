@@ -487,5 +487,120 @@ class RegressionScenarioTests(unittest.TestCase):
         )
 
 
+class SkillStateTests(unittest.TestCase):
+    """Phase 4: live.json.skill 상태 API 단위 테스트."""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.root = _touch_claude(Path(self._td.name))
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def test_set_and_get_active_skill(self):
+        ss.set_active_skill("sA", "ux", "medium", project_root=self.root)
+        sk = ss.get_active_skill("sA", project_root=self.root)
+        self.assertIsNotNone(sk)
+        self.assertEqual(sk["name"], "ux")
+        self.assertEqual(sk["level"], "medium")
+        self.assertEqual(sk["reinforcements"], 0)
+        self.assertIsInstance(sk["started_at"], int)
+
+    def test_clear_active_skill_guarded_by_name(self):
+        ss.set_active_skill("sA", "ux", "medium", project_root=self.root)
+        # 다른 이름으로 청소 시도 → 거부
+        self.assertFalse(
+            ss.clear_active_skill("sA", expect_name="qa", project_root=self.root)
+        )
+        self.assertIsNotNone(ss.get_active_skill("sA", project_root=self.root))
+        # 같은 이름 → 청소
+        self.assertTrue(
+            ss.clear_active_skill("sA", expect_name="ux", project_root=self.root)
+        )
+        self.assertIsNone(ss.get_active_skill("sA", project_root=self.root))
+
+    def test_clear_active_skill_no_name_clears_anyway(self):
+        ss.set_active_skill("sA", "ux", "medium", project_root=self.root)
+        self.assertTrue(ss.clear_active_skill("sA", project_root=self.root))
+        self.assertIsNone(ss.get_active_skill("sA", project_root=self.root))
+
+    def test_bump_reinforcement_increments(self):
+        ss.set_active_skill("sA", "ralph", "heavy", project_root=self.root)
+        self.assertEqual(ss.bump_skill_reinforcement("sA", project_root=self.root), 1)
+        self.assertEqual(ss.bump_skill_reinforcement("sA", project_root=self.root), 2)
+        sk = ss.get_active_skill("sA", project_root=self.root)
+        self.assertEqual(sk["reinforcements"], 2)
+
+    def test_bump_no_active_skill_returns_neg(self):
+        self.assertEqual(ss.bump_skill_reinforcement("sA", project_root=self.root), -1)
+
+    def test_active_skill_helper_with_stdin(self):
+        ss.set_active_skill("sA", "qa", "medium", project_root=self.root)
+        sk = ss.active_skill({"session_id": "sA"}, project_root=self.root)
+        self.assertIsNotNone(sk)
+        self.assertEqual(sk["name"], "qa")
+
+    def test_active_skill_isolated_per_session(self):
+        ss.set_active_skill("sA", "ux", "medium", project_root=self.root)
+        ss.set_active_skill("sB", "qa", "medium", project_root=self.root)
+        a = ss.active_skill({"session_id": "sA"}, project_root=self.root)
+        b = ss.active_skill({"session_id": "sB"}, project_root=self.root)
+        self.assertEqual(a["name"], "ux")
+        self.assertEqual(b["name"], "qa")
+
+    def test_invalid_session_id_noop(self):
+        ss.set_active_skill("../evil", "ux", "medium", project_root=self.root)
+        self.assertIsNone(ss.get_active_skill("../evil", project_root=self.root))
+
+
+class PidSlotCleanupTests(unittest.TestCase):
+    """Phase 4 T4: `_pid-<pid>-<ts>` 폴백 슬롯 청소 정책."""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.root = _touch_claude(Path(self._td.name))
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def test_pid_slot_with_alive_pid_preserved(self):
+        sessions = ss.state_root(self.root) / ".sessions"
+        slot = sessions / f"_pid-{os.getpid()}-1000000"
+        slot.mkdir(parents=True)
+        (slot / "live.json").write_text("{}")
+        # 매우 오래된 mtime — 정규 슬롯이면 삭제됐을 것
+        os.utime(slot / "live.json", (0, 0))
+        removed = ss.cleanup_stale_sessions(self.root)
+        self.assertTrue(slot.exists(), "활성 PID 슬롯은 mtime과 무관하게 보존")
+        self.assertEqual(removed, 0)
+
+    def test_pid_slot_with_dead_pid_removed(self):
+        sessions = ss.state_root(self.root) / ".sessions"
+        slot = sessions / "_pid-999999-1000000"  # 존재하지 않는 PID
+        slot.mkdir(parents=True)
+        (slot / "live.json").write_text("{}")
+        removed = ss.cleanup_stale_sessions(self.root)
+        self.assertFalse(slot.exists(), "죽은 PID 슬롯은 즉시 제거")
+        self.assertEqual(removed, 1)
+
+    def test_global_slot_preserved(self):
+        sessions = ss.state_root(self.root) / ".sessions"
+        slot = sessions / "_global"
+        slot.mkdir(parents=True)
+        (slot / "live.json").write_text("{}")
+        os.utime(slot / "live.json", (0, 0))
+        ss.cleanup_stale_sessions(self.root)
+        self.assertTrue(slot.exists(), "_global은 항상 보존")
+
+    def test_keep_session_preserved(self):
+        sessions = ss.state_root(self.root) / ".sessions"
+        slot = sessions / "sNow"
+        slot.mkdir(parents=True)
+        (slot / "live.json").write_text("{}")
+        os.utime(slot / "live.json", (0, 0))
+        ss.cleanup_stale_sessions(self.root, keep="sNow")
+        self.assertTrue(slot.exists(), "keep 세션은 보존")
+
+
 if __name__ == "__main__":
     unittest.main()

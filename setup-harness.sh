@@ -12,12 +12,14 @@
 #   PreToolUse(Read)       — agent-boundary.py
 #   PreToolUse(Bash)       — harness-drift-check.py + commit-gate.py
 #   PreToolUse(Agent)      — agent-gate.py
+#   PreToolUse(Skill)      — skill-gate.py                            (Phase 4)
 #   PreToolUse(mcp__github__create_issue) — issue-gate.py
 #   PreToolUse(mcp__github__update_issue) — issue-gate.py
 #   PostToolUse(Edit)      — harness-settings-watcher.py
 #   PostToolUse(Bash)      — post-commit-cleanup.py + harness-review-trigger.py
 #   PostToolUse(Agent)     — post-agent-flags.py
-#   Stop                   — afplay Glass.aiff + ralph-session-stop.py + harness-review-stop.py
+#   PostToolUse(Skill)     — post-skill-flags.py                       (Phase 4)
+#   Stop                   — afplay Glass.aiff + skill-stop-protect.py + ralph-session-stop.py + harness-review-stop.py
 #
 # prefix 결정: 각 훅이 harness_common.get_prefix()로 harness.config.json → dirname → "proj" 폴백
 #

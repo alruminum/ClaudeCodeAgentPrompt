@@ -14,13 +14,29 @@ argument-hint: ""
 ```bash
 PREFIX=$(jq -r '.prefix // "hl"' .claude/harness.config.json 2>/dev/null || echo "hl")
 EVENTS=".claude/harness-state/.${PREFIX}_events"
-if [[ ! -f "$EVENTS" ]]; then echo "하네스 미실행"; exit 0; fi
-echo "📡 이벤트 로그 스냅샷:"
-echo "────────────────────────────────────────"
-cat "$EVENTS"
-echo "────────────────────────────────────────"
+SKILL_LOG=".claude/harness-state/.logs/skill-protect.jsonl"
+RALPH_LOG=".claude/harness-state/.logs/ralph-cross-session.jsonl"
+if [[ ! -f "$EVENTS" ]]; then echo "하네스 미실행"; else
+  echo "📡 이벤트 로그 스냅샷:"
+  echo "────────────────────────────────────────"
+  cat "$EVENTS"
+  echo "────────────────────────────────────────"
+fi
+if [[ -f "$SKILL_LOG" ]]; then
+  echo ""
+  echo "🛡 스킬 보호 (Phase 4) — 최근 20줄:"
+  tail -20 "$SKILL_LOG"
+fi
+if [[ -f "$RALPH_LOG" ]]; then
+  echo ""
+  echo "⚠️  ralph 세션 교차오염 시도 — 최근 10줄:"
+  tail -10 "$RALPH_LOG"
+fi
 echo ""
-echo "실시간 스트리밍: ! tail -f $EVENTS"
+echo "실시간 스트리밍:"
+echo "  ! tail -f $EVENTS"
+echo "  ! tail -f $SKILL_LOG       # Phase 4 스킬 보호"
+echo "  ! tail -f $RALPH_LOG       # ralph 교차오염 진단"
 ```
 
 ## 절대 규칙

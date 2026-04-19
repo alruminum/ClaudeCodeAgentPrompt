@@ -115,6 +115,23 @@ def main() -> int:
             f"필요하면 `rm {state_file}` 로 잔재를 정리하세요.",
             file=sys.stderr,
         )
+        # Phase 4 (T3): 교차오염 시도를 JSONL로 박제 → harness-review가 자동 감지 가능
+        try:
+            log_dir = ss.state_root() / ".logs"
+            log_dir.mkdir(exist_ok=True)
+            log_path = log_dir / "ralph-cross-session.jsonl"
+            import time as _t
+            event = {
+                "ts": int(_t.time()),
+                "event": "cross_session_state_attempt",
+                "current_sid": sid,
+                "recorded_sid": recorded,
+                "state_file": str(state_file),
+            }
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
     return 0
 
 
