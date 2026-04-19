@@ -241,9 +241,14 @@ def run_simple(
                 "추가 수정으로 해결하라 (stash/reset 금지).\n"
             )
             if fail_type == "pr_fail":
+                _pr_log = prev_dir / "pr.log"
+                _pr_hint = ""
+                if _pr_log.exists():
+                    _pr_hint = _pr_log.read_text(encoding="utf-8")[:2000]
                 task = (
                     f"[코드 품질] 시도 {attempt}회.\n"
-                    f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'pr.log'))}\n"
+                    f"이전 pr-reviewer 피드백:\n```\n{_pr_hint}\n```\n"
+                    f"{explore_instruction(str(loop_out_dir))}\n"
                     "MUST FIX 항목만 수정하라. 기능 변경 금지."
                 )
             elif fail_type == "autocheck_fail":
@@ -921,6 +926,12 @@ def _run_std_deep(
                 "[주의] 이전 attempt의 변경이 working tree에 남아있음. "
                 "추가 수정으로 해결하라 (stash/reset 금지).\n"
             )
+            # 이전 pr-reviewer 피드백을 프롬프트에 인라인 주입 (경로만 알려주면
+            # engineer가 Read로 직접 가져와야 하는데 실제 런에서 자주 놓치고 동일
+            # 수정을 복붙하는 버그 관찰 — run_20260419_201311 재현).
+            _pr_log = prev_dir / "pr.log"
+            _pr_hint = _pr_log.read_text(encoding="utf-8")[:2000] if _pr_log.exists() else ""
+
             task_map = {
                 "autocheck_fail": (
                     f"[사전 검사 실패] 시도 {attempt}회.\n"
@@ -940,7 +951,8 @@ def _run_std_deep(
                 ),
                 "pr_fail": (
                     f"[코드 품질] 시도 {attempt}회.\n"
-                    f"{explore_instruction(str(loop_out_dir), str(prev_dir / 'pr.log'))}\n"
+                    f"이전 pr-reviewer 피드백:\n```\n{_pr_hint}\n```\n"
+                    f"{explore_instruction(str(loop_out_dir))}\n"
                     "MUST FIX 항목만 수정하라. 기능 변경 금지."
                 ),
             }
