@@ -362,6 +362,72 @@ class TestMockRunSimple(unittest.TestCase):
             self.assertEqual(result, "HARNESS_DONE")
 
 
+class TestBuildSmartContextResolvesImpl(unittest.TestCase):
+    """build_smart_context가 cwd 변경과 상관없이 impl을 읽는지 확인.
+
+    회귀 재현 (run_20260419_130701 / run_20260419_150018): run_simple에서
+    os.chdir(worktree) 후 상대경로 impl을 읽으려 하면 worktree 안에 파일이
+    없는 경우(예: v05 디렉토리가 아직 base branch에 없음) OSError → ctx=""가 되어
+    engineer에게 impl 본문이 주입되지 않음.
+
+    수정: build_smart_context 내부에서 Path.resolve()로 절대화.
+    """
+
+    def test_absolute_impl_readable_from_foreign_cwd(self):
+        from harness.core import build_smart_context
+
+        with tempfile.TemporaryDirectory() as td_proj, tempfile.TemporaryDirectory() as td_cwd:
+            impl_path = Path(td_proj) / "impl.md"
+            impl_path.write_text(
+                "---\ndepth: simple\n---\n# 본문\n"
+                + ("이 본문이 ctx에 들어가야 한다. " * 50)
+            )
+
+            try:
+                prev_cwd = os.getcwd()
+            except FileNotFoundError:
+                prev_cwd = os.path.expanduser("~")
+            try:
+                os.chdir(td_cwd)
+                # 절대경로 입력: cwd와 무관하게 impl을 읽어야 한다 (worktree chdir 이후 시나리오)
+                ctx = build_smart_context(str(impl_path), 0)
+                self.assertGreater(
+                    len(ctx), 100,
+                    "절대경로 입력은 cwd 무관하게 impl을 읽어야 한다",
+                )
+                self.assertIn("이 본문이 ctx에 들어가야 한다", ctx)
+            finally:
+                os.chdir(prev_cwd)
+
+    def test_relative_impl_resolved_against_current_cwd(self):
+        """caller cwd == 프로젝트 루트일 때 상대경로도 Path.resolve로 절대화되어 읽힘."""
+        from harness.core import build_smart_context
+
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "impl.md").write_text(
+                "---\ndepth: simple\n---\n# 본문\n" + ("채움" * 60)
+            )
+
+            try:
+                prev_cwd = os.getcwd()
+            except FileNotFoundError:
+                prev_cwd = os.path.expanduser("~")
+            try:
+                os.chdir(td)
+                ctx = build_smart_context("impl.md", 0)
+                self.assertGreater(len(ctx), 100)
+            finally:
+                os.chdir(prev_cwd)
+
+    def test_missing_impl_returns_empty(self):
+        """존재하지 않는 impl 경로는 ctx=\"\" 로 안전하게 폴백."""
+        from harness.core import build_smart_context
+
+        with tempfile.TemporaryDirectory() as td:
+            ctx = build_smart_context(str(Path(td) / "nonexistent.md"), 0)
+            self.assertEqual(ctx, "")
+
+
 class TestConfigTestCommand(unittest.TestCase):
     def test_empty_test_command_means_skip(self):
         cfg = HarnessConfig(test_command="")
