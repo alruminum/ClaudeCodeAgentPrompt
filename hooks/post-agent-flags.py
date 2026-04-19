@@ -123,22 +123,18 @@ def main():
         base = os.getcwd()
         warns = []
         mode_ac = bool(re.search(r"Mode [AC]", prompt, re.IGNORECASE))
-        mode_b = bool(re.search(r"Mode B", prompt, re.IGNORECASE))
         mode_c = bool(re.search(r"Mode C", prompt, re.IGNORECASE))
 
         trd = os.path.join(base, "trd.md")
-        tp = os.path.join(base, "docs", "test-plan.md")
         dd = os.path.join(base, "docs", f"{DOC_NAME}.md")
 
         def age(path):
             return int(time.time() - os.path.getmtime(path)) if os.path.exists(path) else None
 
-        trd_age, tp_age, dd_age = age(trd), age(tp), age(dd)
+        trd_age, dd_age = age(trd), age(dd)
 
         if mode_ac and trd_age and trd_age > 120:
             warns.append(f"trd.md 미업데이트({trd_age}초 전)")
-        if mode_b and tp_age and tp_age > 120:
-            warns.append(f"docs/test-plan.md 미업데이트({tp_age}초 전)")
         if mode_c and dd_age and dd_age > 120:
             warns.append(f"docs/{DOC_NAME}.md 미업데이트({dd_age}초 전) — 설계 문서 동기화 필요")
 
