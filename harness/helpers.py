@@ -381,15 +381,24 @@ def run_automated_checks(
 
     # 5. lint check (config.lint_command 있으면 실행 — 변경 파일 스코프 우선)
     if config and getattr(config, "lint_command", "") and config.lint_command:
-        # 변경된 lintable 파일 추출
+        # 변경된 lintable 파일 추출.
+        # --diff-filter=ACMR: Added/Copied/Modified/Renamed 만 포함. Deleted(D) 제외 —
+        # 삭제된 파일 경로를 lint 인자로 넘기면 "No files matching the pattern" 으로
+        # 실패하는 버그가 있었다 (impl이 파일 삭제를 명시적으로 지시한 경우 특히).
         _diff_r = _run(
-            ["git", "diff", "--name-only", "HEAD"],
+            ["git", "diff", "--name-only", "--diff-filter=ACMR", "HEAD"],
             capture_output=True, text=True, timeout=5,
         )
         _lintable_exts = ('.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs')
         _changed_src = [
             f.strip() for f in _diff_r.stdout.splitlines()
             if f.strip() and any(f.strip().endswith(e) for e in _lintable_exts)
+        ]
+        # 이중 안전망: --diff-filter 가 어떤 이유로 실패해도 존재하지 않는 파일은 제외.
+        _cwd_for_check = cwd or os.getcwd()
+        _changed_src = [
+            f for f in _changed_src
+            if os.path.exists(os.path.join(_cwd_for_check, f))
         ]
         if _changed_src:
             # 변경 파일만 lint (pre-existing 에러 회피)
