@@ -15,6 +15,7 @@ import json
 import re
 import time
 from harness_common import get_prefix, get_flags_dir, flag_path, parse_marker_text, FLAGS
+import session_state as ss
 
 PREFIX = get_prefix()
 DOC_NAME = os.environ.get("HARNESS_DOC_NAME", "domain-logic")
@@ -108,11 +109,12 @@ def main():
     if agent == "harness-executor":
         remove(FLAGS.HARNESS_ACTIVE)
 
-    # ── 에이전트 완료 → {agent}_active 삭제 (agent-boundary.py 연동) ──
+    # ── Phase 3: 에이전트 완료 → live.json.agent 해제 (agent-boundary.py 연동) ──
+    # expect_value로 race 방지: 내 agent와 일치할 때만 삭제 (중첩 호출 안전).
     try:
-        _af = os.path.join(get_flags_dir(), f"{PREFIX}_{agent}_active")
-        if os.path.exists(_af):
-            os.remove(_af)
+        sid = ss.session_id_from_stdin(d)
+        if sid:
+            ss.clear_live_field(sid, "agent", expect_value=agent)
     except Exception:
         pass
 

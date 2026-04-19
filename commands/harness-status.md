@@ -5,33 +5,53 @@ argument-hint: ""
 
 # /harness-status
 
-현재 harness 상태를 점검한다.
+현재 harness 상태를 점검한다. (Phase 3: session-isolated 상태 덤프 포함)
 
 ## 실행
 
 아래 명령어를 실행하고 결과를 유저에게 출력한다:
 
 ```bash
-python3 ~/.claude/hooks/harness-router.py mb <<< '{"tool_input":{"prompt":"수정"}}'
+python3 -c "
+import sys, json
+sys.path.insert(0, '$HOME/.claude/hooks')
+import session_state as ss
+snap = ss.diagnostic_snapshot()
+print(json.dumps(snap, indent=2, ensure_ascii=False))
+"
 ```
 
-그리고 추가로:
+추가로 세션/이슈 lock 현황:
 
 ```bash
-ls /tmp/mb_* 2>/dev/null && echo "활성 플래그 있음" || echo "활성 플래그 없음"
+python3 -c "
+import sys, os, json
+from pathlib import Path
+sys.path.insert(0, '$HOME/.claude/hooks')
+import session_state as ss
+root = ss.state_root()
+sessions = sorted(d.name for d in (root/'.sessions').iterdir() if d.is_dir()) if (root/'.sessions').is_dir() else []
+issues = []
+if (root/'.issues').is_dir():
+    for d in (root/'.issues').iterdir():
+        lock = d/'lock'
+        if lock.exists():
+            data = ss.read_json(lock) or {}
+            issues.append({'issue': d.name, 'holder': data.get('session_id','')[:8], 'pid': data.get('pid'), 'mode': data.get('mode')})
+print('sessions:', sessions)
+print('issue_locks:', json.dumps(issues, indent=2))
+print('global:', json.dumps(ss.get_global_signal(), indent=2))
+"
 ```
 
 ## 출력 형식
 
-결과를 아래 형태로 정리해서 보여준다:
-
 ```
 [Harness Status]
-라우터 스크립트: ~/.claude/hooks/harness-router.py ✅/❌
-워크플로우 플래그:
-  OK/NG plan_validation_passed
-  OK/NG test_engineer_passed
-  OK/NG validator_b_passed
-  OK/NG pr_reviewer_lgtm
-  ...
+current_session: <sid>
+active_agent: <agent or none>
+harness_active: <true/false>
+sessions: [sid1, sid2, ...]
+issue_locks: [...]
+global_signal: {...}
 ```

@@ -29,6 +29,7 @@ import re
 import subprocess
 from datetime import datetime
 from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS, HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS, CUSTOM_AGENTS
+import session_state as ss
 
 PREFIX = get_prefix()
 
@@ -47,6 +48,9 @@ def main():
     agent = t.get("subagent_type", "")
     prompt = t.get("prompt", "")
     bg = t.get("run_in_background", False)
+
+    # Phase 3: 훅 stdin에서 session_id 파싱 — live.json 기록에 사용
+    session_id = ss.session_id_from_stdin(d)
 
     if not agent:
         sys.exit(0)
@@ -106,12 +110,12 @@ def main():
     except Exception:
         pass
 
-    # 7. 에이전트 활성 플래그 설정 — 커스텀 에이전트 화이트리스트로만 한정.
-    #    CC 내장 서브에이전트(Explore, Plan 등)는 우리 권한 제어 대상이 아니므로 플래그를 만들지 않는다.
-    #    → PostToolUse 정리 누락 시 잔재 플래그가 agent-boundary.py 폴백을 오도하는 문제 원천 차단.
-    if agent in CUSTOM_AGENTS:
+    # 7. Phase 3: 활성 에이전트를 세션 live.json에 기록.
+    #    CC 내장 서브에이전트(Explore, Plan 등)는 우리 권한 제어 대상이 아니므로 기록하지 않는다.
+    #    → 훅이 활성 에이전트 판정 시 live.json만 읽음 (env var 폴백/TTL/화이트리스트 필터 불필요).
+    if agent in CUSTOM_AGENTS and session_id:
         try:
-            open(f"{get_flags_dir()}/{PREFIX}_{agent}_active", "w").close()
+            ss.update_live(session_id, agent=agent)
         except Exception:
             pass
 

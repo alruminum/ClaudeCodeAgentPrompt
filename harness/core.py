@@ -26,7 +26,9 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════
 
 class StateDir:
-    """flags.sh의 flag_touch/flag_rm/flag_exists + init_state_dir 대체."""
+    """flags.sh의 flag_touch/flag_rm/flag_exists + init_state_dir 대체.
+    Phase 3: HARNESS_SESSION_ID 환경변수가 있으면 세션 스코프 flags_dir 사용.
+    """
 
     def __init__(self, project_root: Path, prefix: str, issue_num: str = "") -> None:
         self.project_root = project_root
@@ -34,11 +36,26 @@ class StateDir:
         self.issue_num = issue_num
         self.path = project_root / ".claude" / "harness-state"
         self.path.mkdir(parents=True, exist_ok=True)
-        if issue_num:
-            self.flags_dir = self.path / ".flags" / f"{prefix}_{issue_num}"
+        # Phase 3: 세션 스코프 flags_dir — .sessions/{sid}/flags/{prefix}_{issue}/
+        _session_id = os.environ.get("HARNESS_SESSION_ID", "")
+        if _session_id:
+            try:
+                _hooks_dir = Path.home() / ".claude" / "hooks"
+                if str(_hooks_dir) not in sys.path:
+                    sys.path.insert(0, str(_hooks_dir))
+                import session_state as _ss  # type: ignore
+                self.flags_dir = _ss.session_flags_dir(_session_id, prefix, issue_num, project_root)
+            except Exception:
+                self.flags_dir = self._legacy_flags_dir(prefix, issue_num)
         else:
-            self.flags_dir = self.path / ".flags"
+            self.flags_dir = self._legacy_flags_dir(prefix, issue_num)
         self.flags_dir.mkdir(parents=True, exist_ok=True)
+
+    def _legacy_flags_dir(self, prefix: str, issue_num: str) -> Path:
+        """세션 ID 없을 때 폴백 — 전역 .flags/ 사용 (하위호환)."""
+        if issue_num:
+            return self.path / ".flags" / f"{prefix}_{issue_num}"
+        return self.path / ".flags"
 
     def _flag_path(self, name: str) -> Path:
         return self.flags_dir / f"{self.prefix}_{name}"
@@ -691,27 +708,23 @@ def agent_call(
     if run_logger:
         run_logger.log_agent_start(agent, len(prompt))
 
-    # 에이전트별 active 플래그 — 훅(agent-boundary/issue-gate)이 state_dir에서 탐색하므로 동일 경로 사용
-    from pathlib import Path as _P
-    _state = _P(os.getcwd())
-    while _state != _state.parent:
-        _sd = _state / ".claude" / "harness-state"
-        if _sd.is_dir():
-            break
-        _claude = _state / ".claude"
-        if _claude.is_dir():
-            _sd.mkdir(parents=True, exist_ok=True)
-            break
-        _state = _state.parent
-    else:
-        _sd = _P("/tmp")
-    _flags_dir = _sd / ".flags"
-    _flags_dir.mkdir(exist_ok=True)
-    active_flag = _flags_dir / f"{prefix_for_flag}_{agent}_active"
-    active_flag.touch()
-
-    # 디버그: active 플래그 경로 + 존재 확인
-    print(f"[HARNESS] active_flag: {active_flag} (exists={active_flag.exists()})")
+    # Phase 3: live.json에 활성 에이전트 기록 — 훅(agent-boundary/issue-gate)은 live.json 단일 소스.
+    # session_id는 executor가 부팅 시 HARNESS_SESSION_ID env var로 주입.
+    _session_id_for_agent = ""
+    try:
+        _hooks_dir = Path.home() / ".claude" / "hooks"
+        if str(_hooks_dir) not in sys.path:
+            sys.path.insert(0, str(_hooks_dir))
+        import session_state as _ss
+        _session_id_for_agent = _ss.current_session_id()
+        if _session_id_for_agent:
+            _ss.update_live(_session_id_for_agent, agent=agent)
+            print(f"[HARNESS] live.json.agent ← {agent} (session={_session_id_for_agent[:8]}…)")
+        else:
+            print(f"[HARNESS] session_id 없음 — live.json 기록 skip (agent={agent})")
+    except Exception as _e:
+        print(f"[HARNESS] session_state 로드 실패: {_e}")
+        _ss = None  # type: ignore
 
     # 공통 프리앰블 주입
     preamble_file = Path.home() / ".claude" / "agents" / "preamble.md"
@@ -783,9 +796,12 @@ def agent_call(
     env = os.environ.copy()
     env["HARNESS_INTERNAL"] = "1"
     env["HARNESS_PREFIX"] = prefix_for_flag
-    env["HARNESS_AGENT_NAME"] = agent
+    env["HARNESS_AGENT_NAME"] = agent  # 하위호환: 옛 훅 경로 남아있을 때만 사용
     if os.environ.get("HARNESS_ISSUE_NUM"):
         env["HARNESS_ISSUE_NUM"] = os.environ["HARNESS_ISSUE_NUM"]
+    # Phase 3: session_id 자식 subprocess에 전파
+    if _session_id_for_agent:
+        env["HARNESS_SESSION_ID"] = _session_id_for_agent
 
     run_log_path = str(run_logger.path) if run_logger else "/dev/null"
 
@@ -958,8 +974,13 @@ def agent_call(
         except Exception:
             pass
 
-    # 에이전트 active 플래그 해제
-    active_flag.unlink(missing_ok=True)
+    # Phase 3: live.json agent 필드 해제 (race 방지: 내 agent일 때만)
+    if _session_id_for_agent:
+        try:
+            import session_state as _ss  # type: ignore
+            _ss.clear_live_field(_session_id_for_agent, "agent", expect_value=agent)
+        except Exception:
+            pass
 
     # 토큰 통계 표시
     if call_exit == 0:
@@ -1759,10 +1780,27 @@ def hlog(msg: str, state_dir: Optional[StateDir] = None, prefix: str = "") -> No
 
 
 def kill_check(state_dir: StateDir) -> None:
-    """kill 플래그 확인 → sys.exit."""
+    """kill 신호 확인 → sys.exit.
+    Phase 3: 전역 신호 `.global.json.harness_kill` 우선. 레거시 플래그 파일도 지원.
+    """
+    killed = False
+    # Phase 3: global signal
+    try:
+        _hooks_dir = Path.home() / ".claude" / "hooks"
+        if str(_hooks_dir) not in sys.path:
+            sys.path.insert(0, str(_hooks_dir))
+        import session_state as _ss  # type: ignore
+        if _ss.get_global_signal().get("harness_kill"):
+            killed = True
+            _ss.set_global_signal(harness_kill=None)  # consume
+    except Exception:
+        pass
+    # 레거시 플래그 파일 (하위호환)
     if state_dir.flag_exists(Flag.HARNESS_KILL):
-        state_dir.flag_rm(Flag.HARNESS_ACTIVE)
+        killed = True
         state_dir.flag_rm(Flag.HARNESS_KILL)
+    if killed:
+        state_dir.flag_rm(Flag.HARNESS_ACTIVE)
         os.environ["HARNESS_RESULT"] = "HARNESS_KILLED"
         print("HARNESS_KILLED: 사용자 요청으로 중단됨")
         sys.exit(0)

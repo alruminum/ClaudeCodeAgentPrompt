@@ -151,28 +151,69 @@
 
 ## 구현 루프 내부 기능
 
-### 상태 플래그 보호 — `.flags/` 숨김 디렉토리
-Claude CLI 에이전트 세션이 `.claude/harness-state/` 안의 비숨김 파일을 glob으로 삭제하는 문제 대응.
-- **모든 플래그 파일**(active, LGTM, plan_validation 등)을 `.claude/harness-state/.flags/` 숨김 디렉토리에 저장
-- `StateDir._flag_path` → `.flags/{prefix}_{name}` 경로 반환. `StateDir.__init__`에서 `.flags/` 자동 생성
-- `agent_call` active 플래그도 `.flags/` 경로 사용 (개별 `.` 접두사 불필요)
-- hooks(agent-boundary, agent-gate, commit-gate, issue-gate, post-agent-flags)도 `.flags/` 경로 참조
-- HUD/events 파일은 기존 숨김파일 방식 유지 (`.{prefix}_hud`, `.{prefix}_events`)
+### 세션 격리 — `session_state` 모듈 (Phase 3)
+`.claude/harness-state/` 를 세션 스코프로 재구성. 환경변수 폴백·15분 TTL·화이트리스트 필터 같은 방어 로직을 `live.json` 단일 소스로 대체.
 
-### 에이전트 판별 — env var 1순위 + 플래그 폴백
-hooks가 "현재 에이전트인지" 판별할 때 env var를 우선 사용하고, env var 미주입 경로(Agent 툴)는 플래그 파일로 폴백한다.
-- `agent_call()`에서 `HARNESS_AGENT_NAME={agent}` env var를 설정하여 에이전트 서브프로세스에 전파 (1순위, harness/core.py 경로)
-- hooks는 `harness_common.get_active_agent()` → `os.environ.get("HARNESS_AGENT_NAME")`로 판별
-- 메인 Claude 세션에는 이 env var가 없으므로 에이전트로 오인 불가
-- **Agent 툴 경로 폴백**: `/ux` 등 하네스 루프 없는 스킬·메인 Claude의 Agent 툴 직접 호출은 in-process라 env var 주입 불가. 이 경로에서는 `agent-gate.py`가 PreToolUse에 쓰는 `{prefix}_{agent}_active` 플래그 파일을 `agent-boundary.py`/`issue-gate.py`/`commit-gate.py`가 env var 없을 때 폴백으로 확인한다 (mtime TTL 15분).
-  - `agent-boundary.py`는 특히 Write/Edit 경로 판정에서도 폴백을 적용해야 한다. env var만 읽으면 Agent 툴 경유 에이전트(예: architect가 trd.md Write)가 "메인 Claude 직접 수정"으로 오판되어 차단된다.
-- **커스텀 에이전트 화이트리스트**: `harness_common.CUSTOM_AGENTS`에 등록된 11개 커스텀 에이전트(engineer/architect/designer/... )에 한해서만 플래그 생성·판별이 이뤄진다. Claude Code 내장 서브에이전트(Explore, Plan, general-purpose, claude-code-guide, statusline-setup 등)는 이 집합 밖이며, 훅은 관여하지 않는다.
-  - `agent-gate.py`는 화이트리스트 밖 에이전트 호출 시 `{prefix}_{agent}_active` 플래그를 **만들지 않는다** → 정리 누락으로 인한 잔재 오인을 원천 차단.
-  - `agent-boundary.py`는 env var/폴백 양쪽에서 화이트리스트 필터를 거쳐, 알 수 없는 에이전트가 활성일 때 `None`을 반환 → 메인 Claude와 동일 경로로 통과. `ALLOW_MATRIX.get(unknown, [])`가 ReadOnly로 오인되어 모든 Write가 차단되던 버그를 막는다.
-- 플래그 cleanup 3단 방어:
-  1. 정상 완료: `post-agent-flags.py`가 PostToolUse(Agent)에서 `{prefix}_{agent}_active` 삭제
-  2. 크래시/Ctrl+C 잔재: 폴백 판정 시 **mtime TTL 15분** 적용 — 오래된 플래그는 무시
-  3. 세션 시작: `harness-session-start.py`가 `.flags/` 내 1시간 초과 `*_active` 플래그를 쓸어담음
+디렉토리 구조:
+```
+.claude/harness-state/
+├── .global.json                # 전역 신호 (lenient — 세션 소유자 없음, /harness-kill 등)
+├── .session-id                 # 현재 세션 ID (subprocess 전파용)
+├── .sessions/{sid}/
+│   ├── live.json               # agent/skill/issue/harness_active (세션 스코프 strict)
+│   └── flags/{prefix}_{issue}/ # 워크플로우 플래그 (Phase 2 구조 유지, 세션 스코프)
+├── .issues/{prefix}_{issue}/
+│   └── lock                    # 이슈 단위 lock (세션 ID 기록, 세션 밖 경로)
+├── .logs/, .rate/
+```
+
+핵심 원칙:
+- **모든 디렉토리 dot-prefixed(숨김)** — 에이전트 glob/rm 사고 방지. 파일 단위 숨김 → 디렉토리 단위까지 확장.
+- session_id는 훅 stdin(`session_id` / `sessionId` / `sessionid` 3변형 fallback)에서 파싱. regex `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$`로 path traversal 방지.
+- atomic write: O_EXCL tmp + UUID suffix + fsync + rename + directory fsync, mode `0o600`.
+- `_meta` envelope: `{written_at, mode, sessionId}` 자동 포함. 읽을 때 소유자 검증.
+- strict(session 스코프) vs lenient(전역) 구분은 **경로 자체가 강제** — 호출자가 모드를 고르지 않음.
+- 워크플로우 플래그(LGTM, PLAN_VALIDATION_PASSED 등)는 세션 × 이슈 스코프 파일로 유지 (harness 루프 1회 생명주기).
+- 전역 신호(`harness_kill`)만 `.global.json`에 기록 — 다른 세션이 읽어야 하므로.
+
+### 세션 ID 전파 — 훅/하네스/스킬 체인
+CC 세션 ID가 Python subprocess까지 전파되는 경로:
+- **SessionStart 훅**: stdin에서 session_id 파싱 → `.session-id` 파일 + `initialize_session()` 호출 → 디렉토리 스켈레톤 + 빈 live.json.
+- **훅 서브프로세스**: stdin session_id 우선, 없으면 `HARNESS_SESSION_ID` env, 없으면 `.session-id` 파일.
+- **하네스 executor**: 부팅 시 `current_session_id()`로 획득 → `HARNESS_SESSION_ID` 환경변수로 모든 자식(agent_call)에 전파.
+- **Agent 툴 경로**: CC가 Agent 툴 subagent에 env를 전파하지 않아도, 훅 stdin session_id가 유일하고 신뢰 가능한 경로.
+
+### 활성 에이전트 판별 — live.json 단일 소스
+hooks가 "현재 어떤 에이전트가 활성인지" 판정할 때 `session_state.active_agent(stdin_data)`만 호출.
+- agent-gate.py(PreToolUse Agent)가 `live.json.agent = subagent_type`을 atomic write.
+- agent-boundary.py / issue-gate.py / commit-gate.py가 `get_live(sid).agent`를 읽어 판정.
+- post-agent-flags.py(PostToolUse Agent)가 `clear_live_field("agent", expect_value=agent)`로 해제.
+- **env var 폴백 / 15분 TTL / 화이트리스트 필터 제거** — live.json 단일 소스로 충분.
+  - 잔재 오인 문제: 세션 종료 시 세션 디렉토리가 통째로 stale cleanup(기본 6시간 TTL)되므로 발생 불가.
+  - Agent 툴 경로에서 env 미주입 문제: 훅이 항상 stdin에서 session_id를 얻으므로 live.json 경로가 일관.
+  - 화이트리스트 필터 제거: Claude Code 내장 서브에이전트(Explore/Plan 등)도 agent-gate가 live.json에 기록 금지하므로, 판정 시 추가 필터 불필요.
+
+### 이슈 lock (동시 이슈 충돌 방지)
+두 세션이 같은 이슈를 동시에 잡지 못하도록 **세션 밖** 경로에 lock 파일 유지.
+- 경로: `.claude/harness-state/.issues/{prefix}_{issue}/lock`
+- 내용: `{session_id, pid, mode, prefix, issue_num, started, heartbeat}`
+- `claim_issue_lock()`: 같은 세션 재진입은 허용, 다른 세션 holder가 있으면 PID alive + heartbeat 30분 이내만 거부. stale하면 인계.
+- `release_issue_lock()`: 소유자 세션만 해제 가능.
+- 하네스 executor가 부팅 시 획득, cleanup에서 해제. Heartbeat는 기존 executor lease 루프와 병행.
+
+### Stale cleanup (SessionStart)
+세션 종료/크래시 시 잔재가 다음 세션에 오염되지 않도록:
+1. `cleanup_stale_sessions(keep=current)`: 현재 세션 제외, live.json mtime 6시간 초과 세션 디렉토리 전체 삭제.
+2. `cleanup_stale_issue_locks()`: holder PID 죽었거나 heartbeat 30분 stale한 lock 해제.
+3. `migrate_legacy_flags()`: 1회 마이그레이션 — 구 `.flags/` 디렉토리 + 탑레벨 `*_active` 잔재 제거 (활성 하네스 있으면 skip).
+4. SessionStart에서 `{prefix}_*` 탑레벨 파일을 청소할 때 `_last_issue`와 `_harness_active` 접미사는 보존 — lease/이슈 번호가 날아가는 사고 방지.
+
+### 전역 킬 스위치 (/harness-kill)
+다른 세션에서 실행 중인 하네스도 중단시켜야 하므로 **`.global.json.harness_kill`** 에 기록.
+- `commands/harness-kill.md` → `ss.set_global_signal(harness_kill=True)`
+- `harness/core.py` `kill_check()` → `ss.get_global_signal().get("harness_kill")`로 체크하고 consume.
+- `hooks/harness-router.py` → 동일 신호로 pass-through.
+- 레거시 플래그 파일(`{prefix}_harness_kill`)도 당분간 폴백으로 지원.
 
 ### 이슈별 Worktree 격리 (동시 이슈 작업)
 `config.isolation = "worktree"` 설정 시, 이슈별 git worktree를 생성하여 동시에 여러 이슈를 작업할 수 있다.
@@ -349,6 +390,7 @@ engineer 구현 후 automated_checks에서 `config.build_command`를 실행.
 | 하네스 기능 추가 / 변경 | `docs/harness-state.md` (완료/한계 섹션) + `docs/harness-backlog.md` (항목 상태) |
 | config.py 필드 추가 | `harness/config.py` (필드) + `harness/impl_loop.py`/`helpers.py` (사용처) + `harness/tests/test_parity.py` (테스트) + `orchestration/changelog.md` (변경 로그) + `setup-harness.sh` (기본 템플릿) |
 | 훅 패턴/매핑 변경 | `hooks/*.py` 대상 파일 + `setup-harness.sh` 주석 |
+| 세션 상태 스키마 변경 (live.json 필드 등) | `hooks/session_state.py` (API) + `hooks/tests/test_session_state.py` (테스트) + `docs/session-isolation/phase3-session-isolation.md` (설계) + orchestration-rules.md 세션 격리 섹션 |
 | agent-boundary.py ALLOW_MATRIX 변경 | `hooks/agent-boundary.py` + `orchestration/agent-boundaries.md` 동기 |
 | architect @MODE 추가/변경 | `CLAUDE.md` (프로젝트) architect 호출 규칙 표 |
 | 디자인 도구 변경 (Pencil MCP 등) | `agents/designer.md`, `agents/design-critic.md`, `orchestration/design.md`, `commands/ux.md` |

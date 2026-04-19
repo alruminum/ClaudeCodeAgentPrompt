@@ -133,12 +133,24 @@ def get_state_dir():
 
 def get_flags_dir(issue_num=""):
     """플래그 전용 숨김 디렉토리 반환.
-    issue_num이 있으면 이슈별 서브디렉토리. HARNESS_ISSUE_NUM env var도 참조."""
+    Phase 3: 세션 스코프 `.sessions/{sid}/flags/{prefix}_{issue}/` 사용.
+    session_id 없으면 레거시 `.flags/` 폴백 (전역 모드).
+    HARNESS_ISSUE_NUM env var도 참조.
+    """
     state_dir = get_state_dir()
     if not issue_num:
         issue_num = os.environ.get("HARNESS_ISSUE_NUM", "")
+    prefix = get_prefix()
+    # Phase 3: session_state 모듈이 있으면 세션 스코프 사용
+    try:
+        from session_state import session_flags_dir, current_session_id  # type: ignore
+        sid = current_session_id()
+        if sid:
+            return str(session_flags_dir(sid, prefix, issue_num))
+    except ImportError:
+        pass
+    # 폴백: 전역 .flags/
     if issue_num:
-        prefix = get_prefix()
         flags_dir = os.path.join(state_dir, ".flags", f"{prefix}_{issue_num}")
     else:
         flags_dir = os.path.join(state_dir, ".flags")
@@ -146,9 +158,16 @@ def get_flags_dir(issue_num=""):
     return flags_dir
 
 
-def get_active_agent():
-    """env var로 현재 에이전트 판별. 메인 Claude에는 없으므로 None 반환."""
-    return os.environ.get("HARNESS_AGENT_NAME") or None
+def get_active_agent(stdin_data=None):
+    """현재 세션의 활성 에이전트 판별 (Phase 3: live.json 단일 소스).
+    stdin_data가 있으면 훅 stdin session_id 기반.
+    하위호환: session_state 모듈 없으면 HARNESS_AGENT_NAME env 폴백.
+    """
+    try:
+        from session_state import active_agent  # type: ignore
+        return active_agent(stdin_data=stdin_data)
+    except ImportError:
+        return os.environ.get("HARNESS_AGENT_NAME") or None
 
 
 def flag_path(prefix, name):

@@ -40,11 +40,39 @@ def main() -> None:
     config = load_config()
     prefix = args.prefix or config.prefix
     issue_num = getattr(args, "issue_num", "") or ""
+
+    # Phase 3: 세션 ID 부팅 — HARNESS_SESSION_ID env → .session-id 파일
+    sys.path.insert(0, str(Path.home() / ".claude" / "hooks"))
+    try:
+        import session_state as ss  # type: ignore
+    except ImportError:
+        ss = None  # type: ignore
+    session_id = ""
+    if ss is not None:
+        session_id = ss.current_session_id()
+        if session_id:
+            os.environ["HARNESS_SESSION_ID"] = session_id
+
     state_dir = StateDir(Path.cwd(), prefix, issue_num=issue_num)
 
     # HARNESS_ISSUE_NUM env var — hooks가 이슈별 플래그 디렉토리 참조
     if issue_num:
         os.environ["HARNESS_ISSUE_NUM"] = issue_num
+
+    # Phase 3: 이슈 lock 획득 — 두 세션이 같은 이슈 동시 작업 방지
+    if ss is not None and session_id and issue_num:
+        try:
+            ok, holder = ss.claim_issue_lock(prefix, issue_num, session_id, mode=args.mode)
+            if not ok and holder:
+                print(f"[HARNESS] 오류: 이슈 #{issue_num}은 세션 {holder.get('session_id','')[:8]}…가 "
+                      f"PID {holder.get('pid')}로 이미 작업 중입니다.")
+                print("동시 작업은 지원하지 않습니다. /harness-kill 또는 세션 완료를 기다리세요.")
+                sys.exit(1)
+            # 세션 live.json에 하네스/이슈 상태 기록
+            ss.update_live(session_id, harness_active=True, issue_num=issue_num,
+                           prefix=prefix, mode=args.mode)
+        except Exception as e:
+            print(f"[HARNESS] session_state 초기화 경고: {e}")
 
     # ── 병렬 실행 가드 (이슈별 잠금 — 다른 이슈는 동시 실행 가능) ──
     if issue_num:
@@ -91,6 +119,12 @@ def main() -> None:
             hb_stop.wait(15)
             if not hb_stop.is_set():
                 write_lease()
+                # Phase 3: 이슈 lock heartbeat도 갱신 — 장시간 루프가 stale 판정되지 않도록
+                if ss is not None and session_id and issue_num:
+                    try:
+                        ss.heartbeat_issue_lock(prefix, issue_num, session_id)
+                    except Exception:
+                        pass
 
     hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     hb_thread.start()
@@ -103,9 +137,17 @@ def main() -> None:
         hb_stop.set()
         lock_file.unlink(missing_ok=True)
         state_dir.flag_rm(Flag.HARNESS_KILL)
-        # *_active 정리
+        # *_active 정리 (레거시 폴백 경로)
         for f in state_dir.flags_dir.glob(f"{prefix}_*_active"):
             f.unlink(missing_ok=True)
+        # Phase 3: 이슈 lock 해제 + live.json 정리
+        if ss is not None and session_id:
+            try:
+                if issue_num:
+                    ss.release_issue_lock(prefix, issue_num, session_id)
+                ss.update_live(session_id, harness_active=None, agent=None)
+            except Exception:
+                pass
         # write_run_end — 루프 함수에서 이미 호출했으면 스킵 (이중 호출 방지)
         if run_logger_ref[0] and not _run_end_written[0]:
             result = os.environ.get("HARNESS_RESULT", "unknown")
