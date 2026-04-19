@@ -606,12 +606,37 @@ def save_impl_meta(
     adir = Path(adir)
 
     # 변경 파일 목록
+    # 기존: `git diff HEAD~1 --name-only` — attempt마다 여러 커밋이 쌓이면 HEAD~1이
+    #       이전 attempt의 커밋을 가리켜 전체 변경을 못 보여주거나, feature branch
+    #       생성 시 base branch 분기 커밋이 섞여 엉뚱한 파일(.claude/, .gitignore,
+    #       docs/architecture.md 등)이 집계되는 버그 (run_20260419_150018 재현).
+    # 수정: merge-base 기준으로 feature branch 전체 변경을 보여준다. base branch는
+    #       main/master 순으로 시도. 모두 실패하면 기존 HEAD~1 방식으로 폴백.
+    changed = ""
     try:
-        r = subprocess.run(
-            ["git", "diff", "HEAD~1", "--name-only"],
-            capture_output=True, text=True, timeout=5,
-        )
-        changed = ",".join(r.stdout.strip().splitlines()[:5]) if r.returncode == 0 else ""
+        diff_out = ""
+        for base in ("main", "master"):
+            mb = subprocess.run(
+                ["git", "merge-base", "HEAD", base],
+                capture_output=True, text=True, timeout=5,
+            )
+            if mb.returncode == 0 and mb.stdout.strip():
+                r = subprocess.run(
+                    ["git", "diff", f"{mb.stdout.strip()}..HEAD", "--name-only"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if r.returncode == 0:
+                    diff_out = r.stdout
+                    break
+        if not diff_out:
+            # 폴백: 기존 HEAD~1
+            r = subprocess.run(
+                ["git", "diff", "HEAD~1", "--name-only"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.returncode == 0:
+                diff_out = r.stdout
+        changed = ",".join(diff_out.strip().splitlines()[:5])
     except Exception:
         changed = ""
 

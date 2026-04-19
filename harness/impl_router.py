@@ -411,6 +411,14 @@ def run_impl(
 
     os.environ["HARNESS_RESULT"] = "PLAN_VALIDATION_ESCALATE"
     print("PLAN_VALIDATION_ESCALATE")
+    # run_end 누락 버그(run_20260419_130005 재현): harness-review가 result=빈값,
+    # dur=0s 로 집계되어 디버깅/통계가 불가능했음. 다른 에스컬레이션 경로(UX_*,
+    # CLARITY_INSUFFICIENT)는 모두 write_run_end 호출됨 — 이 경로만 누락.
+    if run_logger is not None:
+        try:
+            run_logger.write_run_end("PLAN_VALIDATION_ESCALATE", "", str(issue_num))
+        except Exception:
+            pass
     return "PLAN_VALIDATION_ESCALATE"
 
 
