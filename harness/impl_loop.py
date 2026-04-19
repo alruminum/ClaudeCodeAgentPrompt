@@ -98,6 +98,52 @@ def _circuit_breaker_check(
     return False
 
 
+def _extract_must_fix_from_pr_log(pr_log_path: Path) -> str:
+    """이전 attempt의 pr.log에서 ### MUST FIX 섹션만 추출.
+
+    pr-reviewer는 기본적으로 이번 attempt의 diff만 보므로, 이전 attempt에서
+    지적한 MUST FIX 항목이 engineer에 의해 처리되지 않고 남아 있어도 시야
+    밖이라 놓친다 (run_20260419_201311 재현: #8b8b90 하드코딩이 attempt-1
+    에서 MUST FIX 지적됐으나 attempt-2 engineer가 놓쳤고 attempt-2 pr-reviewer
+    가 이번 diff에 해당 문자열이 없어 LGTM 처리).
+
+    이 함수는 직전 attempt의 MUST FIX 본문을 추출해 pr-reviewer 프롬프트에
+    "이번 diff 에서 처리됐는지 확인" 체크리스트로 주입하기 위한 헬퍼.
+    """
+    if not pr_log_path.exists():
+        return ""
+    try:
+        content = pr_log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    # "### MUST FIX" 시작부터 다음 "### " 섹션 또는 "---MARKER" / 파일 끝까지
+    m = re.search(
+        r"###\s*MUST\s*FIX(.*?)(?=\n###\s|\n---MARKER|\Z)",
+        content, re.DOTALL | re.IGNORECASE,
+    )
+    if not m:
+        return ""
+    body = m.group(1).strip()
+    return body[:1500]  # 과도한 길이 방지
+
+
+def _prev_must_fix_hint(loop_out_dir: Path, attempt: int) -> str:
+    """pr-reviewer 호출부에 끼워 넣을 이전 MUST FIX 체크리스트 문자열."""
+    if attempt <= 0:
+        return ""
+    prev_log = loop_out_dir / f"attempt-{attempt - 1}" / "pr.log"
+    must = _extract_must_fix_from_pr_log(prev_log)
+    if not must:
+        return ""
+    return (
+        f"\n\n[이전 attempt-{attempt - 1} MUST FIX — 이번 diff·PR 전체 기준으로 처리됐는지 확인]\n"
+        f"```\n{must}\n```\n"
+        "위 항목이 이번 변경뿐 아니라 PR 누적 상태에서 **여전히 남아 있다면** "
+        "이번 diff 가 아무리 작아도 반드시 CHANGES_REQUESTED를 내야 한다. "
+        "처리됐다면 어떤 커밋에서 해결됐는지 명시한 뒤 LGTM."
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 1. AgentStep dataclass
 # ═══════════════════════════════════════════════════════════════════════
@@ -511,11 +557,12 @@ def run_simple(
 
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
         _pr_t0 = time.time()
+        _prev_must_hint = _prev_must_fix_hint(loop_out_dir, attempt)
         agent_exit = agent_call(
             "pr-reviewer", 360,
             f'@MODE:PR_REVIEWER:REVIEW\n'
             f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
-            f"변경 diff:\n{diff_out}{_eng_handoff_hint}",
+            f"변경 diff:\n{diff_out}{_eng_handoff_hint}{_prev_must_hint}",
             pr_out, run_logger, config, str(attempt_dir),
         )
         _pr_cost = float(Path(f"{pr_out[:-4]}_cost.txt").read_text() or "0") if Path(f"{pr_out[:-4]}_cost.txt").exists() else 0.0
@@ -1339,11 +1386,12 @@ def _run_std_deep(
                 hlog_fn(f"second reviewer v3 ({config.second_reviewer}) 파일별 병렬 시작 ({len(_changed_for_2nd)}개)")
 
         pr_out = str(state_dir.path / f"{prefix}_pr_out.txt")
+        _prev_must_hint_sd = _prev_must_fix_hint(loop_out_dir, attempt)
         agent_exit = agent_call(
             "pr-reviewer", 360,
             f'@MODE:PR_REVIEWER:REVIEW\n'
             f'@PARAMS: {{ "impl_path": "{impl_file}", "src_files": "{src_files}" }}\n'
-            f"변경 diff:\n{diff_out}{_eng_handoff_hint_sd}",
+            f"변경 diff:\n{diff_out}{_eng_handoff_hint_sd}{_prev_must_hint_sd}",
             pr_out, run_logger, config, str(attempt_dir),
         )
         hlog_fn(f"pr-reviewer 종료 (exit={agent_exit})")
