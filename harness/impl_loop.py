@@ -396,7 +396,10 @@ def run_simple(
                 continue
 
         # ── automated_checks ──────────────────────────────────────
-        check_ok, check_err = run_automated_checks(impl_file, config, state_dir, prefix, cwd=work_cwd)
+        # simple depth는 test-engineer/TDD GREEN 단계가 없으므로 회귀 테스트를 여기서 실행
+        check_ok, check_err = run_automated_checks(
+            impl_file, config, state_dir, prefix, cwd=work_cwd, run_tests=True,
+        )
         if not check_ok:
             error_trace = check_err or "automated_checks FAIL"
             fail_type = "autocheck_fail"

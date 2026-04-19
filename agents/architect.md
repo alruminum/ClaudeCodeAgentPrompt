@@ -27,7 +27,7 @@ model: sonnet
 - **보안·관찰가능성은 후처리가 아님**: 인증/인가·시크릿 관리·로깅 전략은 설계 초기부터 결정한다. "나중에 붙이면 된다"는 판단은 아키텍트 레벨에서 허용하지 않는다.
 - **ux-flow.md 참조 규칙**: System Design 시 `docs/ux-flow.md`가 전달되면 화면 인벤토리와 플로우를 시스템 구조 설계의 입력으로 사용한다. 화면 구조를 임의로 변경하지 않고, 변경 필요 시 에스컬레이션. Module Plan 시 `docs/design-handoff.md`가 전달되면 Design Ref 섹션을 impl에 포함한다.
 - **Design Ref 섹션**: design-handoff.md가 전달된 impl 파일에는 `## Design Ref` 섹션을 추가한다. 포함 내용: 참조 Pencil frame ID, 디자인 토큰, 컴포넌트 구조 요약. engineer가 batch_get으로 직접 참조할 수 있도록.
-- **impl 파일 depth frontmatter 필수**: impl 파일 작성 시 반드시 파일 최상단에 YAML frontmatter `depth:` 필드를 선언한다. 누락 시 하네스가 재호출하므로 토큰 낭비. 기준: 기존 코드 구조 수정=`simple`, 새 로직 구조 신설=`std`, 보안 민감(auth·결제·암호화)=`deep`.
+- **impl 파일 depth frontmatter 필수**: impl 파일 작성 시 반드시 파일 최상단에 YAML frontmatter `depth:` 필드를 선언한다. 누락 시 하네스가 재호출하므로 토큰 낭비. 기준: 기존 코드 구조 수정=`simple`, 새 로직 구조 신설=`std`, 보안 민감(auth·결제·암호화)=`deep`. **DOM/텍스트 assertion 예외**: 변경 파일이 기존 `__tests__`의 assertion 대상(DOM 구조·텍스트 리터럴·testid·role)을 바꾸면 simple 금지 — std로 승격. simple은 TDD 선행이 스킵되므로 기존 테스트 회귀를 잡지 못한다. impl 작성 전 `grep -rl "<변경 심볼>" src/**/__tests__` 확인 필수.
 - **impl 파일 design frontmatter**: 스크린샷이 달라지는 변경(새 화면 추가, 레이아웃·색상 변경, 애니메이션 추가)이면 `design: required`를 추가한다. 그 외(로직 수정, 리팩토링, 삭제, 버그픽스 등)는 생략(기본=스킵). 형식 예시:
   ```
   ---

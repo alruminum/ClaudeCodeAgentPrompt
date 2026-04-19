@@ -1384,5 +1384,72 @@ class TestWorktreeIsolation(unittest.TestCase):
         self.assertTrue(callable(result))
 
 
+class TestRunAutomatedChecksTestRegression(unittest.TestCase):
+    """run_automated_checks run_tests 파라미터 — simple depth 회귀 차단."""
+
+    def _make_repo(self, td: str) -> tuple[Path, Path]:
+        """임시 git repo + impl 파일 생성."""
+        import subprocess as _sp
+        proj = Path(td)
+        impl = proj / "impl.md"
+        impl.write_text("---\ndepth: simple\n---\n## 수정 파일\n- `src/foo.ts`\n")
+        (proj / "src").mkdir()
+        foo = proj / "src" / "foo.ts"
+        foo.write_text("export const x = 1;\n")
+        _sp.run(["git", "init"], capture_output=True, cwd=td)
+        _sp.run(["git", "config", "user.email", "t@t.com"], capture_output=True, cwd=td)
+        _sp.run(["git", "config", "user.name", "t"], capture_output=True, cwd=td)
+        _sp.run(["git", "add", "."], capture_output=True, cwd=td)
+        _sp.run(["git", "commit", "-m", "init"], capture_output=True, cwd=td)
+        foo.write_text("export const x = 2;\n")  # uncommitted change
+        _sp.run(["git", "add", "."], capture_output=True, cwd=td)
+        return proj, impl
+
+    def test_run_tests_false_skips_test_command(self):
+        """run_tests=False면 test_command가 설정돼도 실행하지 않음."""
+        from harness.helpers import run_automated_checks
+        from harness.config import HarnessConfig
+        with tempfile.TemporaryDirectory() as td:
+            proj, impl = self._make_repo(td)
+            sd = StateDir(proj, "test")
+            cfg = HarnessConfig(test_command="exit 1")  # 돌면 FAIL
+            ok, err = run_automated_checks(str(impl), cfg, sd, "test", cwd=td, run_tests=False)
+            self.assertTrue(ok, f"test skip expected but got FAIL: {err}")
+
+    def test_run_tests_true_passes_when_tests_green(self):
+        """run_tests=True + test_command 성공 시 PASS."""
+        from harness.helpers import run_automated_checks
+        from harness.config import HarnessConfig
+        with tempfile.TemporaryDirectory() as td:
+            proj, impl = self._make_repo(td)
+            sd = StateDir(proj, "test")
+            cfg = HarnessConfig(test_command="true")
+            ok, err = run_automated_checks(str(impl), cfg, sd, "test", cwd=td, run_tests=True)
+            self.assertTrue(ok, f"expected PASS, got FAIL: {err}")
+
+    def test_run_tests_true_fails_when_tests_red(self):
+        """run_tests=True + test_command 실패 시 FAIL + test_fail 메시지."""
+        from harness.helpers import run_automated_checks
+        from harness.config import HarnessConfig
+        with tempfile.TemporaryDirectory() as td:
+            proj, impl = self._make_repo(td)
+            sd = StateDir(proj, "test")
+            cfg = HarnessConfig(test_command="exit 1")
+            ok, err = run_automated_checks(str(impl), cfg, sd, "test", cwd=td, run_tests=True)
+            self.assertFalse(ok)
+            self.assertIn("test_fail", err)
+
+    def test_run_tests_true_no_test_command_is_noop(self):
+        """run_tests=True여도 test_command 비어있으면 skip (PASS)."""
+        from harness.helpers import run_automated_checks
+        from harness.config import HarnessConfig
+        with tempfile.TemporaryDirectory() as td:
+            proj, impl = self._make_repo(td)
+            sd = StateDir(proj, "test")
+            cfg = HarnessConfig(test_command="")
+            ok, err = run_automated_checks(str(impl), cfg, sd, "test", cwd=td, run_tests=True)
+            self.assertTrue(ok, f"expected PASS (test_command empty), got FAIL: {err}")
+
+
 if __name__ == "__main__":
     unittest.main()
