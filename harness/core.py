@@ -1367,8 +1367,15 @@ def build_smart_context(
     attempt_n: int,
     err_trace: str = "",
 ) -> str:
-    """스마트 컨텍스트 구성. 30KB 캡."""
-    impl = Path(impl)
+    """스마트 컨텍스트 구성. 30KB 캡.
+
+    호출 시점에 cwd가 worktree로 chdir됐을 수 있고 impl이 상대경로라면
+    worktree 안에서 해당 파일을 못 찾아 OSError → ctx=""가 된다
+    (v05 디렉토리가 아직 base branch에 없는 초기 feature branch에서 재현됨).
+    caller 측 impl_file 변수는 로그/프롬프트에 상대경로로 그대로 노출돼야 하므로
+    resolve는 이 함수 내부에서만 수행해 영향 범위를 파일 읽기 한 곳으로 국한한다.
+    """
+    impl = Path(impl).resolve()
     ctx = ""
 
     if attempt_n == 0:
