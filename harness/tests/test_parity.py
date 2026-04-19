@@ -666,6 +666,81 @@ class TestPrFailRetryInjectsPrLog(unittest.TestCase):
             )
 
 
+class TestExtractMustFixFromPrLog(unittest.TestCase):
+    """_extract_must_fix_from_pr_log — pr.log의 MUST FIX 섹션만 추출."""
+
+    def setUp(self):
+        from harness.impl_loop import _extract_must_fix_from_pr_log
+        self.fn = _extract_must_fix_from_pr_log
+
+    def test_extracts_must_fix_body(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "pr.log"
+            p.write_text(
+                "review header\n\n"
+                "---\n"
+                "CHANGES_REQUESTED\n\n"
+                "### MUST FIX\n"
+                "1. color #8b8b90 하드코딩 — CSS 변수 사용\n"
+                "2. stageRow width 추가 필요\n\n"
+                "### NICE TO HAVE\n"
+                "- 주석 정리\n\n"
+                "---MARKER:CHANGES_REQUESTED---\n"
+            )
+            result = self.fn(p)
+            self.assertIn("#8b8b90", result)
+            self.assertIn("stageRow width", result)
+            self.assertNotIn("NICE TO HAVE", result)
+            self.assertNotIn("---MARKER", result)
+
+    def test_no_must_fix_section_returns_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "pr.log"
+            p.write_text("LGTM\n\n### NICE TO HAVE\n- 뭐시기\n")
+            self.assertEqual(self.fn(p), "")
+
+    def test_missing_file_returns_empty(self):
+        self.assertEqual(self.fn(Path("/nonexistent/pr.log")), "")
+
+    def test_caps_at_1500_chars(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "pr.log"
+            p.write_text("### MUST FIX\n" + ("- 항목 " + "A" * 100 + "\n") * 50)
+            result = self.fn(p)
+            self.assertLessEqual(len(result), 1500)
+
+
+class TestPrevMustFixHint(unittest.TestCase):
+    """_prev_must_fix_hint — pr-reviewer 프롬프트용 MUST FIX 체크리스트 블록 생성."""
+
+    def setUp(self):
+        from harness.impl_loop import _prev_must_fix_hint
+        self.fn = _prev_must_fix_hint
+
+    def test_attempt_zero_returns_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(self.fn(Path(td), 0), "")
+
+    def test_attempt_one_reads_attempt_zero_pr_log(self):
+        with tempfile.TemporaryDirectory() as td:
+            loop_dir = Path(td)
+            (loop_dir / "attempt-0").mkdir()
+            (loop_dir / "attempt-0" / "pr.log").write_text(
+                "### MUST FIX\n1. RAW_HEX_MARKER 제거\n\n### 총평\nLGTM 가능\n"
+            )
+            hint = self.fn(loop_dir, 1)
+            self.assertIn("이전 attempt-0 MUST FIX", hint)
+            self.assertIn("RAW_HEX_MARKER", hint)
+            self.assertIn("CHANGES_REQUESTED", hint)
+
+    def test_no_prev_pr_log_returns_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            loop_dir = Path(td)
+            (loop_dir / "attempt-0").mkdir()
+            # pr.log 없음
+            self.assertEqual(self.fn(loop_dir, 1), "")
+
+
 class TestConfigTestCommand(unittest.TestCase):
     def test_empty_test_command_means_skip(self):
         cfg = HarnessConfig(test_command="")
