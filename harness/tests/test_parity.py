@@ -556,6 +556,116 @@ class TestSaveImplMetaChangedFilesMergeBase(unittest.TestCase):
         self.assertNotIn("base.txt", changed)
 
 
+class TestPrFailRetryInjectsPrLog(unittest.TestCase):
+    """pr_fail 재시도 시 engineer 프롬프트에 이전 pr.log 내용이 인라인 주입되는지.
+
+    회귀 재현 (run_20260419_201311 3바퀴): 이전엔 pr_fail 경로가 pr.log 경로만
+    explore_instruction으로 전달해, engineer가 자발적으로 pr.log를 Read 하지 않고
+    attempt 0과 동일 수정을 복붙 제출 → 같은 CHANGES_REQUESTED 반복. autocheck_fail
+    경로는 이미 autocheck.log를 인라인 주입 중이었으므로 일관성 맞춰 pr_fail도 인라인화.
+    """
+
+    def test_run_simple_pr_fail_retry_prompt_contains_pr_log(self):
+        from unittest.mock import patch
+        from harness.config import HarnessConfig
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / ".claude").mkdir()
+            (proj / ".claude" / "harness-memory.md").write_text(
+                "# Harness Memory\n\n## impl 패턴\n\n## Auto-Promoted Rules\n"
+            )
+            impl = proj / "impl.md"
+            impl.write_text("---\ndepth: simple\n---\n# impl")
+            os.chdir(td)
+
+            import subprocess as _sp
+            for cmd in (
+                ["git", "init", "-q", "-b", "main"],
+                ["git", "config", "user.email", "t@t"],
+                ["git", "config", "user.name", "t"],
+                ["git", "add", "."],
+                ["git", "commit", "-qm", "init"],
+            ):
+                _sp.run(cmd, cwd=td, capture_output=True)
+
+            sd = StateDir(proj, "test")
+            cfg = HarnessConfig(prefix="test")
+
+            os.environ["HARNESS_RUN_TS"] = "testrun"
+            loop_dir = sd.path / "test_history" / "impl" / "run_testrun"
+            (loop_dir / "attempt-0").mkdir(parents=True, exist_ok=True)
+            # attempt-0 pr.log 는 run_simple 이 돌기 전에 심지 않고,
+            # mock agent_call 이 pr-reviewer 호출 시 CHANGES_REQUESTED 쓰도록 조작
+
+            prompts = []
+            call_idx = [0]
+            MARKER_MUST = "MUST_FIX_COLOR_HEX_REMOVE"
+
+            def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
+                prompts.append((agent, prompt))
+                call_idx[0] += 1
+                p = Path(out_file)
+                if agent == "engineer":
+                    p.write_text("impl done\n")
+                elif agent == "pr-reviewer":
+                    # 첫 pr-reviewer 호출: CHANGES_REQUESTED + MUST FIX 텍스트
+                    # 두 번째: LGTM (루프 종료)
+                    if call_idx[0] == 2:
+                        p.write_text(
+                            "---MARKER:CHANGES_REQUESTED---\n"
+                            f"### MUST FIX\n- {MARKER_MUST}\n"
+                        )
+                    else:
+                        p.write_text("---MARKER:LGTM---\n")
+                else:
+                    p.write_text("done\n")
+                return 0
+
+            # pr.log 는 run_simple 내부에서 pr-reviewer out_file 을 복사해 씀.
+            # 본 테스트는 이 복사 경로도 실제로 작동해야 의미 있음. impl_loop가
+            # attempt-0/pr.log 를 기록하는 시점 이후 attempt-1 프롬프트 구성 시
+            # 해당 파일을 read 하는지 검증.
+
+            with patch("harness.impl_loop.agent_call", side_effect=mock_agent_call), \
+                 patch("harness.impl_loop.create_feature_branch", return_value=("feat/test-1", None)), \
+                 patch("harness.impl_loop.merge_to_main", return_value=True), \
+                 patch("harness.impl_loop.collect_changed_files", return_value=["src/x.ts"]), \
+                 patch("harness.impl_loop.run_automated_checks", return_value=(True, "")), \
+                 patch("harness.impl_loop.push_and_ensure_pr", return_value=None), \
+                 patch("harness.impl_loop.generate_commit_msg", return_value="msg"), \
+                 patch("harness.impl_loop.generate_pr_body", return_value="body"), \
+                 patch("subprocess.run") as mock_sub:
+                mock_sub.return_value = _sp.CompletedProcess(args=[], returncode=0, stdout="abc123", stderr="")
+                from harness.impl_loop import run_simple
+                from harness.core import RunLogger
+                rl = RunLogger("test", "impl", "1")
+                try:
+                    run_simple(str(impl), "1", cfg, sd, "test", "feat", rl)
+                except Exception:
+                    pass  # 일부 mock 의 부작용은 무시 — prompt 캡처만 검증
+
+            os.environ.pop("HARNESS_RUN_TS", None)
+
+            # engineer 호출이 최소 2번 이상 있어야 재시도 경로가 돎
+            eng_prompts = [p for a, p in prompts if a == "engineer"]
+            self.assertGreaterEqual(
+                len(eng_prompts), 2,
+                f"engineer 재시도 호출이 없음. 전체 호출: {[a for a,_ in prompts]}",
+            )
+
+            # attempt 1 (index 1) engineer 프롬프트에 pr-reviewer 피드백 인라인 주입 확인
+            retry_prompt = eng_prompts[1]
+            self.assertIn(
+                "이전 pr-reviewer 피드백", retry_prompt,
+                "pr_fail 재시도 프롬프트에 피드백 섹션이 없음",
+            )
+            self.assertIn(
+                MARKER_MUST, retry_prompt,
+                "pr.log 의 MUST FIX 내용이 프롬프트에 인라인되지 않음",
+            )
+
+
 class TestConfigTestCommand(unittest.TestCase):
     def test_empty_test_command_means_skip(self):
         cfg = HarnessConfig(test_command="")
