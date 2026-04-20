@@ -80,8 +80,11 @@ def get_project_context(prefix):
         except Exception:
             pass
 
-    # UX flow 드리프트 플래그 (post-commit-scan.sh 가 생성)
-    ux_drift_flag = os.path.join(get_state_dir(), ".flags", f"{prefix}_ux_flow_drift")
+    # UX flow 드리프트 플래그 (post-commit-scan.sh 가 생성).
+    # `.flags/` 서브디렉토리는 migrate_legacy_flags 가 매번 비우므로 최상위에 저장.
+    ux_drift_flag = os.path.join(get_state_dir(), f"{prefix}_ux_flow_drift")
+    ux_sync_in_progress = os.path.join(get_state_dir(),
+                                       f"{prefix}_ux_sync_in_progress")
     if os.path.exists(ux_drift_flag):
         try:
             content = open(ux_drift_flag).read()
@@ -91,10 +94,24 @@ def get_project_context(prefix):
             if files:
                 head = ", ".join(os.path.basename(f) for f in files[:3])
                 more = f" 외 {len(files)-3}개" if len(files) > 3 else ""
-                lines.append(
-                    f"📝 ux-flow.md 드리프트 감지 ({len(files)}개 파일: {head}{more}) "
-                    f"— /ux-sync 로 현행화하세요"
-                )
+                if os.path.exists(ux_sync_in_progress):
+                    # 다른 세션에서 /ux-sync 실행 중 — 중복 실행 비권장 안내
+                    started_at = ""
+                    try:
+                        ts = int(os.path.getmtime(ux_sync_in_progress))
+                        mins = max(0, (int(time.time()) - ts) // 60)
+                        started_at = f" (약 {mins}분 전 시작)"
+                    except Exception:
+                        pass
+                    lines.append(
+                        f"⏳ 다른 세션에서 /ux-sync 실행 중{started_at} — "
+                        f"완료 대기 권장 (중복 실행 시 ux-flow.md Edit 충돌 가능)"
+                    )
+                else:
+                    lines.append(
+                        f"📝 ux-flow.md 드리프트 감지 ({len(files)}개 파일: {head}{more}) "
+                        f"— /ux-sync 로 현행화하세요"
+                    )
         except Exception:
             pass
 
@@ -144,11 +161,20 @@ def main():
     except Exception:
         pass
 
-    # ── 탑레벨 플래그 초기화 (last_issue는 보존, harness_active 계열은 executor 소관이라 보존) ──
+    # ── 탑레벨 플래그 초기화 (특정 파일은 보존) ──
+    # 보존 대상:
+    #   _last_issue: 최근 이슈 추적
+    #   _harness_active: executor lock (executor 소관)
+    #   _ux_flow_drift: 크로스 세션 UX drift 알림 (post-commit 생성, /ux-sync 소비)
+    #   _ux_sync_in_progress: /ux-sync 실행 중 센티널 (중복 실행 안내용)
+    PRESERVE_SUFFIXES = (
+        '_last_issue',
+        '_harness_active',
+        '_ux_flow_drift',
+        '_ux_sync_in_progress',
+    )
     for f in glob.glob(os.path.join(get_state_dir(), f'{prefix}_*')):
-        if f.endswith('_last_issue'):
-            continue
-        if f.endswith('_harness_active'):
+        if any(f.endswith(s) for s in PRESERVE_SUFFIXES):
             continue
         try:
             os.remove(f)

@@ -58,7 +58,8 @@ class UXDriftDetectionTests(unittest.TestCase):
         _git(self.root, "commit", "-qm", f"change {relpath}")
 
     def _flag_path(self) -> Path:
-        return (self.root / ".claude" / "harness-state" / ".flags"
+        # 최상위 — `.flags/` 서브디렉토리는 migrate_legacy_flags 가 비우므로 사용 안 함
+        return (self.root / ".claude" / "harness-state"
                 / "test_ux_flow_drift")
 
     def test_screen_file_change_with_ux_flow_creates_flag(self):
