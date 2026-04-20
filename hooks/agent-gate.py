@@ -56,19 +56,28 @@ def main():
         sys.exit(0)
 
     # 1. 프롬프트 검증: 이슈 번호 필수 에이전트
-    #    예외: architect Mode D (Task Decompose) — 이슈를 생성하는 역할
-    #    예외: architect Mode A / SYSTEM_DESIGN — 전체 구조 설계, 특정 이슈 귀속 아님
+    #    예외: architect Mode A (SYSTEM_DESIGN) — 전체 구조 설계, 특정 이슈 귀속 아님
+    #    예외: architect Mode D (TASK_DECOMPOSE) — 이슈를 생성하는 역할
+    #    예외: architect Mode E (TECH_EPIC) — 기술 에픽 초안, 이슈 선행 생성 아님
+    #    예외: architect Mode F (LIGHT_PLAN) — qa/외부 경로에서 이슈 자동 주입 가능
     if agent in ISSUE_REQUIRED_AGENTS:
         is_exempt = agent == "architect" and re.search(
-            r"Mode\s*D|Task\s*Decompose|SYSTEM_DESIGN|Mode\s*A", prompt, re.IGNORECASE
+            r"Mode\s*[ADEF]|Task\s*Decompose|SYSTEM_DESIGN|TECH_EPIC|LIGHT_PLAN",
+            prompt, re.IGNORECASE
         )
         if not is_exempt and not re.search(r"#\d+", prompt):
             deny(f"❌ {agent} 호출 전 GitHub 이슈 등록 필요. 프롬프트에 이슈 번호(#NNN)가 없습니다.")
 
-    # 2. 프롬프트 검증: architect 호출 시 Mode A-F 명시 필수
+    # 2. 프롬프트 검증: architect 호출 시 Mode 명시 권장 (강제 아님)
+    #    에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임.
+    #    캐주얼 진입로("간단히 해줘") 지원을 위해 block→warn.
     if agent == "architect":
-        if not re.search(r"Mode [A-F]", prompt, re.IGNORECASE):
-            deny("❌ architect 호출 시 Mode A/B/C/D/E/F를 프롬프트에 명시하세요.")
+        if not re.search(r"Mode\s*[A-F]|SYSTEM_DESIGN|MODULE_PLAN|SPEC_GAP|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN",
+                         prompt, re.IGNORECASE):
+            sys.stderr.write(
+                "⚠️ architect 호출에 Mode A-F 미지정 — 에이전트가 입력으로 판단합니다. "
+                "대규모 작업이면 Mode를 명시하세요.\n"
+            )
 
     # 3. 하네스 내부 에이전트는 harness/executor.py 경유 필수
     if agent in HARNESS_ONLY_AGENTS and not flag(FLAGS.HARNESS_ACTIVE):

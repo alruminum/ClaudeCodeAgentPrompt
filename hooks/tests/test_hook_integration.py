@@ -199,6 +199,80 @@ class AgentBoundaryTests(unittest.TestCase):
                          "Agent 툴 경로(env 미전파)에서도 live.json 기반 판정이 작동해야 함")
 
 
+class AgentGatePromptTests(unittest.TestCase):
+    """agent-gate.py 프롬프트 검증 (Mode/이슈 번호 정책)."""
+
+    def setUp(self):
+        self._td = tempfile.TemporaryDirectory()
+        self.root = Path(self._td.name)
+        (self.root / ".claude").mkdir(parents=True, exist_ok=True)
+        (self.root / ".claude" / "harness.config.json").write_text(json.dumps({
+            "prefix": "test", "default_branch": "main",
+        }))
+        self.sid = "sessPrompt04"
+        ss.initialize_session(self.sid, project_root=self.root)
+
+    def tearDown(self):
+        self._td.cleanup()
+
+    def _decision(self, out: str) -> str:
+        for line in out.splitlines():
+            line = line.strip()
+            if not line.startswith("{"):
+                continue
+            try:
+                data = json.loads(line)
+                hook_out = data.get("hookSpecificOutput", {})
+                return hook_out.get("permissionDecision", "")
+            except json.JSONDecodeError:
+                continue
+        return ""
+
+    def test_architect_without_mode_passes_with_warning(self):
+        """Mode 미지정 → 경고만 stderr, 통과."""
+        stdin = {"session_id": self.sid,
+                 "tool_input": {"subagent_type": "architect",
+                                "prompt": "이 이슈 좀 봐줘 #42"}}
+        rc, out, err = _run_hook("agent-gate.py", stdin, self.root)
+        self.assertEqual(rc, 0)
+        self.assertNotEqual(self._decision(out), "deny")
+        self.assertIn("Mode", err)  # 경고 메시지 존재
+
+    def test_architect_light_plan_without_issue_passes(self):
+        """Mode F (LIGHT_PLAN) 은 이슈 번호 없어도 통과."""
+        stdin = {"session_id": self.sid,
+                 "tool_input": {"subagent_type": "architect",
+                                "prompt": "Mode F: 버튼 색 바꾸기"}}
+        rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
+        self.assertEqual(rc, 0)
+        self.assertNotEqual(self._decision(out), "deny")
+
+    def test_architect_tech_epic_without_issue_passes(self):
+        """Mode E (TECH_EPIC) 은 이슈 번호 없어도 통과."""
+        stdin = {"session_id": self.sid,
+                 "tool_input": {"subagent_type": "architect",
+                                "prompt": "Mode E: 기술 부채 정리"}}
+        rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
+        self.assertEqual(rc, 0)
+        self.assertNotEqual(self._decision(out), "deny")
+
+    def test_architect_module_plan_without_issue_blocked(self):
+        """Mode B (MODULE_PLAN) 은 이슈 번호 필요 — 기존 동작 유지."""
+        stdin = {"session_id": self.sid,
+                 "tool_input": {"subagent_type": "architect",
+                                "prompt": "Mode B: impl 계획 작성"}}
+        rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
+        self.assertEqual(self._decision(out), "deny")
+
+    def test_engineer_without_issue_still_blocked(self):
+        """engineer는 예외 없이 이슈 번호 필수 — 루프 불변식."""
+        stdin = {"session_id": self.sid,
+                 "tool_input": {"subagent_type": "engineer",
+                                "prompt": "구현해줘 Mode F"}}
+        rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
+        self.assertEqual(self._decision(out), "deny")
+
+
 class IssueGateTests(unittest.TestCase):
     """issue-gate.py가 live.json을 읽어 ISSUE_CREATORS 판정."""
 
