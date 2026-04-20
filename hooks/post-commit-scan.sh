@@ -82,10 +82,10 @@ if [[ -f "docs/ux-flow.md" ]]; then
   UX_CHANGED=$(echo "$CHANGED" | tr ' ' '\n' | grep -E '(Screen\.(tsx|jsx)$|Page\.(tsx|jsx)$|/routes/|/screens/|router\.(ts|tsx|js|jsx)$)' || echo "")
   if [[ -n "$UX_CHANGED" ]]; then
     UX_COUNT=$(echo "$UX_CHANGED" | grep -c . || echo 0)
-    # cross-session 전역 플래그 (.flags/) — SessionStart·/ux-sync 가 읽음
-    FLAGS_DIR="${STATE_DIR}/.flags"
-    mkdir -p "$FLAGS_DIR"
-    FLAG_FILE="${FLAGS_DIR}/${PREFIX}_ux_flow_drift"
+    # cross-session 전역 플래그 — STATE_DIR 최상위에 둠.
+    # `.flags/` 서브디렉토리는 session-start 의 migrate_legacy_flags 가 비우기 때문에
+    # 세션 시작마다 사라진다. 최상위 + session-start.py cleanup 예외로 보존.
+    FLAG_FILE="${STATE_DIR}/${PREFIX}_ux_flow_drift"
     # 플래그 파일에 변경 파일 목록 저장 (SessionStart 알림 + /ux-sync 스킬에서 사용)
     {
       echo "# UX drift detected at $(date +%Y-%m-%dT%H:%M:%S)"

@@ -213,8 +213,10 @@ UX_REFINE 모드에서 Stream idle timeout(~11분)을 방지하기 위해 아래
 - 기존 `ux-flow.md` 를 보존하며 변경 화면 섹션만 교체한다. 전체 재생성은 UX_SYNC 모드를 사용.
 - 입력: `ux_flow_path` + `changed_files` (post-commit 훅이 감지한 UX 영향 파일 목록) + `src_dir`.
 - 출력 마커: `UX_FLOW_PATCHED` (성공) / `UX_FLOW_ESCALATE` (드리프트 >50% 또는 오감지).
-- 트리거: `post-commit-scan.sh` 가 UX 영향 파일 (`*Screen.tsx`, `*Page.tsx`, `routes/**`, `screens/**`, 라우터 설정) 변경 감지 시 `{prefix}_ux_flow_drift` 플래그 생성. SessionStart 훅이 플래그 읽어 유저에게 알림. `/ux-sync` 스킬이 플래그 소비해 INCREMENTAL 호출.
+- 트리거: `post-commit-scan.sh` 가 UX 영향 파일 (`*Screen.tsx`, `*Page.tsx`, `routes/**`, `screens/**`, 라우터 설정) 변경 감지 시 `{state_dir}/{prefix}_ux_flow_drift` 플래그 생성 (STATE_DIR 최상위 — `.flags/` 서브디렉토리는 `migrate_legacy_flags` 가 매 세션 비우므로 부적합). SessionStart 훅이 플래그 읽어 유저에게 알림. `/ux-sync` 스킬이 플래그 소비해 INCREMENTAL 호출.
+- SessionStart cleanup 예외: `session-start.py` PRESERVE_SUFFIXES 에 `_ux_flow_drift`, `_ux_sync_in_progress` 포함. 다른 플래그는 세션 시작 시 정리됨.
 - Edit 툴로 섹션 단위 교체. Write 전체 덮어쓰기 금지 — 기존 PRD 맥락·결정 로그 보존 목적.
+- **중복 실행 방지 (soft lock)**: `/ux-sync` 는 ux-architect 호출 직전 `{prefix}_ux_sync_in_progress` 센티널 파일을 생성하고, 성공/ESCALATE 어느 쪽이든 종료 시 삭제한다. SessionStart 훅은 드리프트 플래그 + 센티널 둘 다 있으면 "다른 세션에서 진행 중 — 중복 실행 비권장" 안내로 메시지를 변경. 강제 차단이 아니라 유저 판단용 안내 (하나의 유저가 2개 세션을 동시에 쓰는 드문 시나리오 대비).
 
 ### UX_REFINE 출력 규칙 (원문 echo + 절대경로)
 UX_REFINE 완료 시 메인 Claude가 재요약 없이 유저에게 전달할 수 있도록 아래를 강제.
