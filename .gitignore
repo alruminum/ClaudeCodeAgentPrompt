@@ -20,5 +20,6 @@ image-cache/
 tasks/
 agents/archive/
 harness-logs/
+harness-state/
 .claude/
 docs/하네스 & 에이전트 시스템 구조 분석 및 개선 포인트.ini
