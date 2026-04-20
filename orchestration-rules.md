@@ -58,9 +58,14 @@
 - ISSUE_CREATORS에 product-planner 포함 (`harness_common.py`).
 - 마커: `ISSUES_SYNCED` (이슈 번호 목록 포함).
 
-### agent-gate architect SYSTEM_DESIGN 예외
-- architect SYSTEM_DESIGN (Mode A)은 전체 구조 설계 — 특정 이슈에 귀속되지 않으므로 `#NNN` 불필요.
-- agent-gate.py에서 Task Decompose (Mode D)와 동일하게 면제.
+### agent-gate architect 프롬프트 검증 정책
+- **Mode 명시**: `Mode A-F` 또는 `SYSTEM_DESIGN|MODULE_PLAN|SPEC_GAP|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN` 키워드를 **권장**한다. 누락 시 훅은 `stderr` 경고만 남기고 통과 — 에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임한다. 캐주얼 진입로("간단히 해줘", `/quick` 스킬) 지원 목적.
+- **이슈 번호 면제**: 아래 모드는 `#NNN` 없이 호출 가능.
+  - Mode A (SYSTEM_DESIGN): 전체 구조 설계, 특정 이슈 귀속 아님.
+  - Mode D (TASK_DECOMPOSE): 이슈를 생성하는 역할.
+  - Mode E (TECH_EPIC): 기술 에픽 초안, 이슈 선행 생성 아님.
+  - Mode F (LIGHT_PLAN): qa/외부 경로에서 이슈 자동 주입 가능.
+- engineer 는 예외 없이 `#NNN` 필요 (impl 파일 메타 추적).
 
 ### SPEC_GAP 화면 구조 변경 에스컬레이션
 - SPEC_GAP에서 화면 구조 변경이 필요하다고 판단되면 (새 화면 추가, 화면 간 플로우 변경):
