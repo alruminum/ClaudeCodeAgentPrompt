@@ -80,6 +80,24 @@ def get_project_context(prefix):
         except Exception:
             pass
 
+    # UX flow 드리프트 플래그 (post-commit-scan.sh 가 생성)
+    ux_drift_flag = os.path.join(get_state_dir(), ".flags", f"{prefix}_ux_flow_drift")
+    if os.path.exists(ux_drift_flag):
+        try:
+            content = open(ux_drift_flag).read()
+            # 주석(#)이 아닌 줄만 = 변경 파일 목록
+            files = [l.strip() for l in content.splitlines()
+                     if l.strip() and not l.lstrip().startswith("#")]
+            if files:
+                head = ", ".join(os.path.basename(f) for f in files[:3])
+                more = f" 외 {len(files)-3}개" if len(files) > 3 else ""
+                lines.append(
+                    f"📝 ux-flow.md 드리프트 감지 ({len(files)}개 파일: {head}{more}) "
+                    f"— /ux-sync 로 현행화하세요"
+                )
+        except Exception:
+            pass
+
     return lines
 
 

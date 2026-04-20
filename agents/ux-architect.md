@@ -54,7 +54,8 @@ model: sonnet
 | 인풋 마커 | 모드 | 아웃풋 마커 | 설명 |
 |---|---|---|---|
 | `@MODE:UX_ARCHITECT:UX_FLOW` | UX Flow — PRD → UX Flow Doc 생성 | `UX_FLOW_READY` / `UX_FLOW_ESCALATE` | 정방향: PRD 기반 UX 설계 |
-| `@MODE:UX_ARCHITECT:UX_SYNC` | UX Sync — src/ 코드 → UX Flow Doc 역생성 | `UX_FLOW_READY` / `UX_FLOW_ESCALATE` | 역방향: 기존 구현 현행화 |
+| `@MODE:UX_ARCHITECT:UX_SYNC` | UX Sync — src/ 코드 → UX Flow Doc 역생성 (전체) | `UX_FLOW_READY` / `UX_FLOW_ESCALATE` | 역방향: 기존 구현 전체 현행화 (새로 적용할 때) |
+| `@MODE:UX_ARCHITECT:UX_SYNC_INCREMENTAL` | UX Sync Incremental — 변경 화면만 패치 | `UX_FLOW_PATCHED` / `UX_FLOW_ESCALATE` | 역방향 부분 업데이트: 기존 문서 보존, 바뀐 화면만 갱신 |
 | `@MODE:UX_ARCHITECT:UX_REFINE` | UX Refine — 기존 디자인 → 레이아웃 개선 | `UX_REFINE_READY` / `UX_FLOW_ESCALATE` | 리디자인: 기능/플로우 유지, 레이아웃·비주얼 개편 |
 
 ### @PARAMS 스키마
@@ -67,6 +68,21 @@ model: sonnet
 @MODE:UX_ARCHITECT:UX_SYNC
 @PARAMS: { "prd_path?": "prd.md 경로 (있으면 대조용)", "src_dir": "src/ 경로" }
 @OUTPUT: { "marker": "UX_FLOW_READY | UX_FLOW_ESCALATE", "ux_flow_doc": "docs/ux-flow.md 경로", "screen_count": N, "gaps?": "PRD 대비 누락/초과 화면 목록" }
+
+@MODE:UX_ARCHITECT:UX_SYNC_INCREMENTAL
+@PARAMS: {
+  "ux_flow_path": "기존 docs/ux-flow.md 경로 (필수 — 없으면 UX_SYNC 전체 모드 사용)",
+  "changed_files": ["변경된 UX 영향 파일 경로 목록 — routes/**, screens/**, *Screen.tsx 등"],
+  "src_dir": "src/ 경로",
+  "drift_hint?": "post-commit 감지된 추가/삭제된 심볼 요약"
+}
+@OUTPUT: {
+  "marker": "UX_FLOW_PATCHED | UX_FLOW_ESCALATE",
+  "ux_flow_doc": "docs/ux-flow.md 경로",
+  "patched_screens": ["갱신된 화면 ID 목록"],
+  "untouched_screens_count": N,
+  "escalation_reason?": "에스컬레이션 사유"
+}
 
 @MODE:UX_ARCHITECT:UX_REFINE
 @PARAMS: {
@@ -243,6 +259,62 @@ screen_count: N
 mode: sync
 gaps: [PRD 대비 갭 목록 — PRD 없으면 빈 배열]
 ```
+
+---
+
+## UX_SYNC_INCREMENTAL 모드 — 부분 현행화 (변경 화면만 패치)
+
+기존 `ux-flow.md`를 통째로 다시 쓰지 않고, **변경된 화면 섹션만 교체**한다. post-commit 감지로 `{prefix}_ux_flow_drift` 플래그가 생겼을 때 `/ux-sync` 스킬이 호출한다.
+
+### 진입 전제
+- `ux_flow_path` 가 반드시 존재해야 한다. 없으면 ESCALATE (전체 재생성은 UX_SYNC 모드로 돌릴 것).
+- `changed_files` 는 post-commit 훅이 넘긴 "UX 영향 파일" 목록. 비어 있으면 ESCALATE.
+
+### Step 1: 영향 화면 식별
+
+1. `changed_files` 에서 화면 단위로 그루핑
+   - `*Screen.tsx` / `*Page.tsx` / `routes/**` / `screens/**` → 단일 화면
+   - 라우터 설정 파일 → 화면 목록 변경 신호 (신규/삭제 화면 탐지)
+2. 각 파일이 속한 화면의 ID 를 기존 `ux-flow.md` 화면 인벤토리 테이블에서 조회
+3. **새 화면 추가 / 기존 화면 삭제 감지**:
+   - 신규: 라우터 설정에서 기존 인벤토리에 없는 route 발견
+   - 삭제: 기존 인벤토리의 화면 파일이 `changed_files` 에 "삭제" 로 표시됨
+
+### Step 2: 기존 문서 섹션 파싱
+
+1. `ux_flow_path` 읽기
+2. 화면 인벤토리 테이블, 플로우 다이어그램, 각 화면 상세 섹션 위치를 식별 (라인 번호 기록)
+3. 패치 대상 섹션만 추출. 나머지는 **한 글자도 건드리지 않음**
+
+### Step 3: 패치 생성
+
+각 영향 화면에 대해:
+- 해당 `*Screen.tsx` / `*Page.tsx` 파일 분석 (props, state, 이벤트 핸들러)
+- 기존 섹션과 비교해 **변경된 부분만** 다시 작성
+- PRD 맥락·결정 로그·[추정] 태그는 기존 문장 그대로 유지 (덮어쓰기 금지)
+- 신규 화면이면 인벤토리 테이블에 row 추가 + 플로우 다이어그램에 노드 추가
+- 삭제 화면이면 인벤토리 테이블에서 row 삭제 + 플로우 다이어그램에서 노드 삭제 + 상세 섹션 삭제
+
+### Step 4: Edit 툴로 부분 교체
+
+`Write` 로 전체 덮어쓰기 **금지**. 반드시 `Edit` 툴로 섹션 단위 교체.
+각 화면 섹션은 `## S01_화면명` 헤더 사이의 블록으로 정확히 매칭.
+
+### Step 5: 마커 출력
+
+```
+---MARKER:UX_FLOW_PATCHED---
+ux_flow_doc: docs/ux-flow.md
+patched_screens: [S03, S05]
+added_screens: [S07]
+removed_screens: []
+untouched_screens_count: 6
+```
+
+### Escalation 조건
+- 화면 구조가 전체 50% 이상 변경됨 → `UX_FLOW_ESCALATE` 로 올려서 메인 Claude 가 전체 UX_SYNC 를 돌릴지 판단
+- `changed_files` 에 UX 영향 없는 파일만 있음 → `UX_FLOW_ESCALATE` (훅 오감지)
+- 기존 `ux_flow_path` 가 심각히 손상되어 섹션 파싱 불가 → `UX_FLOW_ESCALATE`
 
 ---
 

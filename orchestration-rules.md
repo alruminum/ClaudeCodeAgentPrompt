@@ -209,6 +209,13 @@ UX_REFINE 모드에서 Stream idle timeout(~11분)을 방지하기 위해 아래
 
 근거: ux-architect/engineer는 frontmatter에 Pencil 읽기 도구만 있는데 bypassPermissions에서 batch_design 등 쓰기 도구 호출 가능. designer 전용 캔버스를 다른 에이전트가 수정하는 경계 위반 방지.
 
+### UX_SYNC_INCREMENTAL 모드 (드리프트 부분 패치)
+- 기존 `ux-flow.md` 를 보존하며 변경 화면 섹션만 교체한다. 전체 재생성은 UX_SYNC 모드를 사용.
+- 입력: `ux_flow_path` + `changed_files` (post-commit 훅이 감지한 UX 영향 파일 목록) + `src_dir`.
+- 출력 마커: `UX_FLOW_PATCHED` (성공) / `UX_FLOW_ESCALATE` (드리프트 >50% 또는 오감지).
+- 트리거: `post-commit-scan.sh` 가 UX 영향 파일 (`*Screen.tsx`, `*Page.tsx`, `routes/**`, `screens/**`, 라우터 설정) 변경 감지 시 `{prefix}_ux_flow_drift` 플래그 생성. SessionStart 훅이 플래그 읽어 유저에게 알림. `/ux-sync` 스킬이 플래그 소비해 INCREMENTAL 호출.
+- Edit 툴로 섹션 단위 교체. Write 전체 덮어쓰기 금지 — 기존 PRD 맥락·결정 로그 보존 목적.
+
 ### UX_REFINE 출력 규칙 (원문 echo + 절대경로)
 UX_REFINE 완료 시 메인 Claude가 재요약 없이 유저에게 전달할 수 있도록 아래를 강제.
 - ux-flow.md 해당 화면 섹션(`### SXX`부터 다음 `### ` 직전까지)을 마커 출력부에 **원문 그대로 echo**.

@@ -74,6 +74,30 @@ for f in $CHANGED; do
   fi
 done
 
+# 4. UX 영향 파일 변경 감지 → ux-flow.md 드리프트 플래그
+#    대상: *Screen.tsx, *Page.tsx, routes/**, screens/**, 라우터 설정
+#    ux-flow.md 가 존재하는 프로젝트에서만 동작 (없으면 스킵).
+UX_CHANGED=""
+if [[ -f "docs/ux-flow.md" ]]; then
+  UX_CHANGED=$(echo "$CHANGED" | tr ' ' '\n' | grep -E '(Screen\.(tsx|jsx)$|Page\.(tsx|jsx)$|/routes/|/screens/|router\.(ts|tsx|js|jsx)$)' || echo "")
+  if [[ -n "$UX_CHANGED" ]]; then
+    UX_COUNT=$(echo "$UX_CHANGED" | grep -c . || echo 0)
+    # cross-session 전역 플래그 (.flags/) — SessionStart·/ux-sync 가 읽음
+    FLAGS_DIR="${STATE_DIR}/.flags"
+    mkdir -p "$FLAGS_DIR"
+    FLAG_FILE="${FLAGS_DIR}/${PREFIX}_ux_flow_drift"
+    # 플래그 파일에 변경 파일 목록 저장 (SessionStart 알림 + /ux-sync 스킬에서 사용)
+    {
+      echo "# UX drift detected at $(date +%Y-%m-%dT%H:%M:%S)"
+      echo "# Consumed by: harness-session-start.py (notify), /ux-sync (read changed files)"
+      echo "$UX_CHANGED"
+    } > "$FLAG_FILE"
+    echo "" >> "$REPORT"
+    echo "[UX-DRIFT] $UX_COUNT UX-impacting file(s) changed. Flag: $FLAG_FILE" >> "$REPORT"
+    echo "$UX_CHANGED" | sed 's/^/  - /' >> "$REPORT"
+  fi
+fi
+
 # 요약
 echo "" >> "$REPORT"
 echo "--- Summary ---" >> "$REPORT"
