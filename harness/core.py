@@ -597,6 +597,31 @@ class RunLogger:
                 stderr=subprocess.DEVNULL,
             )
 
+        # 외부 알림 (HARNESS_NOTIFY env 설정된 경우에만)
+        try:
+            total_cost = 0.0
+            if self.log_file.exists():
+                for line in self.log_file.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except ValueError:
+                        continue
+                    c = e.get("cost_usd", 0)
+                    if c:
+                        total_cost += float(c)
+            from harness.notify import notify as _notify  # noqa: WPS433
+            _notify(
+                result=result,
+                prefix=self.prefix,
+                issue=issue or self.issue,
+                elapsed=total_elapsed,
+                cost_usd=total_cost,
+            )
+        except Exception:
+            pass  # 알림 실패는 하네스 흐름 영향 없게
+
     def _print_timing_summary(self, total_elapsed: int) -> None:
         """타이밍 요약 출력 (기존 _print_timing_summary와 동일)."""
         if not self.log_file.exists():
@@ -1041,11 +1066,40 @@ def _default_branch() -> str:
     return "main"
 
 
+def find_main_repo_root(start_path: Optional[Path] = None) -> Path:
+    """실제 main repo root를 반환.
+
+    Why: `git rev-parse --show-toplevel`은 worktree 내부에서 worktree 자신의 경로를
+    반환한다 (git worktree가 각 트리를 독립 working tree로 취급). cwd가 worktree 내부로
+    persist된 상태에서 WorktreeManager를 만들면 base_dir이 `{worktree}/.worktrees/...`로
+    중첩되어 `git worktree add`가 exit 128로 크래시한다. `git worktree list --porcelain`
+    첫 줄이 항상 main worktree이므로 이것으로 판별한다.
+
+    Fallback: git 명령 실패 시 start_path(또는 cwd).resolve() 반환 — 테스트나 비-repo 환경.
+    """
+    cwd = (start_path or Path.cwd()).resolve()
+    try:
+        r = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True, text=True, timeout=5, cwd=str(cwd),
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            first = r.stdout.split("\n", 1)[0]
+            if first.startswith("worktree "):
+                return Path(first[len("worktree "):].strip()).resolve()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return cwd
+
+
 class WorktreeManager:
     """이슈별 git worktree 라이프사이클 관리."""
 
     def __init__(self, project_root: Path, prefix: str) -> None:
-        self.project_root = project_root.resolve()
+        # L1 방어: project_root가 worktree 내부로 들어와도 실제 main repo root 복구.
+        # cwd가 worktree로 persist된 상태에서 StateDir(Path.cwd()) → WorktreeManager로
+        # 전파되는 중첩 경로 버그 차단.
+        self.project_root = find_main_repo_root(project_root)
         self.prefix = prefix
         self.base_dir = self.project_root / ".worktrees" / prefix
         self.base_dir.mkdir(parents=True, exist_ok=True)

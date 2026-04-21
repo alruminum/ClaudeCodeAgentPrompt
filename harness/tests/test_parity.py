@@ -1993,6 +1993,64 @@ class TestAgentGateModeLevel(unittest.TestCase):
         self.assertNotIn("DOCS_SYNC", arc_set)  # harness-only 집합에 없음 = 직접 호출 허용
 
 
+class TestWorktreeNestedCwdRecovery(unittest.TestCase):
+    """cwd가 worktree 내부로 persist된 상태에서도 WorktreeManager가 main repo root를
+    정확히 복구하는지 검증 — mb #158 run_20260421_231527 HARNESS_CRASH 재발 가드."""
+
+    def _make_repo_with_worktree(self, td: str):
+        """임시 git repo + 1개 worktree 생성, (main_root, worktree_path) 반환."""
+        import subprocess as _sp
+        main_root = Path(td) / "main"
+        main_root.mkdir()
+        _sp.run(["git", "init", "-q", "-b", "main"], cwd=str(main_root), check=True)
+        _sp.run(["git", "config", "user.email", "t@t"], cwd=str(main_root), check=True)
+        _sp.run(["git", "config", "user.name", "t"], cwd=str(main_root), check=True)
+        (main_root / "README.md").write_text("x")
+        _sp.run(["git", "add", "."], cwd=str(main_root), check=True)
+        _sp.run(["git", "commit", "-qm", "init"], cwd=str(main_root), check=True)
+        wt = main_root / ".worktrees" / "mb" / "issue-99"
+        wt.parent.mkdir(parents=True, exist_ok=True)
+        _sp.run(["git", "worktree", "add", "-q", str(wt), "-b", "feat/test"],
+                cwd=str(main_root), check=True)
+        return main_root, wt
+
+    def test_find_main_repo_root_from_main(self):
+        from harness.core import find_main_repo_root
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            main_root, _ = self._make_repo_with_worktree(td)
+            self.assertEqual(find_main_repo_root(main_root), main_root.resolve())
+
+    def test_find_main_repo_root_from_worktree_returns_main(self):
+        """cwd가 worktree 내부일 때도 main repo root 반환 — 이 버그의 핵심 가드."""
+        from harness.core import find_main_repo_root
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            main_root, wt = self._make_repo_with_worktree(td)
+            self.assertEqual(find_main_repo_root(wt), main_root.resolve())
+
+    def test_worktree_manager_base_dir_not_nested(self):
+        """WorktreeManager에 worktree 경로를 전달해도 base_dir이 main repo 기준."""
+        from harness.core import WorktreeManager
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            main_root, wt = self._make_repo_with_worktree(td)
+            # 이전 버그 재현 조건: project_root로 worktree 경로 전달
+            mgr = WorktreeManager(wt, "mb")
+            expected = main_root.resolve() / ".worktrees" / "mb"
+            self.assertEqual(mgr.base_dir, expected)
+            # 중첩되면 base_dir = wt / ".worktrees" / "mb" 가 됐을 것
+            self.assertNotEqual(mgr.base_dir, wt / ".worktrees" / "mb")
+
+    def test_find_main_repo_root_fallback_non_repo(self):
+        """git repo가 아닌 경로면 start_path 그대로 반환 (폴백)."""
+        from harness.core import find_main_repo_root
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td)
+            self.assertEqual(find_main_repo_root(p), p.resolve())
+
+
 class TestCleanupOrphanRemoteBranch(unittest.TestCase):
     """_cleanup_orphan_remote_branch — non-fast-forward 충돌 예방 회귀 차단."""
 
