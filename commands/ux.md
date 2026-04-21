@@ -309,11 +309,12 @@ BODY_EOF
 DESIGN_HANDOFF 패키지의 `## Issue: #N`에서 이슈 번호를 읽고, 위에서 판단한 depth를 `--depth`로 전달한다.
 
 ```bash
-PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
+PREFIX_ARGS=()
+[ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
 python3 ~/.claude/harness/executor.py impl \
   --issue <DESIGN_HANDOFF의 Issue 번호> \
   --depth <simple|std|deep> \
-  $PREFIX_FLAG
+  "${PREFIX_ARGS[@]}"
 ```
 
 engineer가 architect의 impl 파일을 읽고 `batch_get`으로 Pencil 프레임을 참조해 `src/`에 구현한다.

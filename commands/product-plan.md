@@ -100,10 +100,11 @@ Bash 도구 호출 형식 (timeout 필수):
 ```
 command: |
   PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
-  PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
+  PREFIX_ARGS=()
+  [ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
   python3 ~/.claude/harness/executor.py plan \
     --context "[준비도 리포트 전문 + 5차원 수집 내용]" \
-    $PREFIX_FLAG
+    "${PREFIX_ARGS[@]}"
 timeout: 3600000
 ```
 
@@ -121,7 +122,7 @@ plan 루프가 `CLARITY_INSUFFICIENT`를 반환하면 product-planner가 추가 
    command: |
      python3 ~/.claude/harness/executor.py plan \
        --context "[갱신된 리포트 + 추가 답변 + PRD 초안: prd-draft.md]" \
-       $PREFIX_FLAG
+       "${PREFIX_ARGS[@]}"
    timeout: 3600000
    ```
 5. **최대 2회 반복**. 3회째 CLARITY_INSUFFICIENT가 오면:
@@ -225,5 +226,5 @@ architect(SD) SYSTEM_DESIGN_READY + designer DESIGN_HANDOFF 완료 후:
 python3 ~/.claude/harness/executor.py impl \
   --impl <impl_path> \
   --issue <N> \
-  $PREFIX_FLAG
+  "${PREFIX_ARGS[@]}"
 ```

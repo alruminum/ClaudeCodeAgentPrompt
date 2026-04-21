@@ -87,11 +87,12 @@ QA 분석 결과에서 depth를 추천한다. 기준: **이 버그 수정이 기
 
 ```bash
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
-PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
+PREFIX_ARGS=()
+[ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
 python3 ~/.claude/harness/executor.py impl \
   --issue <QA가 생성한 이슈 번호> \
   --depth <simple|std|deep> \
-  $PREFIX_FLAG
+  "${PREFIX_ARGS[@]}"
 ```
 
 ### CLEANUP → executor.sh impl (simple 강제)
@@ -100,11 +101,12 @@ CLEANUP은 항상 `--depth simple`로 전달한다.
 
 ```bash
 PREFIX=$(python3 -c "import json,sys; d=json.load(open('.claude/harness.config.json')); print(d.get('prefix',''))" 2>/dev/null || echo "")
-PREFIX_FLAG=${PREFIX:+--prefix "$PREFIX"}
+PREFIX_ARGS=()
+[ -n "$PREFIX" ] && PREFIX_ARGS=(--prefix "$PREFIX")
 python3 ~/.claude/harness/executor.py impl \
   --issue <QA가 생성한 이슈 번호> \
   --depth simple \
-  $PREFIX_FLAG
+  "${PREFIX_ARGS[@]}"
 ```
 
 ### DESIGN_ISSUE → ux 스킬 전달
