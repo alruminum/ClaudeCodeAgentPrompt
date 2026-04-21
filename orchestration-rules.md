@@ -59,12 +59,13 @@
 - 마커: `ISSUES_SYNCED` (이슈 번호 목록 포함).
 
 ### agent-gate architect 프롬프트 검증 정책
-- **Mode 명시**: `Mode A-F` 또는 `SYSTEM_DESIGN|MODULE_PLAN|SPEC_GAP|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN` 키워드를 **권장**한다. 누락 시 훅은 `stderr` 경고만 남기고 통과 — 에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임한다. 캐주얼 진입로("간단히 해줘", `/quick` 스킬) 지원 목적.
+- **Mode 명시**: 의미적 키워드(`SYSTEM_DESIGN` / `MODULE_PLAN` / `SPEC_GAP` / `TASK_DECOMPOSE` / `TECH_EPIC` / `LIGHT_PLAN` / `DOCS_SYNC`)를 **권장**한다. 알파벳 표기(Mode A-G)는 deprecate — 의미 전달이 약하고 추가될 때마다 재할당 필요하므로 사용 금지. 누락 시 훅은 `stderr` 경고만 남기고 통과 — 에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임한다.
 - **이슈 번호 면제**: 아래 모드는 `#NNN` 없이 호출 가능.
-  - Mode A (SYSTEM_DESIGN): 전체 구조 설계, 특정 이슈 귀속 아님.
-  - Mode D (TASK_DECOMPOSE): 이슈를 생성하는 역할.
-  - Mode E (TECH_EPIC): 기술 에픽 초안, 이슈 선행 생성 아님.
-  - Mode F (LIGHT_PLAN): qa/외부 경로에서 이슈 자동 주입 가능.
+  - `SYSTEM_DESIGN`: 전체 구조 설계, 특정 이슈 귀속 아님.
+  - `TASK_DECOMPOSE`: 이슈를 생성하는 역할.
+  - `TECH_EPIC`: 기술 에픽 초안, 이슈 선행 생성 아님.
+  - `LIGHT_PLAN`: qa/외부 경로에서 이슈 자동 주입 가능.
+  - `DOCS_SYNC`: impl 이미 완료 상태라 이슈 번호 무의미.
 - engineer 는 예외 없이 `#NNN` 필요 (impl 파일 메타 추적).
 
 ### SPEC_GAP 화면 구조 변경 에스컬레이션

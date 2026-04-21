@@ -320,7 +320,7 @@ print("ENGINEER_DOCS_BLOCKED")
 @test "agent-gate: does not contain internal ordering rules (A1 separation)" {
   # 내부 순서 규칙(plan_validation, test_engineer 선행 조건 등)은 impl_*.sh에 위임
   # docstring 제외하고 active code에서만 확인
-  run grep -c 'pr-reviewer.*not flag\|validator.*Mode B.*not flag' "${BATS_TEST_DIRNAME}/../../hooks/agent-gate.py"
+  run grep -c 'pr-reviewer.*not flag\|validator.*CODE_VALIDATION.*not flag' "${BATS_TEST_DIRNAME}/../../hooks/agent-gate.py"
   [[ "$output" == "0" ]]
 }
 

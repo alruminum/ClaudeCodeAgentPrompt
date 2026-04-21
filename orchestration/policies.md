@@ -16,11 +16,11 @@ engineer는 항상 harness 경유. architect/validator는 Mode별로 갈린다.
 
 **harness/executor.py 경유 필수 (메인 Claude 직접 호출 금지)**:
 - engineer (모든 상황)
-- architect: `MODULE_PLAN` (Mode B), `SPEC_GAP` (Mode C)
+- architect: `MODULE_PLAN`, `SPEC_GAP`
 - validator: `PLAN_VALIDATION`, `CODE_VALIDATION`, `BUGFIX_VALIDATION`
 
 **메인 Claude 직접 Agent 호출 허용**:
-- architect: `SYSTEM_DESIGN` (Mode A), `TASK_DECOMPOSE` (Mode D), `TECH_EPIC` (Mode E), `LIGHT_PLAN` (Mode F)
+- architect: `SYSTEM_DESIGN`, `TASK_DECOMPOSE`, `TECH_EPIC`, `LIGHT_PLAN`, `DOCS_SYNC`
 - validator: `DESIGN_VALIDATION`
 - qa, designer, ux-architect, product-planner (스킬 경유 직접 호출)
 
@@ -34,7 +34,7 @@ engineer는 항상 harness 경유. architect/validator는 Mode별로 갈린다.
 ux 스킬이 designer 에이전트를 Agent 도구로 직접 호출한다. executor.sh design 경유 금지.
 
 금지 예시:
-- architect Mode B(MODULE_PLAN) 메인 직접 호출 ❌ → `executor.py plan` / `executor.py impl` 경유 ✅
+- architect MODULE_PLAN 메인 직접 호출 ❌ → `executor.py plan` / `executor.py impl` 경유 ✅
 - validator Plan Validation 메인 직접 호출 ❌ → executor.py가 attempt 0에 자동 실행
 
 예외:

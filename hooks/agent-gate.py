@@ -16,7 +16,7 @@ harness/impl_*.sh 스크립트가 담당한다. 여기서는 중복하지 않는
 
 이 훅이 담당하지 않는 것 (impl_*.sh 에서 관리):
   - engineer 전 plan_validation_passed 필요 (→ impl_std.sh:54)
-  - validator Mode B 전 test-engineer 필요 (→ impl_std.sh:300)
+  - validator CODE_VALIDATION 전 test-engineer 필요 (→ impl_std.sh:300)
   - pr-reviewer 전 validator B 필요 (→ impl_std.sh:360)
   - designer → design-critic 순서 (→ design.sh)
 """
@@ -66,13 +66,14 @@ def main():
         sys.exit(0)
 
     # 1. 프롬프트 검증: 이슈 번호 필수 에이전트
-    #    예외: architect Mode A (SYSTEM_DESIGN) — 전체 구조 설계, 특정 이슈 귀속 아님
-    #    예외: architect Mode D (TASK_DECOMPOSE) — 이슈를 생성하는 역할
-    #    예외: architect Mode E (TECH_EPIC) — 기술 에픽 초안, 이슈 선행 생성 아님
-    #    예외: architect Mode F (LIGHT_PLAN) — qa/외부 경로에서 이슈 자동 주입 가능
+    #    예외: SYSTEM_DESIGN — 전체 구조 설계, 특정 이슈 귀속 아님
+    #    예외: TASK_DECOMPOSE — 이슈를 생성하는 역할
+    #    예외: TECH_EPIC — 기술 에픽 초안, 이슈 선행 생성 아님
+    #    예외: LIGHT_PLAN — qa/외부 경로에서 이슈 자동 주입 가능
+    #    예외: DOCS_SYNC — impl 이미 완료 상태라 이슈 번호 무의미
     if agent in ISSUE_REQUIRED_AGENTS:
         is_exempt = agent == "architect" and re.search(
-            r"Mode\s*[ADEFG]|Task\s*Decompose|SYSTEM_DESIGN|TECH_EPIC|LIGHT_PLAN|DOCS_SYNC",
+            r"SYSTEM_DESIGN|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN|DOCS_SYNC",
             prompt, re.IGNORECASE
         )
         if not is_exempt and not re.search(r"#\d+", prompt):
@@ -82,11 +83,11 @@ def main():
     #    에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임.
     #    캐주얼 진입로("간단히 해줘") 지원을 위해 block→warn.
     if agent == "architect":
-        if not re.search(r"Mode\s*[A-G]|SYSTEM_DESIGN|MODULE_PLAN|SPEC_GAP|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN|DOCS_SYNC",
+        if not re.search(r"SYSTEM_DESIGN|MODULE_PLAN|SPEC_GAP|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN|DOCS_SYNC",
                          prompt, re.IGNORECASE):
             sys.stderr.write(
-                "⚠️ architect 호출에 Mode A-F 미지정 — 에이전트가 입력으로 판단합니다. "
-                "대규모 작업이면 Mode를 명시하세요.\n"
+                "⚠️ architect 호출에 모드 키워드 미지정 — 에이전트가 입력으로 판단합니다. "
+                "대규모 작업이면 SYSTEM_DESIGN/MODULE_PLAN/LIGHT_PLAN 등을 명시하세요.\n"
             )
 
     # 3. 하네스 내부 에이전트는 harness/executor.py 경유 필수
@@ -100,8 +101,8 @@ def main():
              f"직접 호출 금지 → {cmds.get(agent, 'executor.py')}")
 
     # 3a. Mode-level 게이트 — architect/validator 세분화
-    #     product-plan 스킬 6단계처럼 SYSTEM_DESIGN(Mode A)는 메인 Claude 직접 호출 허용이지만,
-    #     MODULE_PLAN(Mode B)/SPEC_GAP/PLAN_VALIDATION/CODE_VALIDATION 등은 harness 경유 필수.
+    #     product-plan 스킬 6단계처럼 SYSTEM_DESIGN은 메인 Claude 직접 호출 허용이지만,
+    #     MODULE_PLAN/SPEC_GAP/PLAN_VALIDATION/CODE_VALIDATION 등은 harness 경유 필수.
     if not flag(FLAGS.HARNESS_ACTIVE):
         if agent == "architect":
             mode = detect_architect_mode(prompt)

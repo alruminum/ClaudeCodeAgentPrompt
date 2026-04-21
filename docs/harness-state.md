@@ -106,7 +106,7 @@ Claude Code 위에서 Python 코어 + Bash 래퍼 + Python 훅으로 동작 (외
 | `{p}_impl_path` | executor | impl 루프 | 현재 impl 파일 경로 |
 | `{p}_current_issue` | executor | impl 루프, PostToolUse 훅 | 현재 처리 중 이슈 번호 |
 | `{p}_test_engineer_passed` | test-engineer (TESTS_PASS) | impl 루프 | 테스트 통과 |
-| `{p}_validator_b_passed` | validator Mode B (PASS) | impl 루프 | 코드 검증 통과 |
+| `{p}_validator_b_passed` | validator CODE_VALIDATION (PASS) | impl 루프 | 코드 검증 통과 |
 | `{p}_pr_reviewer_lgtm` | pr-reviewer (LGTM) | impl 루프 | PR 리뷰 승인 |
 | `{p}_security_review_passed` | security-reviewer (SECURE) | impl 루프 | 보안 감사 통과 |
 | `{p}_designer_ran` | ux 스킬 | ux 스킬 | designer 실행 완료 |
@@ -243,7 +243,7 @@ graph TD
   Commit_early -->|simple| PRReviewer_fast[pr-reviewer\n코드 품질]
   Commit_early -->|std/deep| TestEngineer[test-engineer\n테스트 작성]
   TestEngineer --> Vitest[npx vitest run\nground truth]
-  Vitest --> Validator_B[validator Mode B\n스펙 검증]
+  Vitest --> Validator_B[validator CODE_VALIDATION\n스펙 검증]
   Validator_B --> PRReviewer[pr-reviewer\n코드 품질]
   PRReviewer --> Security[security-reviewer\nOWASP 감사 — deep only]
   Security --> Merge[merge_to_main\npr_reviewer_lgtm 게이트]

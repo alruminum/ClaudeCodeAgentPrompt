@@ -6,7 +6,7 @@ AI 보조 소프트웨어 개발 워크플로를 위한 에이전트 모음.
 
 > **오케스트레이션 방식**: 메인 Claude가 `~/.claude/orchestration-rules.md`를 직접 읽고 에이전트를 순서대로 호출한다. 오케스트레이터 에이전트 없음.
 > 워크플로 강제는 `.claude/settings.json`의 PreToolUse/PostToolUse 훅으로 처리한다 (validator PASS 전 engineer 차단, architect @MODE 명시 강제 등).
-> ⚠️ 이 README의 ASCII 다이어그램은 레거시(Mode A/B/C 명칭). 최신 흐름은 `orchestration/*.md` 참조.
+> ⚠️ 이 README의 ASCII 다이어그램은 레거시. 일부 "Mode A/B/C" 알파벳 표기가 남아있으나 현재는 deprecate — 의미 키워드(`SYSTEM_DESIGN` / `MODULE_PLAN` / ...)로 대체됐다. 최신 흐름은 `orchestration/*.md` 참조.
 
 ---
 
@@ -15,10 +15,10 @@ AI 보조 소프트웨어 개발 워크플로를 위한 에이전트 모음.
 | 에이전트 | 파일 | 역할 | 입력 | 출력 마커 | 파일 수정 |
 |---|---|---|---|---|---|
 | **product-planner** | `product-planner.md` | 요구사항 수집 → 기능 스펙(AC/UX흐름) → 스코프 결정 | 유저 대화 | `PRODUCT_PLAN_READY` / `PRODUCT_PLAN_UPDATED` | O |
-| **architect** | `architect.md` | Mode A: 시스템 설계 / Mode B: 모듈 계획 / Mode C: SPEC_GAP 처리 / Mode D: Epic 태스크 분해 / Mode E: 기술 에픽 작성 | `PRODUCT_PLAN_READY` + 옵션 | `SYSTEM_DESIGN_READY` / `READY_FOR_IMPL` | O |
-| **validator** | `validator.md` | Mode A: 설계 검증 / Mode B: 코드 검증 (A.스펙일치 B.의존성 C.코드품질 3계층) | `SYSTEM_DESIGN_READY` 또는 구현 파일 | `DESIGN_REVIEW_PASS/FAIL` / `PASS/FAIL` | X |
+| **architect** | `architect.md` | `SYSTEM_DESIGN` / `MODULE_PLAN` / `SPEC_GAP` / `TASK_DECOMPOSE` / `TECH_EPIC` / `LIGHT_PLAN` / `DOCS_SYNC` | `PRODUCT_PLAN_READY` + 옵션 | `SYSTEM_DESIGN_READY` / `READY_FOR_IMPL` | O |
+| **validator** | `validator.md` | `DESIGN_VALIDATION` / `PLAN_VALIDATION` / `CODE_VALIDATION` (스펙·의존성·품질 3계층) / `BUGFIX_VALIDATION` | `SYSTEM_DESIGN_READY` 또는 구현 파일 | `DESIGN_REVIEW_PASS/FAIL` / `PASS/FAIL` | X |
 | **engineer** | `engineer.md` | Phase1 스펙검토(SPEC_GAP 체크) → Phase2 구현 → Phase3 자가검증. DESIGN_HANDOFF 수신 시 Design Tokens → CSS 변환 후 통합 | `READY_FOR_IMPL` (계획 파일) | 완료 리포트 | O |
-| **designer** | `designer.md` | Mode A: ASCII 와이어프레임 + React 구현체 생성 (컴포넌트 수준 3 variant / UX 개편 5 variant). Mode B: Figma 렌더링. 출력: `DESIGN_HANDOFF` 패키지 | 화면 스펙 / 피드백 | `DESIGN_READY_FOR_REVIEW` / `DESIGN_HANDOFF` | O |
+| **designer** | `designer.md` | `SCREEN_ONE_WAY` / `SCREEN_THREE_WAY` / `COMPONENT_ONE_WAY` / `COMPONENT_THREE_WAY` — Pencil MCP 캔버스에 variant 생성. 출력: `DESIGN_HANDOFF` 패키지 | 화면 스펙 / 피드백 | `DESIGN_READY_FOR_REVIEW` / `DESIGN_HANDOFF` | O |
 | **design-critic** | `design-critic.md` | 컴포넌트 수준: 3 variant 점수화·판정. UX 개편: 5개 중 3개 선별 후 유저 제시 | 3개 또는 5개 variant | `PICK` / `ITERATE` / `ESCALATE` | X |
 | **pr-reviewer** | `pr-reviewer.md` | validator PASS 이후 코드 품질 리뷰. 패턴·컨벤션·가독성·기술부채 검토. MUST FIX / NICE TO HAVE 분류. 파일 수정 금지 | 구현 파일 | `LGTM` / `CHANGES_REQUESTED` | X |
 | **test-engineer** | `test-engineer.md` | engineer 완료 후 테스트 코드 작성 + 실행. TESTS_FAIL 시 engineer 재구현 요청. 구현 파일 수정 금지 | `READY_FOR_IMPL` + 구현 파일 | `TESTS_PASS` / `TESTS_FAIL` | O (테스트 파일만) |
