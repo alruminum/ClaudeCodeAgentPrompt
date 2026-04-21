@@ -45,6 +45,7 @@
 | 요구사항 ID 부여 | 각 행에 `REQ-NNN` 형식의 ID가 있는가 |
 | 검증 방법 태그 | 각 행에 `(TEST)` / `(BROWSER:DOM)` / `(MANUAL)` 중 하나 이상 있는가 |
 | MANUAL 사유 | `(MANUAL)` 태그 사용 시 자동화 불가 이유가 통과 조건 셀에 명시되어 있는가 |
+| 테스트 파일 경로 명시 | `(TEST)` 태그가 하나라도 있으면 대응 테스트 파일 경로(`.test.tsx`/`.spec.ts` 등)가 `## 생성/수정 파일` 목록에 포함되어 있는가 (없으면 test-engineer가 타겟 추측해 엉뚱한 파일 덮어쓰는 사고 발생) |
 
 > C에서 FAIL 발견 시 → `PLAN_VALIDATION_FAIL` (SPEC_GAP 반려). architect가 `## 수용 기준` 섹션 보강 후 재검증.
 > 메타데이터 누락은 "스펙 불완전"으로 간주하며 engineer 진입을 차단한다.
@@ -83,6 +84,7 @@ PLAN_VALIDATION_PASS / PLAN_VALIDATION_FAIL
 | 요구사항 ID 부여 | PASS/FAIL | ... |
 | 검증 방법 태그 | PASS/FAIL | 태그 없는 항목: [목록] |
 | MANUAL 사유 | PASS/FAIL/N/A | ... |
+| 테스트 파일 경로 명시 | PASS/FAIL/N/A | (TEST) 태그 없으면 N/A |
 
 ### FAIL 원인 요약 (FAIL 시만)
 1. [구체적 미충족 항목 + 보강 요청]

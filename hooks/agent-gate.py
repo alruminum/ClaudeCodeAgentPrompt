@@ -72,7 +72,7 @@ def main():
     #    예외: architect Mode F (LIGHT_PLAN) — qa/외부 경로에서 이슈 자동 주입 가능
     if agent in ISSUE_REQUIRED_AGENTS:
         is_exempt = agent == "architect" and re.search(
-            r"Mode\s*[ADEF]|Task\s*Decompose|SYSTEM_DESIGN|TECH_EPIC|LIGHT_PLAN",
+            r"Mode\s*[ADEFG]|Task\s*Decompose|SYSTEM_DESIGN|TECH_EPIC|LIGHT_PLAN|DOCS_SYNC",
             prompt, re.IGNORECASE
         )
         if not is_exempt and not re.search(r"#\d+", prompt):
@@ -82,7 +82,7 @@ def main():
     #    에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임.
     #    캐주얼 진입로("간단히 해줘") 지원을 위해 block→warn.
     if agent == "architect":
-        if not re.search(r"Mode\s*[A-F]|SYSTEM_DESIGN|MODULE_PLAN|SPEC_GAP|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN",
+        if not re.search(r"Mode\s*[A-G]|SYSTEM_DESIGN|MODULE_PLAN|SPEC_GAP|TASK_DECOMPOSE|TECH_EPIC|LIGHT_PLAN|DOCS_SYNC",
                          prompt, re.IGNORECASE):
             sys.stderr.write(
                 "⚠️ architect 호출에 Mode A-F 미지정 — 에이전트가 입력으로 판단합니다. "
