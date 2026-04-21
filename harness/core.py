@@ -1097,6 +1097,120 @@ class WorktreeManager:
                 if d.is_dir() and d.name.startswith("issue-")]
 
 
+def _cooldown_path(project_root: Path, prefix: str, issue: str) -> Path:
+    """merge cooldown 파일 경로 — 프로젝트 전역 (세션 간 보존)."""
+    cooldown_dir = project_root / ".claude" / "harness-state" / ".cooldown"
+    cooldown_dir.mkdir(parents=True, exist_ok=True)
+    return cooldown_dir / f"{prefix}_{issue}.json"
+
+
+def set_merge_cooldown(
+    project_root: Path, prefix: str, issue: str, *,
+    reason: str, branch: str = "", stderr_tail: str = "",
+) -> None:
+    """merge 실패 시 cooldown 생성 — 다음 세션 진입 자동 차단.
+    Why: MERGE_CONFLICT_ESCALATE 후 같은 executor를 그대로 재실행하면 같은 실패를 반복해
+    시간·비용만 낭비한다. 유저가 수동 개입(rebase·PR 정리) 후 --force-retry로 우회한다."""
+    path = _cooldown_path(project_root, prefix, issue)
+    path.write_text(json.dumps({
+        "reason": reason,
+        "timestamp": int(time.time()),
+        "branch": branch,
+        "stderr_tail": stderr_tail[:500],
+    }))
+
+
+def get_merge_cooldown(project_root: Path, prefix: str, issue: str) -> Optional[dict]:
+    """cooldown 상태 조회. 없으면 None."""
+    path = _cooldown_path(project_root, prefix, issue)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def clear_merge_cooldown(project_root: Path, prefix: str, issue: str) -> None:
+    """merge 성공 또는 --force-retry 우회 시 cooldown 제거."""
+    _cooldown_path(project_root, prefix, issue).unlink(missing_ok=True)
+
+
+def _attempt_merge_selfheal(branch: str) -> bool:
+    """merge 실패 후 self-heal: base 최신화 + rebase + force-with-lease push.
+    Returns: True면 merge 재시도 가능, False면 ESCALATE 필요."""
+    default = _default_branch()
+
+    r = subprocess.run(
+        ["git", "fetch", "origin", default],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        return False
+
+    r = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/heads/{branch}"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r.returncode != 0:
+        return False  # 로컬에 branch 없음 (worktree 환경 등) — self-heal 불가
+
+    r = subprocess.run(
+        ["git", "checkout", branch],
+        capture_output=True, text=True, timeout=15,
+    )
+    if r.returncode != 0:
+        return False
+
+    r = subprocess.run(
+        ["git", "rebase", f"origin/{default}"],
+        capture_output=True, text=True, timeout=60,
+    )
+    if r.returncode != 0:
+        subprocess.run(["git", "rebase", "--abort"], capture_output=True, timeout=30)
+        print(f"[HARNESS] self-heal rebase conflict — 실제 코드 충돌: {r.stderr[:150]}")
+        return False
+
+    r = subprocess.run(
+        ["git", "push", "--force-with-lease", "origin", branch],
+        capture_output=True, text=True, timeout=30,
+    )
+    if r.returncode != 0:
+        print(f"[HARNESS] self-heal force-push 실패: {r.stderr[:150]}")
+        return False
+
+    print(f"[HARNESS] self-heal 성공: {branch} rebased on {default}")
+    return True
+
+
+def _cleanup_orphan_remote_branch(branch_name: str) -> None:
+    """원격 branch가 있지만 OPEN PR이 없으면 orphan으로 판단해 삭제한다.
+    Why: 이전 세션이 push만 하고 merge 못 한 채 종료되면 deterministic branch name 때문에
+    다음 세션에서 non-fast-forward 충돌 → MERGE_CONFLICT_ESCALATE 반복. OPEN PR이 있으면
+    이어서 작업해야 하므로 그대로 둔다."""
+    r = subprocess.run(
+        ["git", "ls-remote", "--exit-code", "--heads", "origin", branch_name],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r.returncode != 0:
+        return  # 원격에 없음
+
+    r_pr = subprocess.run(
+        ["gh", "pr", "list", "--head", branch_name, "--state", "open",
+         "--json", "number", "-q", ".[0].number"],
+        capture_output=True, text=True, timeout=10,
+    )
+    if r_pr.returncode == 0 and r_pr.stdout.strip():
+        print(f"[HARNESS] 원격 branch + OPEN PR #{r_pr.stdout.strip()} 발견 — 이어서 작업: {branch_name}")
+        return
+
+    print(f"[HARNESS] orphan 원격 branch 자동 정리: {branch_name} (OPEN PR 없음)")
+    subprocess.run(
+        ["git", "push", "origin", "--delete", branch_name],
+        capture_output=True, text=True, timeout=15,
+    )
+
+
 def create_feature_branch(
     branch_type: str,
     issue_num: str | int,
@@ -1142,6 +1256,9 @@ def create_feature_branch(
         branch_name += f"-{slug}"
 
     default = _default_branch()
+
+    # orphan 원격 branch 선제 정리 — 이전 세션 잔재로 인한 non-fast-forward 충돌 방지
+    _cleanup_orphan_remote_branch(branch_name)
 
     # worktree 모드: git worktree add로 격리
     if worktree_mgr:
@@ -1262,8 +1379,31 @@ def merge_to_main(
         capture_output=True, text=True, timeout=30,
     )
     if r_merge.returncode != 0:
-        print(f"MERGE_CONFLICT_ESCALATE\n{r_merge.stderr[:200]}")
-        return False
+        # self-heal 1회 시도: base 최신화 후 재merge
+        print(f"[HARNESS] merge 실패 — self-heal 시도: {r_merge.stderr[:150]}")
+        if _attempt_merge_selfheal(branch):
+            r_retry = subprocess.run(
+                ["gh", "pr", "merge", branch, "--squash"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r_retry.returncode == 0:
+                r_merge = r_retry  # 성공 흐름으로 이어감
+            else:
+                set_merge_cooldown(
+                    Path.cwd(), prefix, str(issue),
+                    reason="MERGE_CONFLICT_ESCALATE", branch=branch,
+                    stderr_tail=r_retry.stderr,
+                )
+                print(f"MERGE_CONFLICT_ESCALATE (self-heal 후 재실패)\n{r_retry.stderr[:200]}")
+                return False
+        else:
+            set_merge_cooldown(
+                Path.cwd(), prefix, str(issue),
+                reason="MERGE_CONFLICT_ESCALATE", branch=branch,
+                stderr_tail=r_merge.stderr,
+            )
+            print(f"MERGE_CONFLICT_ESCALATE\n{r_merge.stderr[:200]}")
+            return False
 
     # worktree 정리 (merge 성공 시)
     if worktree_mgr:
@@ -1273,6 +1413,7 @@ def merge_to_main(
     # 로컬 동기화 (브랜치 보존)
     _git("checkout", default)
     _git("pull")
+    clear_merge_cooldown(Path.cwd(), prefix, str(issue))
     print(f"[HARNESS] PR squash merged: {branch} → {default}")
     return True
 

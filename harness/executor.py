@@ -26,6 +26,8 @@ def main() -> None:
     parser.add_argument("--depth", default="auto", choices=["auto", "simple", "std", "deep"])
     parser.add_argument("--context", default="", help="추가 컨텍스트")
     parser.add_argument("--branch-type", default="feat", help="브랜치 타입 (feat|fix)")
+    parser.add_argument("--force-retry", action="store_true",
+                        help="직전 MERGE_CONFLICT cooldown 우회 (수동 해결 후 사용)")
 
     args = parser.parse_args()
 
@@ -58,6 +60,34 @@ def main() -> None:
     # HARNESS_ISSUE_NUM env var — hooks가 이슈별 플래그 디렉토리 참조
     if issue_num:
         os.environ["HARNESS_ISSUE_NUM"] = issue_num
+
+    # ── Merge cooldown 가드 — 직전 MERGE_CONFLICT_ESCALATE 재진입 차단 ──
+    if issue_num and args.mode == "impl" and not args.force_retry:
+        try:
+            from .core import get_merge_cooldown, clear_merge_cooldown
+        except ImportError:
+            from core import get_merge_cooldown, clear_merge_cooldown
+        cooldown = get_merge_cooldown(Path.cwd(), prefix, issue_num)
+        if cooldown:
+            from datetime import datetime
+            ts = datetime.fromtimestamp(cooldown.get("timestamp", 0)).strftime("%Y-%m-%d %H:%M:%S")
+            print(f"[HARNESS] ⚠️ 이슈 #{issue_num} cooldown 중 — {cooldown.get('reason')} ({ts})")
+            print(f"  branch: {cooldown.get('branch','?')}")
+            if cooldown.get("stderr_tail"):
+                print(f"  사유: {cooldown['stderr_tail'][:200]}")
+            print("")
+            print("  반복 재진입이 같은 실패를 반복합니다. 수동 해결 후 재시도하세요:")
+            print("    1) gh pr list --head <branch> 로 PR 상태 확인")
+            print("    2) 충돌 해결 또는 PR 수동 merge/close")
+            print("    3) --force-retry 플래그로 재실행")
+            sys.exit(1)
+    elif issue_num and args.force_retry:
+        try:
+            from .core import clear_merge_cooldown
+        except ImportError:
+            from core import clear_merge_cooldown
+        clear_merge_cooldown(Path.cwd(), prefix, issue_num)
+        print(f"[HARNESS] cooldown 우회: 이슈 #{issue_num}")
 
     # Phase 3: 이슈 lock 획득 — 두 세션이 같은 이슈 동시 작업 방지
     if ss is not None and session_id and issue_num:
