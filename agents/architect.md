@@ -103,6 +103,7 @@ model: sonnet
 | `@MODE:ARCHITECT:TASK_DECOMPOSE` | Task Decompose — Epic → 태스크 분해 + impl batch | `READY_FOR_IMPL` ×N | [상세](architect/task-decompose.md) |
 | `@MODE:ARCHITECT:TECH_EPIC` | Technical Epic — 기술부채/인프라 에픽 설계 | `SYSTEM_DESIGN_READY` | [상세](architect/tech-epic.md) |
 | `@MODE:ARCHITECT:LIGHT_PLAN` | Light Plan — 국소적 변경 계획 (버그·디자인 반영) | `LIGHT_PLAN_READY` | [상세](architect/light-plan.md) |
+| `@MODE:ARCHITECT:DOCS_SYNC` | Docs Sync — impl 완료 후 참조 docs 섹션 파생 서술 (설계 결정 금지) | `DOCS_SYNCED` | [상세](architect/docs-sync.md) |
 
 ### @PARAMS 스키마
 
@@ -130,6 +131,10 @@ model: sonnet
 @MODE:ARCHITECT:LIGHT_PLAN
 @PARAMS: { "suspected_files": "관련 파일 경로 (grep 결과 또는 DESIGN_HANDOFF 대상)", "issue_summary": "GitHub 이슈 제목+본문", "labels": "GitHub 이슈 라벨 목록", "issue": "GitHub 이슈 번호" }
 @OUTPUT: { "marker": "LIGHT_PLAN_READY", "impl_path": "docs/bugfix/#N-slug.md", "depth": "frontmatter depth: simple|std|deep 선언 필수" }
+
+@MODE:ARCHITECT:DOCS_SYNC
+@PARAMS: { "impl_path": "이미 구현 완료된 impl 파일 경로", "docs_targets": ["docs/*.md 보강 대상 경로 목록"] }
+@OUTPUT: { "marker": "DOCS_SYNCED / SPEC_GAP_FOUND / TECH_CONSTRAINT_CONFLICT", "updated_files?": ["수정한 docs 경로 목록 (DOCS_SYNCED 시)"] }
 ```
 
 모드 미지정 시 입력 내용으로 판단한다.

@@ -1980,6 +1980,18 @@ class TestAgentGateModeLevel(unittest.TestCase):
             "architect", "#42 @MODE:ARCHITECT:MODULE_PLAN", harness_active=True)
         self.assertEqual(decision, "allow")
 
+    def test_docs_sync_allowed_outside_harness(self):
+        """DOCS_SYNC는 impl 완료 후 docs 후행 동기화 전용 — 메인 Claude 직접 호출 허용."""
+        decision, _ = self._run_gate(
+            "architect", "@MODE:ARCHITECT:DOCS_SYNC 후행 동기화", harness_active=False)
+        self.assertEqual(decision, "allow")
+
+    def test_docs_sync_exempt_from_issue_number(self):
+        """DOCS_SYNC는 impl 완료 이후라 이슈 번호 요구 제외."""
+        det_arc, _, arc_set, _ = self._detect()
+        self.assertEqual(det_arc("@MODE:ARCHITECT:DOCS_SYNC"), "DOCS_SYNC")
+        self.assertNotIn("DOCS_SYNC", arc_set)  # harness-only 집합에 없음 = 직접 호출 허용
+
 
 class TestCleanupOrphanRemoteBranch(unittest.TestCase):
     """_cleanup_orphan_remote_branch — non-fast-forward 충돌 예방 회귀 차단."""

@@ -67,16 +67,17 @@ _ARCHITECT_MODE_ALPHA = {
     "D": "TASK_DECOMPOSE",
     "E": "TECH_EPIC",
     "F": "LIGHT_PLAN",
+    "G": "DOCS_SYNC",
 }
 
 
 def detect_architect_mode(prompt):
     """architect 프롬프트에서 Mode 식별. 명시 키워드 > Mode 알파벳 순."""
     for m in ("SYSTEM_DESIGN", "MODULE_PLAN", "SPEC_GAP",
-              "TASK_DECOMPOSE", "TECH_EPIC", "LIGHT_PLAN"):
+              "TASK_DECOMPOSE", "TECH_EPIC", "LIGHT_PLAN", "DOCS_SYNC"):
         if re.search(rf"\b{m}\b", prompt):
             return m
-    m = re.search(r"Mode\s*([A-Fa-f])\b", prompt)
+    m = re.search(r"Mode\s*([A-Ga-g])\b", prompt)
     if m:
         return _ARCHITECT_MODE_ALPHA.get(m.group(1).upper())
     return None
