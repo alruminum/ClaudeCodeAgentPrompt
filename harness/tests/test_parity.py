@@ -1867,6 +1867,141 @@ class TestWorktreeIsolation(unittest.TestCase):
         self.assertTrue(callable(result))
 
 
+class TestCleanupOrphanRemoteBranch(unittest.TestCase):
+    """_cleanup_orphan_remote_branch — non-fast-forward 충돌 예방 회귀 차단."""
+
+    def _mock_run(self, remote_exists: bool, open_pr_number: str = ""):
+        """subprocess.run 모킹 팩토리."""
+        from unittest.mock import MagicMock
+
+        def fake_run(cmd, **kwargs):
+            result = MagicMock()
+            if cmd[:2] == ["git", "ls-remote"]:
+                result.returncode = 0 if remote_exists else 2
+                result.stdout = "abc123\trefs/heads/foo\n" if remote_exists else ""
+            elif cmd[:3] == ["gh", "pr", "list"]:
+                result.returncode = 0
+                result.stdout = open_pr_number
+            elif cmd[:3] == ["git", "push", "origin"]:
+                result.returncode = 0
+                result.stdout = ""
+                self._delete_called = True  # noqa: attr-defined
+            else:
+                result.returncode = 0
+                result.stdout = ""
+            return result
+        return fake_run
+
+    def test_no_remote_branch_is_noop(self):
+        """원격에 branch 없으면 아무 동작 안 함."""
+        from unittest.mock import patch
+        from harness.core import _cleanup_orphan_remote_branch
+        self._delete_called = False
+        with patch("harness.core.subprocess.run", side_effect=self._mock_run(remote_exists=False)):
+            _cleanup_orphan_remote_branch("feat/foo")
+        self.assertFalse(self._delete_called)
+
+    def test_open_pr_blocks_delete(self):
+        """OPEN PR 있으면 원격 branch 삭제 안 함 (이어서 작업해야 함)."""
+        from unittest.mock import patch
+        from harness.core import _cleanup_orphan_remote_branch
+        self._delete_called = False
+        with patch("harness.core.subprocess.run",
+                   side_effect=self._mock_run(remote_exists=True, open_pr_number="42")):
+            _cleanup_orphan_remote_branch("feat/foo")
+        self.assertFalse(self._delete_called)
+
+    def test_orphan_branch_deleted(self):
+        """원격 branch + OPEN PR 없음 → orphan으로 판정 후 삭제."""
+        from unittest.mock import patch
+        from harness.core import _cleanup_orphan_remote_branch
+        self._delete_called = False
+        with patch("harness.core.subprocess.run",
+                   side_effect=self._mock_run(remote_exists=True, open_pr_number="")):
+            _cleanup_orphan_remote_branch("feat/foo")
+        self.assertTrue(self._delete_called)
+
+
+class TestMergeCooldown(unittest.TestCase):
+    """merge cooldown — MERGE_CONFLICT_ESCALATE 재진입 차단 회귀 가드."""
+
+    def test_set_get_clear_roundtrip(self):
+        from harness.core import set_merge_cooldown, get_merge_cooldown, clear_merge_cooldown
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            set_merge_cooldown(root, "mb", "42", reason="MERGE_CONFLICT_ESCALATE",
+                               branch="feat/foo", stderr_tail="non-fast-forward")
+            data = get_merge_cooldown(root, "mb", "42")
+            self.assertIsNotNone(data)
+            self.assertEqual(data["reason"], "MERGE_CONFLICT_ESCALATE")
+            self.assertEqual(data["branch"], "feat/foo")
+            clear_merge_cooldown(root, "mb", "42")
+            self.assertIsNone(get_merge_cooldown(root, "mb", "42"))
+
+    def test_isolation_by_prefix_and_issue(self):
+        """다른 prefix/issue는 서로 간섭 없음."""
+        from harness.core import set_merge_cooldown, get_merge_cooldown
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            set_merge_cooldown(root, "mb", "42", reason="X")
+            self.assertIsNone(get_merge_cooldown(root, "mb", "43"))
+            self.assertIsNone(get_merge_cooldown(root, "claude", "42"))
+            self.assertIsNotNone(get_merge_cooldown(root, "mb", "42"))
+
+
+class TestMergeSelfHeal(unittest.TestCase):
+    """_attempt_merge_selfheal — rebase conflict 구분, force-with-lease 사용."""
+
+    def test_rebase_conflict_aborts_and_returns_false(self):
+        """rebase 중 conflict 나면 abort 호출 + False 반환."""
+        from unittest.mock import patch, MagicMock
+        from harness.core import _attempt_merge_selfheal
+        abort_called = {"v": False}
+
+        def fake_run(cmd, **kwargs):
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = ""
+            if cmd[:2] == ["git", "rebase"] and "--abort" not in cmd:
+                r.returncode = 1
+                r.stderr = "CONFLICT (content)"
+            elif cmd[:3] == ["git", "rebase", "--abort"]:
+                abort_called["v"] = True
+            return r
+
+        with patch("harness.core._default_branch", return_value="main"), \
+             patch("harness.core.subprocess.run", side_effect=fake_run):
+            result = _attempt_merge_selfheal("feat/foo")
+        self.assertFalse(result)
+        self.assertTrue(abort_called["v"])
+
+    def test_happy_path_rebase_then_force_push(self):
+        """fetch → rebase → force-with-lease 순서로 진행 + True."""
+        from unittest.mock import patch, MagicMock
+        from harness.core import _attempt_merge_selfheal
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            r = MagicMock()
+            r.returncode = 0
+            r.stdout = ""
+            r.stderr = ""
+            return r
+
+        with patch("harness.core._default_branch", return_value="main"), \
+             patch("harness.core.subprocess.run", side_effect=fake_run):
+            result = _attempt_merge_selfheal("feat/foo")
+        self.assertTrue(result)
+        flat = [" ".join(c) for c in calls]
+        self.assertTrue(any("git fetch origin main" in c for c in flat))
+        self.assertTrue(any("git rebase origin/main" in c for c in flat))
+        self.assertTrue(any("--force-with-lease" in c for c in flat))
+
+
 class TestRunAutomatedChecksTestRegression(unittest.TestCase):
     """run_automated_checks run_tests 파라미터 — simple depth 회귀 차단."""
 
