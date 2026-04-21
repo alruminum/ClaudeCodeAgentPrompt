@@ -1867,6 +1867,120 @@ class TestWorktreeIsolation(unittest.TestCase):
         self.assertTrue(callable(result))
 
 
+class TestAgentGateModeLevel(unittest.TestCase):
+    """agent-gate.py — Mode-level 게이트 회귀 가드.
+    Module Plan(Mode B)/Plan Validation을 메인 Claude가 직접 호출하면 deny,
+    SYSTEM_DESIGN(Mode A)/DESIGN_VALIDATION은 허용."""
+
+    HOOKS_DIR = Path.home() / ".claude" / "hooks"
+    GATE = HOOKS_DIR / "agent-gate.py"
+
+    def _detect(self):
+        """detect_* 함수 임포트 (유닛 단위)."""
+        sys.path.insert(0, str(self.HOOKS_DIR))
+        try:
+            from harness_common import (
+                detect_architect_mode, detect_validator_mode,
+                ARCHITECT_HARNESS_ONLY_MODES, VALIDATOR_HARNESS_ONLY_MODES,
+            )
+            return (detect_architect_mode, detect_validator_mode,
+                    ARCHITECT_HARNESS_ONLY_MODES, VALIDATOR_HARNESS_ONLY_MODES)
+        finally:
+            if str(self.HOOKS_DIR) in sys.path:
+                sys.path.remove(str(self.HOOKS_DIR))
+
+    def test_detect_architect_modes(self):
+        det_arc, _, _, _ = self._detect()
+        self.assertEqual(det_arc("@MODE:ARCHITECT:SYSTEM_DESIGN"), "SYSTEM_DESIGN")
+        self.assertEqual(det_arc("Mode B — Module Plan for F5"), "MODULE_PLAN")
+        self.assertEqual(det_arc("architect Mode A 시스템 설계"), "SYSTEM_DESIGN")
+        self.assertEqual(det_arc("SPEC_GAP 복구 필요"), "SPEC_GAP")
+        self.assertIsNone(det_arc("그냥 코드 검토 부탁"))
+
+    def test_detect_validator_modes(self):
+        _, det_val, _, _ = self._detect()
+        self.assertEqual(det_val("Plan Validation 실행"), "PLAN_VALIDATION")
+        self.assertEqual(det_val("@MODE:VALIDATOR:DESIGN_VALIDATION"), "DESIGN_VALIDATION")
+        self.assertEqual(det_val("CODE_VALIDATION for impl"), "CODE_VALIDATION")
+        self.assertEqual(det_val("Bugfix Validation"), "BUGFIX_VALIDATION")
+        self.assertIsNone(det_val("리뷰 좀"))
+
+    def test_harness_only_sets(self):
+        _, _, arc_set, val_set = self._detect()
+        self.assertIn("MODULE_PLAN", arc_set)
+        self.assertIn("SPEC_GAP", arc_set)
+        self.assertNotIn("SYSTEM_DESIGN", arc_set)  # 직접 호출 허용
+        self.assertNotIn("LIGHT_PLAN", arc_set)
+        self.assertIn("PLAN_VALIDATION", val_set)
+        self.assertIn("CODE_VALIDATION", val_set)
+        self.assertNotIn("DESIGN_VALIDATION", val_set)  # 직접 호출 허용
+
+    def _run_gate(self, agent: str, prompt: str, harness_active: bool):
+        """agent-gate.py를 실제 subprocess로 실행. stdout JSON 파싱."""
+        import subprocess as _sp
+        import tempfile as _tf
+        with _tf.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".claude").mkdir()
+            (root / ".claude" / "harness.config.json").write_text(
+                json.dumps({"prefix": "testmb"}))
+            flags_dir = root / ".claude" / "harness-state" / ".flags"
+            flags_dir.mkdir(parents=True, exist_ok=True)
+            if harness_active:
+                (flags_dir / "testmb_harness_active").touch()
+            payload = {
+                "tool_name": "Task",
+                "tool_input": {
+                    "subagent_type": agent,
+                    "prompt": prompt,
+                    "run_in_background": False,
+                },
+            }
+            r = _sp.run(
+                ["python3", str(self.GATE)],
+                input=json.dumps(payload),
+                capture_output=True, text=True, timeout=10,
+                cwd=str(root),
+                env={**os.environ, "HARNESS_PREFIX": "testmb"},
+            )
+        try:
+            out = json.loads(r.stdout) if r.stdout.strip() else {}
+        except json.JSONDecodeError:
+            out = {}
+        decision = out.get("hookSpecificOutput", {}).get("permissionDecision", "allow")
+        reason = out.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
+        return decision, reason
+
+    def test_module_plan_blocked_outside_harness(self):
+        decision, reason = self._run_gate(
+            "architect", "#42 @MODE:ARCHITECT:MODULE_PLAN", harness_active=False)
+        self.assertEqual(decision, "deny")
+        self.assertIn("MODULE_PLAN", reason)
+        self.assertIn("executor.py", reason)
+
+    def test_system_design_allowed_outside_harness(self):
+        decision, _ = self._run_gate(
+            "architect", "@MODE:ARCHITECT:SYSTEM_DESIGN", harness_active=False)
+        self.assertEqual(decision, "allow")
+
+    def test_plan_validation_blocked_outside_harness(self):
+        decision, reason = self._run_gate(
+            "validator", "Plan Validation for F5 impl", harness_active=False)
+        self.assertEqual(decision, "deny")
+        self.assertIn("PLAN_VALIDATION", reason)
+
+    def test_design_validation_allowed_outside_harness(self):
+        decision, _ = self._run_gate(
+            "validator", "@MODE:VALIDATOR:DESIGN_VALIDATION", harness_active=False)
+        self.assertEqual(decision, "allow")
+
+    def test_module_plan_allowed_inside_harness(self):
+        """HARNESS_ACTIVE 플래그 있으면 Mode B도 통과 — plan_loop 내부 호출."""
+        decision, _ = self._run_gate(
+            "architect", "#42 @MODE:ARCHITECT:MODULE_PLAN", harness_active=True)
+        self.assertEqual(decision, "allow")
+
+
 class TestCleanupOrphanRemoteBranch(unittest.TestCase):
     """_cleanup_orphan_remote_branch — non-fast-forward 충돌 예방 회귀 차단."""
 

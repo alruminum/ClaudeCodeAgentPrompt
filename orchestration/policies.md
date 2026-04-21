@@ -10,22 +10,36 @@
 이유 불문. 규모 불문. 상황 불문.
 반드시 `bash ~/.claude/harness/executor.sh`를 통해서만 구현.
 
-**2. 메인 Claude — 에이전트 직접 호출 절대 금지 (qa·designer 예외 있음)**
-architect, engineer, validator 등 하네스 내부 에이전트를 메인 Claude가 Agent 도구로 직접 호출 금지.
-반드시 `bash ~/.claude/harness/executor.sh <mode> ...` 를 통해서만 에이전트를 실행한다.
+**2. 메인 Claude — Mode 단위 직접 호출 규칙**
+engineer는 항상 harness 경유. architect/validator는 Mode별로 갈린다.
+`hooks/agent-gate.py`가 Mode-level 게이트로 강제하며, 위반 시 PreToolUse에서 deny.
+
+**harness/executor.py 경유 필수 (메인 Claude 직접 호출 금지)**:
+- engineer (모든 상황)
+- architect: `MODULE_PLAN` (Mode B), `SPEC_GAP` (Mode C)
+- validator: `PLAN_VALIDATION`, `CODE_VALIDATION`, `BUGFIX_VALIDATION`
+
+**메인 Claude 직접 Agent 호출 허용**:
+- architect: `SYSTEM_DESIGN` (Mode A), `TASK_DECOMPOSE` (Mode D), `TECH_EPIC` (Mode E), `LIGHT_PLAN` (Mode F)
+- validator: `DESIGN_VALIDATION`
+- qa, designer, ux-architect, product-planner (스킬 경유 직접 호출)
+
+실제 화이트리스트는 `hooks/harness_common.py`의
+`ARCHITECT_HARNESS_ONLY_MODES` / `VALIDATOR_HARNESS_ONLY_MODES` 참조.
 
 **qa 예외**: qa 스킬이 QA 에이전트를 Agent 도구로 직접 호출해 분류 + 이슈 생성을 수행한다.
-분류 결과에 따라 qa 스킬이 직접 라우팅한다 (executor.sh impl --issue <N> / ux 스킬 / 유저 보고).
+분류 결과에 따라 qa 스킬이 직접 라우팅한다 (executor.py impl --issue <N> / ux 스킬 / 유저 보고).
 
 **designer 예외**: designer 에이전트는 결과물이 Pencil 캔버스(파일 변경 없음, git 없음)이므로 하네스 루프 적용 대상이 아니다.
 ux 스킬이 designer 에이전트를 Agent 도구로 직접 호출한다. executor.sh design 경유 금지.
 
 금지 예시:
-- 구현 전 analyst 직접 호출 ❌ → `executor.sh impl` 로 진입 ✅
+- architect Mode B(MODULE_PLAN) 메인 직접 호출 ❌ → `executor.py plan` / `executor.py impl` 경유 ✅
+- validator Plan Validation 메인 직접 호출 ❌ → executor.py가 attempt 0에 자동 실행
 
 예외:
-- 버그 보고 → qa 스킬 → QA 에이전트 직접 호출 ✅ (분류 + 이슈 생성 후 executor.sh impl --issue <N> 라우팅)
-- UX 디자인 요청 → ux 스킬 → designer 에이전트 직접 호출 ✅ (Pencil 캔버스 결과물, 하네스 불필요)
+- 설계 루프 진입 후 architect(SYSTEM_DESIGN) + designer 병렬 호출 ✅ (product-plan 스킬 6단계)
+- 버그 보고 → qa 스킬 → QA 에이전트 직접 호출 ✅
 
 **3. 메인 Claude — 하네스 진입 전 GitHub 이슈 직접 생성 금지**
 `create_issue` MCP를 하네스 진입 전 메인 Claude가 직접 호출 금지.
