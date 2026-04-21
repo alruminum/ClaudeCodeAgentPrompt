@@ -34,10 +34,21 @@ def main() -> None:
     # config + state_dir 초기화
     try:
         from .config import load_config
-        from .core import StateDir, RunLogger, Flag
+        from .core import StateDir, RunLogger, Flag, find_main_repo_root
     except ImportError:
         from config import load_config
-        from core import StateDir, RunLogger, Flag
+        from core import StateDir, RunLogger, Flag, find_main_repo_root
+
+    # L2 방어: cwd가 worktree 내부로 persist된 상태면 main repo root로 복귀.
+    # Claude Code Bash tool은 세션 간 cwd를 유지하므로 `cd .worktrees/...` 이후 호출 시
+    # StateDir/WorktreeManager가 중첩 경로로 오염된다. 여기서 한 번 복귀하면 이후 모든
+    # cwd 의존 코드(StateDir, agent handoff, flag 파일 등)가 안전해짐.
+    _main_root = find_main_repo_root()
+    if _main_root != Path.cwd().resolve():
+        print(f"[HARNESS] ⚠️ cwd가 worktree 내부 감지 → main repo 복귀")
+        print(f"  이전: {Path.cwd()}")
+        print(f"  복귀: {_main_root}")
+        os.chdir(_main_root)
 
     config = load_config()
     prefix = args.prefix or config.prefix
