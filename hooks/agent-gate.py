@@ -24,11 +24,21 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# /hardcarry, /softcarry 과제 모드 우회 — HardcarryDryRun / softcarray 프로젝트에선 훅 bypass.
+# 과제 종료 후 'softcarray' 조건 삭제 (또는 ~/.claude/hooks/agent-gate.py.bak-hardcarry 복원).
+if 'HardcarryDryRun' in os.getcwd() or 'softcarray' in os.getcwd():
+    sys.exit(0)
+
 import json
 import re
 import subprocess
 from datetime import datetime
-from harness_common import get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS, HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS, CUSTOM_AGENTS
+from harness_common import (
+    get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS,
+    HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS, CUSTOM_AGENTS,
+    ARCHITECT_HARNESS_ONLY_MODES, VALIDATOR_HARNESS_ONLY_MODES,
+    detect_architect_mode, detect_validator_mode,
+)
 import session_state as ss
 
 PREFIX = get_prefix()
@@ -88,6 +98,24 @@ def main():
         deny(f"❌ {agent}는 harness/executor.py를 통해서만 호출 가능. "
              f"{get_flags_dir()}/{PREFIX}_{FLAGS.HARNESS_ACTIVE} 없음. "
              f"직접 호출 금지 → {cmds.get(agent, 'executor.py')}")
+
+    # 3a. Mode-level 게이트 — architect/validator 세분화
+    #     product-plan 스킬 6단계처럼 SYSTEM_DESIGN(Mode A)는 메인 Claude 직접 호출 허용이지만,
+    #     MODULE_PLAN(Mode B)/SPEC_GAP/PLAN_VALIDATION/CODE_VALIDATION 등은 harness 경유 필수.
+    if not flag(FLAGS.HARNESS_ACTIVE):
+        if agent == "architect":
+            mode = detect_architect_mode(prompt)
+            if mode in ARCHITECT_HARNESS_ONLY_MODES:
+                deny(f"❌ architect {mode}는 harness/executor.py 경유만 허용됩니다. "
+                     f"메인 Claude 직접 호출 금지. "
+                     f"→ python3 ~/.claude/harness/executor.py plan|impl --issue <N> ... "
+                     f"(plan_loop/impl_loop가 내부에서 자동 호출)")
+        elif agent == "validator":
+            mode = detect_validator_mode(prompt)
+            if mode in VALIDATOR_HARNESS_ONLY_MODES:
+                deny(f"❌ validator {mode}는 harness/executor.py 경유만 허용됩니다. "
+                     f"메인 Claude 직접 호출 금지. "
+                     f"→ executor.py impl/plan이 attempt 내부에서 자동 호출 (중복 호출 방지)")
 
     # 4. engineer는 feature branch에서만 실행 (main 보호)
     if agent == "engineer" and flag(FLAGS.HARNESS_ACTIVE):

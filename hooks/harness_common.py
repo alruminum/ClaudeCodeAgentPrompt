@@ -47,6 +47,57 @@ class FLAGS:
 # 하네스(executor.sh) 경유 필수 에이전트 — 직접 Agent 호출 금지
 HARNESS_ONLY_AGENTS = ("engineer",)
 
+# Mode-level 게이트 — architect/validator는 Mode별로 직접 호출 허용 여부가 갈린다.
+# 아래 집합의 Mode는 harness/executor.py 경유 필수 (impl_loop / plan_loop 내부에서 자동 호출).
+# 나머지는 product-plan 스킬 6단계처럼 메인 Claude가 Agent 도구로 직접 호출 가능.
+ARCHITECT_HARNESS_ONLY_MODES = frozenset({
+    "MODULE_PLAN",   # Mode B — impl 경로, plan_loop가 호출
+    "SPEC_GAP",      # Mode C — impl loop attempt 내부 복구
+})
+VALIDATOR_HARNESS_ONLY_MODES = frozenset({
+    "PLAN_VALIDATION",     # plan_loop 내부
+    "CODE_VALIDATION",     # impl_loop attempt 내부
+    "BUGFIX_VALIDATION",   # bugfix/quick 경로
+})
+
+_ARCHITECT_MODE_ALPHA = {
+    "A": "SYSTEM_DESIGN",
+    "B": "MODULE_PLAN",
+    "C": "SPEC_GAP",
+    "D": "TASK_DECOMPOSE",
+    "E": "TECH_EPIC",
+    "F": "LIGHT_PLAN",
+}
+
+
+def detect_architect_mode(prompt):
+    """architect 프롬프트에서 Mode 식별. 명시 키워드 > Mode 알파벳 순."""
+    for m in ("SYSTEM_DESIGN", "MODULE_PLAN", "SPEC_GAP",
+              "TASK_DECOMPOSE", "TECH_EPIC", "LIGHT_PLAN"):
+        if re.search(rf"\b{m}\b", prompt):
+            return m
+    m = re.search(r"Mode\s*([A-Fa-f])\b", prompt)
+    if m:
+        return _ARCHITECT_MODE_ALPHA.get(m.group(1).upper())
+    return None
+
+
+def detect_validator_mode(prompt):
+    """validator 프롬프트에서 Mode 식별. 키워드 + 자연어 표현 모두 매치."""
+    for m in ("DESIGN_VALIDATION", "PLAN_VALIDATION",
+              "CODE_VALIDATION", "BUGFIX_VALIDATION"):
+        if re.search(rf"\b{m}\b", prompt):
+            return m
+    for pat, mode in (
+        (r"[Pp]lan[\s_-]*[Vv]alidation", "PLAN_VALIDATION"),
+        (r"[Dd]esign[\s_-]*[Vv]alidation", "DESIGN_VALIDATION"),
+        (r"[Cc]ode[\s_-]*[Vv]alidation", "CODE_VALIDATION"),
+        (r"[Bb]ugfix[\s_-]*[Vv]alidation", "BUGFIX_VALIDATION"),
+    ):
+        if re.search(pat, prompt):
+            return mode
+    return None
+
 # 이슈 생성 가능 에이전트 — issue-gate.py에서 harness_active 없이도 허용
 ISSUE_CREATORS = ("qa", "designer", "architect", "product-planner")
 
