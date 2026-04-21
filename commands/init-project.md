@@ -19,7 +19,7 @@ argument-hint: ""
    → 없으면 엔터
 
 2. 핵심 설계 문서 이름은 무엇인가요? (예: game-logic, domain-logic, api-spec)
-   → architect Mode C 신선도 체크에 사용됩니다.
+   → architect SPEC_GAP 신선도 체크에 사용됩니다.
    → 없으면 엔터 (기본값: domain-logic)
 ```
 
@@ -80,8 +80,8 @@ CLAUDE.md 를 열어 [채우기] 표시된 항목을 이 프로젝트에 맞게 
 환경이 준비되었습니다. 일반적인 다음 단계:
 
 1. product-planner 에이전트와 대화해서 PRD/TRD 작성
-2. architect Mode A → 설계 문서 초안
-3. architect Mode D → 에픽 → backlog.md + stories.md 분해
+2. architect SYSTEM_DESIGN → 설계 문서 초안
+3. architect TASK_DECOMPOSE → 에픽 → backlog.md + stories.md 분해
 4. 구현 루프 실행 (python3 ~/.claude/harness/executor.py impl ...)
 ```
 

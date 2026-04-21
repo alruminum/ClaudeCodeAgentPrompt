@@ -29,7 +29,7 @@
 set -e
 
 # 선택적 인수
-# --doc-name <name>  : 핵심 설계 문서 이름 (docs/<name>.md), Mode C 신선도 체크에 사용 (기본값: domain-logic)
+# --doc-name <name>  : 핵심 설계 문서 이름 (docs/<name>.md), SPEC_GAP 신선도 체크에 사용 (기본값: domain-logic)
 # --repo <owner/repo>: GitHub repo — 마일스톤/레이블 자동 생성에 사용
 DOC_NAME="domain-logic"
 REPO=""

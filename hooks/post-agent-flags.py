@@ -70,11 +70,11 @@ def main():
 
     # ── validator PASS → 플래그 생성 ──
     if agent == "validator" and has_marker("PASS"):
-        if re.search(r"Mode C|Plan Validation", prompt, re.IGNORECASE):
+        if re.search(r"PLAN_VALIDATION|Plan\s*Validation", prompt, re.IGNORECASE):
             touch(FLAGS.PLAN_VALIDATION_PASSED)
-        if re.search(r"Mode B", prompt, re.IGNORECASE):
+        if re.search(r"CODE_VALIDATION|Code\s*Validation", prompt, re.IGNORECASE):
             touch(FLAGS.VALIDATOR_B_PASSED)
-        # Mode D (Bugfix Validation) BUGFIX_PASS
+        # BUGFIX_VALIDATION → BUGFIX_PASS
         if has_marker("BUGFIX_PASS"):
             touch(FLAGS.BUGFIX_VALIDATION_PASSED)
 
@@ -90,8 +90,8 @@ def main():
     if agent == "security-reviewer" and has_marker("SECURE") and not has_marker("VULNERABILITIES_FOUND"):
         touch(FLAGS.SECURITY_REVIEW_PASSED)
 
-    # ── architect Mode B 완료 → 전체 플래그 초기화 ──
-    if agent == "architect" and re.search(r"Mode B", prompt, re.IGNORECASE):
+    # ── architect MODULE_PLAN 완료 → 전체 플래그 초기화 ──
+    if agent == "architect" and re.search(r"MODULE_PLAN", prompt, re.IGNORECASE):
         for f in [FLAGS.PLAN_VALIDATION_PASSED, FLAGS.VALIDATOR_B_PASSED, FLAGS.TEST_ENGINEER_PASSED,
                    FLAGS.PR_REVIEWER_LGTM, FLAGS.SECURITY_REVIEW_PASSED, FLAGS.DESIGNER_RAN, FLAGS.DESIGN_CRITIC_PASSED]:
             remove(f)
@@ -122,8 +122,8 @@ def main():
     if agent == "architect":
         base = os.getcwd()
         warns = []
-        mode_ac = bool(re.search(r"Mode [AC]", prompt, re.IGNORECASE))
-        mode_c = bool(re.search(r"Mode C", prompt, re.IGNORECASE))
+        mode_sd_or_gap = bool(re.search(r"SYSTEM_DESIGN|SPEC_GAP", prompt, re.IGNORECASE))
+        mode_gap = bool(re.search(r"SPEC_GAP", prompt, re.IGNORECASE))
 
         trd = os.path.join(base, "trd.md")
         dd = os.path.join(base, "docs", f"{DOC_NAME}.md")
@@ -133,9 +133,9 @@ def main():
 
         trd_age, dd_age = age(trd), age(dd)
 
-        if mode_ac and trd_age and trd_age > 120:
+        if mode_sd_or_gap and trd_age and trd_age > 120:
             warns.append(f"trd.md 미업데이트({trd_age}초 전)")
-        if mode_c and dd_age and dd_age > 120:
+        if mode_gap and dd_age and dd_age > 120:
             warns.append(f"docs/{DOC_NAME}.md 미업데이트({dd_age}초 전) — 설계 문서 동기화 필요")
 
         if warns:

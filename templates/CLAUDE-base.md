@@ -223,18 +223,21 @@ Closes/Related to #NNN
 - **architect 호출 시 반드시 Mode 명시**: 프롬프트 첫 줄 형식 필수 → `[Mode명] — [용도 한 줄 설명]`
 - **서브에이전트 포어그라운드 호출**: 백그라운드 에이전트 금지
 
-### architect Mode 상세
+### architect 모드 상세
 
-| Mode | 용도 | 산출물 |
+| 키워드 | 용도 | 산출물 |
 |---|---|---|
-| **System Design(Mode A)** | 시스템 전체 구조 설계 | `docs/architecture.md` 등 설계 문서 |
-| **Module Plan(Mode B)** | 모듈별 구현 계획 파일 작성 | `docs/impl/NN-*.md` ← 기본값 |
-| **SPEC_GAP(Mode C)** | SPEC_GAP 피드백 처리 | impl 파일 수정 |
-| **Task Decompose(Mode D)** | Epic stories → 기술 태스크 분해 + impl batch 작성 | stories 업데이트 + impl 파일들 |
-| **Technical Epic(Mode E)** | 기술 에픽 설계 (성능·보안·리팩) | `docs/` 설계 문서 |
+| **`SYSTEM_DESIGN`** | 시스템 전체 구조 설계 | `docs/architecture.md` 등 설계 문서 |
+| **`MODULE_PLAN`** | 모듈별 구현 계획 파일 작성 | `docs/impl/NN-*.md` ← 기본값 |
+| **`SPEC_GAP`** | SPEC_GAP 피드백 처리 | impl 파일 수정 |
+| **`TASK_DECOMPOSE`** | Epic stories → 기술 태스크 분해 + impl batch 작성 | stories 업데이트 + impl 파일들 |
+| **`TECH_EPIC`** | 기술 에픽 설계 (성능·보안·리팩) | `docs/` 설계 문서 |
+| **`LIGHT_PLAN`** | 버그픽스·디자인 반영·pr-reviewer 피드백 반영 (경량) | `docs/bugfix/#N-*.md` |
+| **`DOCS_SYNC`** | impl 완료 후 참조 docs 섹션 후행 반영 | docs/*.md 수정 |
 
-> Mode를 명시하지 않으면 architect가 거부함 (PreToolUse 훅). **구현 전 계획이면 Module Plan(Mode B)가 기본.**
-> **버그픽스 시**: 프롬프트 첫 줄에 `버그픽스 —` 명시 필수 (architect가 Epic/Story 이슈 생성 스킵)
+> 프롬프트에 위 키워드 중 하나를 명시한다. 미지정 시 stderr 경고 + 에이전트가 입력으로 자가 판단.
+> 알파벳 표기(Mode A-G)는 deprecate — 키워드만 사용.
+> **버그픽스/리뷰 반영 시**: 프롬프트 첫 줄에 `버그픽스 —` 또는 `LIGHT_PLAN` 명시.
 
 ### designer 루프 트리거 기준
 
@@ -247,7 +250,7 @@ Closes/Related to #NNN
 | 애니메이션·트랜지션 추가 | ✅ 필요 |
 | 버그 픽스 (화면 변화 없음) | ❌ 불필요 |
 | 로직 리팩토링 (UI 변화 없음) | ❌ 불필요 |
-| 텍스트/문구 변경 | ❌ 불필요 → architect Module Plan(Mode B) 직행 |
+| 텍스트/문구 변경 | ❌ 불필요 → architect LIGHT_PLAN 직행 |
 
 ### 문서 소유권
 

@@ -1869,8 +1869,8 @@ class TestWorktreeIsolation(unittest.TestCase):
 
 class TestAgentGateModeLevel(unittest.TestCase):
     """agent-gate.py — Mode-level 게이트 회귀 가드.
-    Module Plan(Mode B)/Plan Validation을 메인 Claude가 직접 호출하면 deny,
-    SYSTEM_DESIGN(Mode A)/DESIGN_VALIDATION은 허용."""
+    MODULE_PLAN/PLAN_VALIDATION을 메인 Claude가 직접 호출하면 deny,
+    SYSTEM_DESIGN/DESIGN_VALIDATION은 허용."""
 
     HOOKS_DIR = Path.home() / ".claude" / "hooks"
     GATE = HOOKS_DIR / "agent-gate.py"
@@ -1892,10 +1892,13 @@ class TestAgentGateModeLevel(unittest.TestCase):
     def test_detect_architect_modes(self):
         det_arc, _, _, _ = self._detect()
         self.assertEqual(det_arc("@MODE:ARCHITECT:SYSTEM_DESIGN"), "SYSTEM_DESIGN")
-        self.assertEqual(det_arc("Mode B — Module Plan for F5"), "MODULE_PLAN")
-        self.assertEqual(det_arc("architect Mode A 시스템 설계"), "SYSTEM_DESIGN")
+        self.assertEqual(det_arc("MODULE_PLAN — 단일 모듈 계획 for F5"), "MODULE_PLAN")
+        self.assertEqual(det_arc("architect SYSTEM_DESIGN 시스템 설계"), "SYSTEM_DESIGN")
         self.assertEqual(det_arc("SPEC_GAP 복구 필요"), "SPEC_GAP")
         self.assertIsNone(det_arc("그냥 코드 검토 부탁"))
+        # 알파벳 표기(Mode A-G) deprecate — 더 이상 인식하지 않음
+        self.assertIsNone(det_arc("Mode B 시작"))
+        self.assertIsNone(det_arc("Mode F 작업"))
 
     def test_detect_validator_modes(self):
         _, det_val, _, _ = self._detect()
@@ -1975,7 +1978,7 @@ class TestAgentGateModeLevel(unittest.TestCase):
         self.assertEqual(decision, "allow")
 
     def test_module_plan_allowed_inside_harness(self):
-        """HARNESS_ACTIVE 플래그 있으면 Mode B도 통과 — plan_loop 내부 호출."""
+        """HARNESS_ACTIVE 플래그 있으면 MODULE_PLAN도 통과 — plan_loop 내부 호출."""
         decision, _ = self._run_gate(
             "architect", "#42 @MODE:ARCHITECT:MODULE_PLAN", harness_active=True)
         self.assertEqual(decision, "allow")

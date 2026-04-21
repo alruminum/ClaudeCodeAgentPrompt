@@ -66,7 +66,7 @@ class AgentLifecycleTests(unittest.TestCase):
             "session_id": self.sid,
             "tool_input": {
                 "subagent_type": "architect",
-                "prompt": "Mode A: 시스템 설계 #42",
+                "prompt": "SYSTEM_DESIGN: 시스템 설계 #42",
             },
         }
         rc, out, err = _run_hook("agent-gate.py", stdin, self.root)
@@ -93,7 +93,7 @@ class AgentLifecycleTests(unittest.TestCase):
         ss.update_live(self.sid, project_root=self.root, agent="architect")
         stdin = {
             "session_id": self.sid,
-            "tool_input": {"subagent_type": "architect", "prompt": "Mode A: #1"},
+            "tool_input": {"subagent_type": "architect", "prompt": "SYSTEM_DESIGN: #1"},
             "tool_response": "---MARKER:READY_FOR_IMPL---",
         }
         rc, _, _ = _run_hook("post-agent-flags.py", stdin, self.root)
@@ -107,7 +107,7 @@ class AgentLifecycleTests(unittest.TestCase):
         stdin = {
             "session_id": self.sid,
             # 완료된 건 architect — 뒤늦게 도착한 post-agent
-            "tool_input": {"subagent_type": "architect", "prompt": "Mode A"},
+            "tool_input": {"subagent_type": "architect", "prompt": "SYSTEM_DESIGN"},
             "tool_response": "",
         }
         rc, _, _ = _run_hook("post-agent-flags.py", stdin, self.root)
@@ -229,38 +229,38 @@ class AgentGatePromptTests(unittest.TestCase):
         return ""
 
     def test_architect_without_mode_passes_with_warning(self):
-        """Mode 미지정 → 경고만 stderr, 통과."""
+        """모드 키워드 미지정 → 경고만 stderr, 통과."""
         stdin = {"session_id": self.sid,
                  "tool_input": {"subagent_type": "architect",
                                 "prompt": "이 이슈 좀 봐줘 #42"}}
         rc, out, err = _run_hook("agent-gate.py", stdin, self.root)
         self.assertEqual(rc, 0)
         self.assertNotEqual(self._decision(out), "deny")
-        self.assertIn("Mode", err)  # 경고 메시지 존재
+        self.assertIn("키워드", err)  # 경고 메시지 존재
 
     def test_architect_light_plan_without_issue_passes(self):
-        """Mode F (LIGHT_PLAN) 은 이슈 번호 없어도 통과."""
+        """LIGHT_PLAN 은 이슈 번호 없어도 통과."""
         stdin = {"session_id": self.sid,
                  "tool_input": {"subagent_type": "architect",
-                                "prompt": "Mode F: 버튼 색 바꾸기"}}
+                                "prompt": "LIGHT_PLAN: 버튼 색 바꾸기"}}
         rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
         self.assertEqual(rc, 0)
         self.assertNotEqual(self._decision(out), "deny")
 
     def test_architect_tech_epic_without_issue_passes(self):
-        """Mode E (TECH_EPIC) 은 이슈 번호 없어도 통과."""
+        """TECH_EPIC 은 이슈 번호 없어도 통과."""
         stdin = {"session_id": self.sid,
                  "tool_input": {"subagent_type": "architect",
-                                "prompt": "Mode E: 기술 부채 정리"}}
+                                "prompt": "TECH_EPIC: 기술 부채 정리"}}
         rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
         self.assertEqual(rc, 0)
         self.assertNotEqual(self._decision(out), "deny")
 
     def test_architect_module_plan_without_issue_blocked(self):
-        """Mode B (MODULE_PLAN) 은 이슈 번호 필요 — 기존 동작 유지."""
+        """MODULE_PLAN 은 이슈 번호 필요 — 기존 동작 유지."""
         stdin = {"session_id": self.sid,
                  "tool_input": {"subagent_type": "architect",
-                                "prompt": "Mode B: impl 계획 작성"}}
+                                "prompt": "MODULE_PLAN: impl 계획 작성"}}
         rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
         self.assertEqual(self._decision(out), "deny")
 
@@ -268,7 +268,7 @@ class AgentGatePromptTests(unittest.TestCase):
         """engineer는 예외 없이 이슈 번호 필수 — 루프 불변식."""
         stdin = {"session_id": self.sid,
                  "tool_input": {"subagent_type": "engineer",
-                                "prompt": "구현해줘 Mode F"}}
+                                "prompt": "구현해줘 LIGHT_PLAN"}}
         rc, out, _ = _run_hook("agent-gate.py", stdin, self.root)
         self.assertEqual(self._decision(out), "deny")
 

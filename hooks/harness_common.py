@@ -51,8 +51,8 @@ HARNESS_ONLY_AGENTS = ("engineer",)
 # 아래 집합의 Mode는 harness/executor.py 경유 필수 (impl_loop / plan_loop 내부에서 자동 호출).
 # 나머지는 product-plan 스킬 6단계처럼 메인 Claude가 Agent 도구로 직접 호출 가능.
 ARCHITECT_HARNESS_ONLY_MODES = frozenset({
-    "MODULE_PLAN",   # Mode B — impl 경로, plan_loop가 호출
-    "SPEC_GAP",      # Mode C — impl loop attempt 내부 복구
+    "MODULE_PLAN",   # impl 경로, plan_loop가 호출
+    "SPEC_GAP",      # impl loop attempt 내부 복구
 })
 VALIDATOR_HARNESS_ONLY_MODES = frozenset({
     "PLAN_VALIDATION",     # plan_loop 내부
@@ -60,26 +60,18 @@ VALIDATOR_HARNESS_ONLY_MODES = frozenset({
     "BUGFIX_VALIDATION",   # bugfix/quick 경로
 })
 
-_ARCHITECT_MODE_ALPHA = {
-    "A": "SYSTEM_DESIGN",
-    "B": "MODULE_PLAN",
-    "C": "SPEC_GAP",
-    "D": "TASK_DECOMPOSE",
-    "E": "TECH_EPIC",
-    "F": "LIGHT_PLAN",
-    "G": "DOCS_SYNC",
-}
-
-
 def detect_architect_mode(prompt):
-    """architect 프롬프트에서 Mode 식별. 명시 키워드 > Mode 알파벳 순."""
+    """architect 프롬프트에서 Mode 식별. 의미적 키워드만 인식.
+
+    Why: 과거엔 `Mode A-G` 알파벳 표기도 인식했으나 알파벳은 의미 전달이 약하고
+    신규 모드가 추가될 때마다 알파벳 재할당이 필요해 deprecate. 호출자는
+    항상 SYSTEM_DESIGN / MODULE_PLAN / SPEC_GAP / TASK_DECOMPOSE / TECH_EPIC /
+    LIGHT_PLAN / DOCS_SYNC 중 하나를 프롬프트에 명시해야 한다.
+    """
     for m in ("SYSTEM_DESIGN", "MODULE_PLAN", "SPEC_GAP",
               "TASK_DECOMPOSE", "TECH_EPIC", "LIGHT_PLAN", "DOCS_SYNC"):
         if re.search(rf"\b{m}\b", prompt):
             return m
-    m = re.search(r"Mode\s*([A-Ga-g])\b", prompt)
-    if m:
-        return _ARCHITECT_MODE_ALPHA.get(m.group(1).upper())
     return None
 
 

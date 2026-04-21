@@ -757,7 +757,7 @@ def _diagnose_abort(agent, mode, events):
         hints.append("확인: agents/qa.md 이슈 등록 규칙, mcp 도구 권한")
     elif agent == "architect":
         hints.append("architect 중단 — impl 파일 생성 실패 또는 타임아웃")
-        hints.append("확인: agents/architect.md Mode F/B 프롬프트")
+        hints.append("확인: agents/architect.md LIGHT_PLAN/MODULE_PLAN 프롬프트")
     elif agent == "engineer":
         hints.append("engineer 중단 — 코드 수정 중 타임아웃 또는 agent-boundary 차단")
         hints.append("확인: /tmp/{prefix}_engineer_active 플래그, agent-boundary.py 로그")
@@ -769,7 +769,7 @@ def _diagnose_abort(agent, mode, events):
         hints.append(f"{agent} 중단 — agents/{agent}.md 제약 사항 확인")
 
     if mode == "bugfix":
-        hints.append("루프 D 흐름: qa → (FUNCTIONAL_BUG: architect Mode F → engineer) / (SPEC_ISSUE: architect Mode B → validator → 루프 C)")
+        hints.append("루프 D 흐름: qa → (FUNCTIONAL_BUG: architect LIGHT_PLAN → engineer) / (SPEC_ISSUE: architect MODULE_PLAN → validator → 루프 C)")
 
     return " | ".join(hints)
 
