@@ -22,6 +22,7 @@ PYTHON = sys.executable
 
 def _run(payload: dict, env_extra: dict | None = None) -> tuple[str, str, int]:
     env = {k: v for k, v in os.environ.items() if k != "CLAUDE_ALLOW_PLUGIN_EDIT"}
+    env["HARNESS_FORCE_ENABLE"] = "1"
     if env_extra:
         env.update(env_extra)
     p = subprocess.run(
@@ -200,6 +201,7 @@ class MalformedInputTests(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=10,
+            env={**os.environ, "HARNESS_FORCE_ENABLE": "1"},
         )
         self.assertEqual(p.returncode, 0)
         self.assertEqual(p.stdout.strip(), "")

@@ -5,6 +5,13 @@ Stop hook: /tmp/harness_review_trigger.json 존재 시
 → 메인 Claude가 /harness-review 스킬을 자동 실행 (리포트 항상 출력)
 """
 import sys
+
+# 화이트리스트 가드 import
+import os as _os_hg
+_sys_path = _os_hg.path.dirname(_os_hg.path.abspath(__file__))
+if _sys_path not in __import__('sys').path:
+    __import__('sys').path.insert(0, _sys_path)
+from harness_common import is_harness_enabled
 import os
 import json
 
@@ -12,6 +19,8 @@ TRIGGER = "/tmp/harness_review_trigger.json"
 
 
 def main():
+    if not is_harness_enabled():
+        sys.exit(0)
     if not os.path.exists(TRIGGER):
         sys.exit(0)
 

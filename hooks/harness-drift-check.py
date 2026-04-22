@@ -11,6 +11,13 @@ git commit 시 orchestration-rules.md 또는 agents/*.md가 변경됐지만
   - bypass 플래그는 사용 후 자동 삭제 (1회용)
 """
 import sys
+
+# 화이트리스트 가드 import
+import os as _os_hg
+_sys_path = _os_hg.path.dirname(_os_hg.path.abspath(__file__))
+if _sys_path not in __import__('sys').path:
+    __import__('sys').path.insert(0, _sys_path)
+from harness_common import is_harness_enabled
 import json
 import subprocess
 import re
@@ -60,6 +67,8 @@ DRIFT_MAP = {
 
 
 def main():
+    if not is_harness_enabled():
+        sys.exit(0)
     try:
         d = json.load(sys.stdin)
     except Exception:

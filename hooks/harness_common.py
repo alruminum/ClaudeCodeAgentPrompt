@@ -117,6 +117,49 @@ CUSTOM_AGENTS = frozenset({
 })
 
 
+_WHITELIST_PATH = os.path.expanduser("~/.claude/harness-projects.json")
+
+
+def _load_whitelist():
+    """`~/.claude/harness-projects.json`의 `projects` 경로 목록을 resolve된 형태로 반환."""
+    try:
+        with open(_WHITELIST_PATH) as f:
+            data = json.load(f)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return []
+    projects = data.get("projects", [])
+    out = []
+    for p in projects:
+        try:
+            out.append(os.path.realpath(os.path.expanduser(p)))
+        except Exception:
+            continue
+    return out
+
+
+def is_harness_enabled(cwd=None):
+    """현재 프로젝트(또는 주어진 cwd)가 하네스 화이트리스트에 등록됐는지 판정.
+
+    Why: 하네스 훅은 전역(`~/.claude/hooks/*.py`)이라 모든 Claude Code 세션에서
+    호출된다. 일반 프로젝트에서 훅이 오작동(Mode 경고·file-ownership 차단 등)하지
+    않도록, `~/.claude/harness-projects.json`에 명시된 경로에서만 동작.
+
+    - 기본값은 disabled — 화이트리스트 없거나 cwd가 목록 밖이면 False
+    - 화이트리스트 경로의 서브디렉토리(worktree 포함)도 True로 판정
+    - `HARNESS_FORCE_ENABLE=1` env var로 임시 활성 (디버깅용)
+    """
+    if os.environ.get("HARNESS_FORCE_ENABLE") == "1":
+        return True
+    try:
+        here = os.path.realpath(cwd) if cwd else os.path.realpath(os.getcwd())
+    except OSError:
+        return False
+    for root in _load_whitelist():
+        if here == root or here.startswith(root + os.sep):
+            return True
+    return False
+
+
 def get_prefix():
     """프로젝트별 prefix를 env → harness.config.json (상위 순환) → 디렉토리명 → "proj" 폴백으로 유도."""
     # 훅 서브프로세스에서는 HARNESS_PREFIX env var가 전파되지 않을 수 있음.

@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
 import time
-from harness_common import get_prefix, deny, flag_path, FLAGS, ISSUE_CREATORS
+from harness_common import get_prefix, deny, flag_path, FLAGS, ISSUE_CREATORS, is_harness_enabled
 import session_state as ss
 
 PREFIX = get_prefix()
@@ -31,6 +31,10 @@ def _is_issue_creator_active(stdin_data=None):
 
 
 def main():
+    # 화이트리스트 가드 — `~/.claude/harness-projects.json` 등록된 프로젝트에서만 동작.
+    if not is_harness_enabled():
+        sys.exit(0)
+
     try:
         d = json.load(sys.stdin)
     except Exception:

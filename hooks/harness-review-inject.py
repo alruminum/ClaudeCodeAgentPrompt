@@ -14,10 +14,14 @@ import glob
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness_common import get_state_dir
+from harness_common import get_state_dir, is_harness_enabled
 
 
 def main():
+    # 화이트리스트 가드 — `~/.claude/harness-projects.json` 등록된 프로젝트에서만 동작.
+    if not is_harness_enabled():
+        sys.exit(0)
+
     # 하네스 내부 호출이면 스킵
     if os.environ.get("HARNESS_INTERNAL") == "1":
         print(json.dumps({"continue": True}))

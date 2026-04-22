@@ -59,6 +59,7 @@ def _run_hook(payload: dict, cwd: Path) -> tuple[str, str, int]:
             capture_output=True,
             text=True,
             timeout=10,
+            env={**os.environ, "HARNESS_FORCE_ENABLE": "1"},
         )
         return p.stdout, p.stderr, p.returncode
     finally:

@@ -22,7 +22,7 @@ def run_hook(tool_response: str, env: dict = None) -> subprocess.CompletedProces
         "tool_input": {"command": "bash ~/.claude/harness/executor.sh bugfix"},
         "tool_response": tool_response,
     })
-    merged_env = {**os.environ, **(env or {})}
+    merged_env = {**os.environ, "HARNESS_FORCE_ENABLE": "1", **(env or {})}
     return subprocess.run(
         [sys.executable, str(SCRIPT)],
         input=payload,

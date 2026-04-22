@@ -15,7 +15,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness_common import get_state_dir
+from harness_common import get_state_dir, is_harness_enabled
 import session_state as ss
 
 # .flags/ 내 _active 플래그 stale 기준 — 1시간 초과 시 세션 시작 시 제거
@@ -137,6 +137,10 @@ def _read_stdin_session_id():
 
 
 def main():
+    # 화이트리스트 가드 — `~/.claude/harness-projects.json` 등록된 프로젝트에서만 동작.
+    if not is_harness_enabled():
+        sys.exit(0)
+
     raw = sys.argv[1] if len(sys.argv) > 1 else "auto"
     prefix = get_prefix(raw)
 

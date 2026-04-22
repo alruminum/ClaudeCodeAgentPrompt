@@ -34,6 +34,7 @@ def _run_hook(stdin_json: dict, project_root: Path) -> subprocess.CompletedProce
         capture_output=True,
         text=True,
         cwd=str(project_root),
+        env={**os.environ, "HARNESS_FORCE_ENABLE": "1"},
     )
 
 

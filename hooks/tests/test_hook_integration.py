@@ -28,6 +28,8 @@ def _run_hook(name: str, stdin_json: dict, cwd: Path, extra_env: dict | None = N
     # 테스트 격리: HARNESS_SESSION_ID 주입은 stdin 의존성 확인을 방해하므로 기본 미설정
     env.pop("HARNESS_SESSION_ID", None)
     env.pop("HARNESS_AGENT_NAME", None)
+    # 화이트리스트 가드 우회 — 테스트는 임시 디렉토리에서 돌리므로 강제 활성
+    env["HARNESS_FORCE_ENABLE"] = "1"
     if extra_env:
         env.update(extra_env)
     proc = subprocess.run(

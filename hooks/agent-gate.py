@@ -37,7 +37,7 @@ from harness_common import (
     get_prefix, get_state_dir, get_flags_dir, deny, flag_exists, FLAGS,
     HARNESS_ONLY_AGENTS, ISSUE_REQUIRED_AGENTS, CUSTOM_AGENTS,
     ARCHITECT_HARNESS_ONLY_MODES, VALIDATOR_HARNESS_ONLY_MODES,
-    detect_architect_mode, detect_validator_mode,
+    detect_architect_mode, detect_validator_mode, is_harness_enabled,
 )
 import session_state as ss
 
@@ -49,6 +49,10 @@ def flag(name):
 
 
 def main():
+    # 화이트리스트 가드 — `~/.claude/harness-projects.json`에 등록된 프로젝트에서만 동작.
+    if not is_harness_enabled():
+        sys.exit(0)
+
     try:
         d = json.load(sys.stdin)
     except Exception:

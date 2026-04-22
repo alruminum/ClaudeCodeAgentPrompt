@@ -15,6 +15,13 @@ orch-rules-first.py — PreToolUse(Edit/Write) 전역 훅 (경고형)
   - orchestration-rules.md 자체 수정은 항상 통과 (플래그 설정만)
 """
 import sys
+
+# 화이트리스트 가드 import
+import os as _os_hg
+_sys_path = _os_hg.path.dirname(_os_hg.path.abspath(__file__))
+if _sys_path not in __import__('sys').path:
+    __import__('sys').path.insert(0, _sys_path)
+from harness_common import is_harness_enabled
 import json
 import os
 import re
@@ -73,6 +80,8 @@ def _active_skill():
 
 
 def main():
+    if not is_harness_enabled():
+        sys.exit(0)
     try:
         d = json.load(sys.stdin)
     except Exception:

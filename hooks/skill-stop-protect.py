@@ -25,6 +25,13 @@ from __future__ import annotations
 import json
 import os
 import sys
+
+# 화이트리스트 가드 import
+import os as _os_hg
+_sys_path = _os_hg.path.dirname(_os_hg.path.abspath(__file__))
+if _sys_path not in __import__('sys').path:
+    __import__('sys').path.insert(0, _sys_path)
+from harness_common import is_harness_enabled
 import time
 from pathlib import Path
 
@@ -60,6 +67,8 @@ def _log_event(event: dict) -> None:
 
 
 def main() -> int:
+    if not is_harness_enabled():
+        sys.exit(0)
     d = _read_stdin()
     sid = ss.session_id_from_stdin(d) or ss.current_session_id()
     if not sid:
