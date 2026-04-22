@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from harness_common import get_state_dir, get_flags_dir, FLAGS
+from harness_common import get_state_dir, get_flags_dir, FLAGS, is_harness_enabled
 
 LOG_FILE = "/tmp/harness-router.log"
 
@@ -115,6 +115,10 @@ def _check_harness_internal_prompt(prompt):
 
 
 def main():
+    # 화이트리스트 가드 — `~/.claude/harness-projects.json` 등록된 프로젝트에서만 동작.
+    if not is_harness_enabled():
+        sys.exit(0)
+
     try:
         _main_inner()
     except Exception as e:

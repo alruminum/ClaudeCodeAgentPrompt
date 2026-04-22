@@ -13,6 +13,11 @@
 4. 에스컬레이션 수신 시 자동 복구 금지 — 유저 보고 후 대기
 5. 워크플로우 변경은 이 파일 먼저, 스크립트는 그 다음
 
+> **적용 범위 — 프로젝트 화이트리스트 (옵트인)**
+> 위 규칙은 `~/.claude/harness-projects.json`에 **명시 등록된 프로젝트**에서만 적용된다. 전역 훅(`~/.claude/hooks/*.py`)은 모든 Claude Code 세션에서 호출되지만 `is_harness_enabled()`가 False면 조용히 no-op. 일반 코드 작업 프로젝트는 기본 disabled이므로 훅 태클 없음.
+>
+> 활성화: `/harness-enable` (현재 cwd 등록) · 비활성: `/harness-disable` · 목록: `/harness-list` · `setup-harness.sh` 실행 시 자동 등록.
+
 ---
 
 ## 루프 진입 기준 (메인 Claude)

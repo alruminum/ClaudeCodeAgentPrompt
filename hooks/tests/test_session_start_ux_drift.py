@@ -22,6 +22,7 @@ def _run_session_start(cwd: Path):
     """harness-session-start.py 를 서브프로세스로 실행 (auto 모드)."""
     script = HOOKS_DIR / "harness-session-start.py"
     env = os.environ.copy()
+    env["HARNESS_FORCE_ENABLE"] = "1"  # 테스트: 화이트리스트 가드 우회
     env.pop("HARNESS_SESSION_ID", None)
     proc = subprocess.run(
         ["python3", str(script), "auto"],

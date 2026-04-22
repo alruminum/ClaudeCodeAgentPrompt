@@ -1867,6 +1867,75 @@ class TestWorktreeIsolation(unittest.TestCase):
         self.assertTrue(callable(result))
 
 
+class TestHarnessWhitelist(unittest.TestCase):
+    """is_harness_enabled() — 프로젝트 화이트리스트 옵트인 가드."""
+
+    HOOKS_DIR = Path.home() / ".claude" / "hooks"
+
+    def _setup(self, projects, home_dir):
+        """임시 HOME에 harness-projects.json 배치 후 is_harness_enabled import."""
+        sys.path.insert(0, str(self.HOOKS_DIR))
+        wl = home_dir / ".claude" / "harness-projects.json"
+        wl.parent.mkdir(parents=True, exist_ok=True)
+        wl.write_text(json.dumps({"projects": projects}))
+        import harness_common
+        import importlib
+        importlib.reload(harness_common)
+        harness_common._WHITELIST_PATH = str(wl)
+        return harness_common.is_harness_enabled
+
+    def tearDown(self):
+        if str(self.HOOKS_DIR) in sys.path:
+            sys.path.remove(str(self.HOOKS_DIR))
+
+    def test_missing_whitelist_file_returns_false(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            home = Path(td)
+            fn = self._setup([], home)
+            # 파일 삭제
+            (home / ".claude" / "harness-projects.json").unlink()
+            self.assertFalse(fn("/tmp/some-project"))
+
+    def test_exact_match_returns_true(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td) / "proj"
+            proj.mkdir()
+            fn = self._setup([str(proj)], Path(td))
+            self.assertTrue(fn(str(proj)))
+
+    def test_subdirectory_match_returns_true(self):
+        """등록 경로의 하위(worktree·서브디렉토리)도 활성."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td) / "proj"
+            sub = proj / "src" / "deep"
+            sub.mkdir(parents=True)
+            fn = self._setup([str(proj)], Path(td))
+            self.assertTrue(fn(str(sub)))
+
+    def test_unrelated_path_returns_false(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td) / "proj"
+            other = Path(td) / "other"
+            proj.mkdir(); other.mkdir()
+            fn = self._setup([str(proj)], Path(td))
+            self.assertFalse(fn(str(other)))
+
+    def test_force_enable_env_overrides(self):
+        """HARNESS_FORCE_ENABLE=1 env var 설정 시 whitelist 무시하고 True."""
+        import tempfile, os as _os
+        with tempfile.TemporaryDirectory() as td:
+            fn = self._setup([], Path(td))
+            _os.environ["HARNESS_FORCE_ENABLE"] = "1"
+            try:
+                self.assertTrue(fn("/any/path"))
+            finally:
+                del _os.environ["HARNESS_FORCE_ENABLE"]
+
+
 class TestAgentGateModeLevel(unittest.TestCase):
     """agent-gate.py — Mode-level 게이트 회귀 가드.
     MODULE_PLAN/PLAN_VALIDATION을 메인 Claude가 직접 호출하면 deny,
@@ -1944,7 +2013,7 @@ class TestAgentGateModeLevel(unittest.TestCase):
                 input=json.dumps(payload),
                 capture_output=True, text=True, timeout=10,
                 cwd=str(root),
-                env={**os.environ, "HARNESS_PREFIX": "testmb"},
+                env={**os.environ, "HARNESS_PREFIX": "testmb", "HARNESS_FORCE_ENABLE": "1"},
             )
         try:
             out = json.loads(r.stdout) if r.stdout.strip() else {}

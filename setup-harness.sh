@@ -326,6 +326,32 @@ else
   echo "ℹ️  .git/hooks 디렉토리 없음 — pre-commit hook 스킵 (git init 후 재실행)"
 fi
 
+# ── 화이트리스트 자동 등록 (하네스 훅 활성화) ──
+# 전역 훅은 `~/.claude/harness-projects.json`에 등록된 프로젝트에서만 동작한다.
+# setup-harness.sh 실행 = 하네스 사용 의도이므로 자동 등록.
+PROJECT_ROOT_ABS=$(python3 -c "import os; print(os.path.realpath('$PWD'))")
+python3 - <<PY
+import json, os
+from pathlib import Path
+wl = Path.home() / ".claude" / "harness-projects.json"
+data = {"projects": []}
+if wl.exists():
+    try: data = json.loads(wl.read_text())
+    except Exception: pass
+projects = data.get("projects", [])
+here = "$PROJECT_ROOT_ABS"
+for p in projects:
+    root = os.path.realpath(os.path.expanduser(p))
+    if here == root or here.startswith(root + os.sep):
+        print(f"ℹ️  화이트리스트 이미 등록됨: {root}")
+        raise SystemExit(0)
+projects.append(here)
+data["projects"] = sorted(set(projects))
+wl.parent.mkdir(parents=True, exist_ok=True)
+wl.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+print(f"✅ 하네스 화이트리스트 등록: {here}")
+PY
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ Harness 프로젝트 설정 완료"

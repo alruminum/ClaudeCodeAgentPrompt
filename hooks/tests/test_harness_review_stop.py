@@ -21,6 +21,7 @@ def run_hook() -> subprocess.CompletedProcess:
         input="",
         capture_output=True,
         text=True,
+        env={**os.environ, "HARNESS_FORCE_ENABLE": "1"},
     )
 
 

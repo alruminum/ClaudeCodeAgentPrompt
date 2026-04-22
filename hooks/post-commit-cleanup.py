@@ -11,12 +11,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
 import re
-from harness_common import get_prefix, get_state_dir, FLAGS
+from harness_common import get_prefix, get_state_dir, FLAGS, is_harness_enabled
 
 PREFIX = get_prefix()
 
 
 def main():
+    # 화이트리스트 가드 — `~/.claude/harness-projects.json` 등록된 프로젝트에서만 동작.
+    if not is_harness_enabled():
+        sys.exit(0)
+
     try:
         d = json.load(sys.stdin)
     except Exception:

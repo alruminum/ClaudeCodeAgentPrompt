@@ -27,6 +27,7 @@ PYTHON = sys.executable
 def _run_hook(hook_name: str, payload: dict, env_extra: dict | None = None) -> tuple[str, str, int]:
     """훅을 subprocess로 호출. (stdout, stderr, returncode) 반환."""
     env = os.environ.copy()
+    env["HARNESS_FORCE_ENABLE"] = "1"  # 테스트: 화이트리스트 가드 우회
     if env_extra:
         env.update(env_extra)
     p = subprocess.run(
