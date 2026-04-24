@@ -1,6 +1,6 @@
 ---
 name: product-plan
-description: 기능 추가/변경 요청을 명확히 정의한 뒤 하네스 기획-UX 루프(product-planner → ux-architect → validator(UX) → plan-reviewer → 유저 승인 ①)를 시작하고, 이후 설계 루프 → 구현 루프로 연결하는 스킬. 유저가 "기획자야", "기획아", "기능 추가할 게 생겼어", "피쳐 추가할 게 생겼어", "feature 추가", "이런 기능이 필요할 것 같아", "이런 기능이 빠진 것 같은데", "피쳐 추가", "새 기능", "새 피쳐", "기획해줘", "프로덕트 플랜" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
+description: 기능 추가/변경 요청을 명확히 정의한 뒤 하네스 기획-UX 루프(product-planner → plan-reviewer → ux-architect → validator(UX) → 유저 승인 ①)를 시작하고, 이후 설계 루프 → 구현 루프로 연결하는 스킬. 유저가 "기획자야", "기획아", "기능 추가할 게 생겼어", "피쳐 추가할 게 생겼어", "feature 추가", "이런 기능이 필요할 것 같아", "이런 기능이 빠진 것 같은데", "피쳐 추가", "새 기능", "새 피쳐", "기획해줘", "프로덕트 플랜" 등의 표현을 쓸 때 반드시 이 스킬을 사용한다.
 ---
 
 # Product Plan Loop Skill
@@ -143,21 +143,20 @@ UX_SKIP → 유저에게 알림:
 
 ### 4.7단계: PLAN_REVIEW_CHANGES_REQUESTED 수신 시
 
-plan 루프가 `PLAN_REVIEW_CHANGES_REQUESTED`를 리턴하면 plan-reviewer(기획팀장 포지션)가 현실성·MVP 균형·UX 저니·숨은 가정 중 하나 이상을 FAIL로 판정한 것이다.
+plan 루프가 `PLAN_REVIEW_CHANGES_REQUESTED`를 리턴하면 plan-reviewer(기획팀장 + 경쟁분석 + 과금설계 + 기술실현성 4개 전문성)가 8개 차원 중 하나 이상을 FAIL로 판정한 것이다.
+**이 시점에 ux-architect는 아직 호출되지 않았다** — UX Flow 재작업 비용 없이 PRD만 고치면 된다.
 
 1. plan-reviewer 리포트 전문을 **재요약·압축 없이 원문 그대로** 유저에게 전달
 2. 유저에게 3지선다 제시:
-   - **A. 수정 반영** → 라우팅 판단 후 4.7.a로 진행
+   - **A. 수정 반영** → 4.7.a로 진행 (planner만 재실행 — UX Flow 아직 없음)
    - **B. 그대로 진행 (override)** → 4.7.b로 진행
    - **C. 취소** → 종료
 3. 유저 응답 수집 후 아래 분기 실행
 
 #### 4.7.a 수정 반영
 
-reviewer 리포트의 "권고 라우팅" 체크박스를 참고해 아래 중 선택 (validator(UX) 재실행 규칙과 동일):
-- **PRD 수정만** → `{prefix}_plan_metadata.json`에서 `prd_path` 삭제 + plan 루프 재호출
-- **UX Flow 수정만** → `{prefix}_plan_metadata.json`에서 `ux_flow_doc` 삭제 + plan 루프 재호출
-- **둘 다** → `{prefix}_plan_metadata.json`에서 `prd_path`·`ux_flow_doc` 모두 삭제 + plan 루프 재호출
+- `{prefix}_plan_metadata.json`에서 `prd_path` 삭제 (또는 파일 전체 삭제) + plan 루프 재호출
+- reviewer가 "유저 확인 필요 (설계 가정 자체가 흔들림)"를 체크한 경우, 먼저 유저와 가정 재확인 후 planner에 반영
 
 context에는 reviewer 리포트의 "수정 요청 항목" 섹션을 포함:
 ```
@@ -177,7 +176,7 @@ PREFIX=$(python3 -c "import json; d=json.load(open('.claude/harness.config.json'
 touch "$(pwd)/.claude/harness-state/${PREFIX}_plan_review_override"
 ```
 
-그 후 plan 루프를 재호출하면 체크포인트로 planner/ux-architect/validator(UX)가 스킵되고, reviewer도 override 플래그로 스킵되어 즉시 UX_REVIEW_PASS를 리턴한다 (플래그는 1회성 — 자동 삭제).
+그 후 plan 루프를 재호출하면 planner는 체크포인트로 스킵되고, reviewer도 override 플래그로 스킵되어 ux-architect → validator(UX) → UX_REVIEW_PASS 순으로 진행된다 (플래그는 1회성 — 자동 삭제).
 
 ### 5단계: 유저 승인 ① (PRD + UX Flow)
 
