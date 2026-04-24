@@ -1367,46 +1367,19 @@ class TestMockRunPlan(unittest.TestCase):
             self.assertEqual(result, "UX_SKIP")
             self.assertIn("plan-reviewer", call_log)
 
-    def test_checkpoint_fallback_existing_project_reviewer_only(self):
-        """metadata.json 없이 루트 prd.md + docs/ux-flow.md만 있는 기존 프로젝트 → planner/ux-architect/validator 전부 스킵, plan-reviewer만 실행."""
+    def test_no_fallback_when_metadata_missing(self):
+        """metadata.json이 없으면 루트 prd.md/ux-flow.md가 있어도 fallback 금지 — planner·ux-architect 재실행.
+
+        근거: 세션 시작 훅이 metadata.json을 지워서 'metadata 없음=기존 프로젝트 첫 리뷰'로
+        오판하는 버그가 있었음. 이제 metadata 있을 때만 체크포인트 적용.
+        (PRESERVE_SUFFIXES에 _plan_metadata.json 추가로 삭제는 방지되지만, 폴백 자체도 제거.)"""
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as td:
-            proj = self._setup_project(td)
+            proj = self._setup_project(td)  # prd.md 생성됨
             (proj / "docs").mkdir(exist_ok=True)
-            (proj / "docs" / "ux-flow.md").write_text("# Existing UX Flow\n## 1. 화면 인벤토리\n| 화면 | 역할 |\n")
-            # metadata.json 의도적으로 생성하지 않음 — 기존 프로젝트 첫 리뷰 시나리오
-            sd = StateDir(proj, "test")
-            config = HarnessConfig(prefix="test")
-
-            call_log = []
-
-            def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
-                call_log.append(agent)
-                if agent == "plan-reviewer":
-                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---\n기존 기획 리뷰 통과")
-                return 0
-
-            with patch("harness.plan_loop.agent_call", side_effect=mock_agent_call), \
-                 patch("harness.plan_loop.run_ux_validation", return_value=True), \
-                 patch("harness.plan_loop.kill_check"):
-                from harness.plan_loop import run_plan
-                rl = RunLogger("test", "plan", "1")
-                result = run_plan("1", "test", config=config, state_dir=sd, run_logger=rl)
-
-            self.assertEqual(result, "UX_REVIEW_PASS")
-            self.assertNotIn("product-planner", call_log, "product-planner should skip via fallback (root prd.md)")
-            self.assertNotIn("ux-architect", call_log, "ux-architect should skip (docs/ux-flow.md exists)")
-            self.assertIn("plan-reviewer", call_log, "plan-reviewer is the only agent that runs on existing plans")
-
-    def test_checkpoint_skip_ux_flow_exists(self):
-        """docs/ux-flow.md 이미 존재하면 ux-architect + validator(UX) 스킵하고 plan-reviewer만 실행."""
-        from unittest.mock import patch
-
-        with tempfile.TemporaryDirectory() as td:
-            proj = self._setup_project(td)
-            (proj / "docs").mkdir(exist_ok=True)
-            (proj / "docs" / "ux-flow.md").write_text("# Existing UX Flow")
+            (proj / "docs" / "ux-flow.md").write_text("# Existing UX Flow\n")
+            # metadata.json 일부러 생성하지 않음
             sd = StateDir(proj, "test")
             config = HarnessConfig(prefix="test")
 
@@ -1416,8 +1389,8 @@ class TestMockRunPlan(unittest.TestCase):
                 call_log.append(agent)
                 if agent == "product-planner":
                     Path(out_file).write_text("---MARKER:PRODUCT_PLAN_READY---\nplan_doc: prd.md")
-                elif agent == "validator":
-                    Path(out_file).write_text("---MARKER:UX_REVIEW_PASS---")
+                elif agent == "ux-architect":
+                    Path(out_file).write_text("---MARKER:UX_FLOW_READY---\nux_flow_doc: docs/ux-flow.md")
                 elif agent == "plan-reviewer":
                     Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---")
                 return 0
@@ -1430,8 +1403,48 @@ class TestMockRunPlan(unittest.TestCase):
                 result = run_plan("1", "test", config=config, state_dir=sd, run_logger=rl)
 
             self.assertEqual(result, "UX_REVIEW_PASS")
-            self.assertNotIn("ux-architect", call_log, "ux-architect should be skipped when ux-flow.md exists")
-            self.assertIn("plan-reviewer", call_log, "plan-reviewer must still run on existing PRD+UX Flow")
+            self.assertIn("product-planner", call_log, "planner should run (no fallback)")
+            self.assertIn("ux-architect", call_log, "ux-architect should run (no fallback)")
+            self.assertIn("plan-reviewer", call_log)
+
+    def test_checkpoint_skip_ux_flow_via_metadata(self):
+        """metadata.json의 ux_flow_doc + prd_path 키가 있으면 planner/ux-architect/validator(UX) 스킵."""
+        from unittest.mock import patch
+        import json as _json
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = self._setup_project(td)
+            (proj / "docs").mkdir(exist_ok=True)
+            (proj / "docs" / "ux-flow.md").write_text("# Existing UX Flow")
+            # metadata.json에 체크포인트 명시
+            sd = StateDir(proj, "test")
+            sd.path.mkdir(parents=True, exist_ok=True)
+            (sd.path / "test_plan_metadata.json").write_text(_json.dumps({
+                "prd_path": "prd.md",
+                "ux_flow_doc": "docs/ux-flow.md",
+                "issue_num": "1",
+            }))
+            config = HarnessConfig(prefix="test")
+
+            call_log = []
+
+            def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
+                call_log.append(agent)
+                if agent == "plan-reviewer":
+                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---")
+                return 0
+
+            with patch("harness.plan_loop.agent_call", side_effect=mock_agent_call), \
+                 patch("harness.plan_loop.run_ux_validation", return_value=True), \
+                 patch("harness.plan_loop.kill_check"):
+                from harness.plan_loop import run_plan
+                rl = RunLogger("test", "plan", "1")
+                result = run_plan("1", "test", config=config, state_dir=sd, run_logger=rl)
+
+            self.assertEqual(result, "UX_REVIEW_PASS")
+            self.assertNotIn("product-planner", call_log, "planner should skip via metadata checkpoint")
+            self.assertNotIn("ux-architect", call_log, "ux-architect should skip via metadata checkpoint")
+            self.assertIn("plan-reviewer", call_log, "plan-reviewer must still run")
 
     def test_clarity_insufficient(self):
         """신규 프로젝트 — planner CLARITY_INSUFFICIENT -> 즉시 리턴."""

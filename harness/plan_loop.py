@@ -92,16 +92,13 @@ def run_plan(
     # ================================================================
     # 1. product-planner
     # ================================================================
-    # 체크포인트 우선순위:
-    #   1) {prefix}_plan_metadata.json의 prd_path (직전 런의 정확한 경로)
-    #   2) 루트 prd.md — **metadata.json 자체가 없을 때만** 폴백 (기존 프로젝트 첫 리뷰 진입)
-    #      metadata.json이 존재하면서 prd_path 키가 비어있는 건 "reviewer 피드백 반영 위한
-    #      명시적 리셋"이므로 폴백 금지 — planner가 재실행되어야 함.
+    # 체크포인트: {prefix}_plan_metadata.json의 prd_path만 신뢰.
+    # 루트 prd.md 존재 기반 폴백은 **금지** — 세션 시작 훅이 metadata.json을 지우면
+    # 매번 "기존 프로젝트 첫 리뷰"로 오판하여 planner가 스킵되고 유저의 수정 반영이 사라진다.
+    # 기존 프로젝트 첫 리뷰를 원하는 경우 planner가 스스로 prd.md 존재를 감지하고
+    # PRODUCT_PLAN_READY를 빠르게 리턴한다(planner 내부 체크포인트).
     _skip_pp = False
     _prev_prd = _prev_meta.get("prd_path", "")
-    if not (_prev_prd and Path(_prev_prd).exists()) and not _meta_file.exists() and Path("prd.md").exists():
-        _prev_prd = "prd.md"
-        print(f"[HARNESS] 체크포인트 폴백: 루트 prd.md 사용 (metadata.json 없음 — 기존 프로젝트 첫 리뷰)")
     if _prev_prd and Path(_prev_prd).exists():
         print(f"[HARNESS] 체크포인트: prd 파일 존재 ({_prev_prd}) -- product-planner 스킵")
         hud.agent_skip("product-planner", f"checkpoint: {_prev_prd}")
@@ -167,21 +164,16 @@ def run_plan(
     _skip_uxa = False
     ux_flow_doc = ""
 
-    # 체크포인트: ux-flow.md 이미 존재
-    # metadata.json의 ux_flow_doc 키가 우선. 파일 존재 기반 폴백은 metadata.json 자체가
-    # 없을 때(기존 프로젝트 첫 리뷰)만. metadata.json 있는데 ux_flow_doc 키가 비어있으면
-    # 명시적 리셋이므로 ux-architect 재실행 허용.
+    # 체크포인트: metadata.json의 ux_flow_doc만 신뢰.
+    # 파일 존재 기반 폴백은 **금지** — planner 체크포인트와 동일 이유 (세션 훅 삭제 → 오판).
+    # 기존 프로젝트 첫 리뷰에서 docs/ux-flow.md가 있어도 ux-architect는 자체 체크포인트로
+    # UX_FLOW_READY 빠르게 리턴 가능.
     _prev_ux = _prev_meta.get("ux_flow_doc", "")
     if _prev_ux and Path(_prev_ux).exists():
         print(f"[HARNESS] 체크포인트: ux-flow.md 존재 ({_prev_ux}) -- ux-architect 스킵")
         hud.agent_skip("ux-architect", f"checkpoint: {_prev_ux}")
         _skip_uxa = True
         ux_flow_doc = _prev_ux
-    elif not _meta_file.exists() and Path("docs/ux-flow.md").exists():
-        print("[HARNESS] 체크포인트 폴백: docs/ux-flow.md 존재 -- ux-architect 스킵 (metadata.json 없음)")
-        hud.agent_skip("ux-architect", "checkpoint: docs/ux-flow.md (fallback)")
-        _skip_uxa = True
-        ux_flow_doc = "docs/ux-flow.md"
     else:
         # PRD 화면 인벤토리 비어있는지 확인 -> UI 없는 기능이면 스킵
         _has_ui = True
