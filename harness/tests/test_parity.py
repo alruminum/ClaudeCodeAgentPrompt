@@ -1480,6 +1480,8 @@ class TestMockRunPlan(unittest.TestCase):
                 if agent == "product-planner":
                     (proj / "prd.md").write_text("# PRD\n## 화면 인벤토리\n| 화면 | 역할 |\n|---|---|\n| 메인 | 진입점 |\n")
                     Path(out_file).write_text("---MARKER:PRODUCT_PLAN_READY---\nplan_doc: prd.md")
+                elif agent == "plan-reviewer":
+                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---")
                 elif agent == "ux-architect":
                     Path(out_file).write_text("---MARKER:UX_FLOW_ESCALATE---\nreason: PRD conflict")
                 return 0

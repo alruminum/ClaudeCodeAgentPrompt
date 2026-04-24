@@ -98,11 +98,11 @@
 | `UX_FLOW_READY` | ux-architect (UX Flow Doc 완성) | 기획-UX 루프에서 validator(UX) 호출 |
 | `UX_REFINE_READY` | ux-architect (UX_REFINE — 리디자인 와이어프레임 완성) | 유저 와이어프레임 승인 → designer SCREEN 모드 호출 |
 | `UX_FLOW_ESCALATE` | ux-architect (PRD 범위 초과/모순) | 메인 Claude 보고 — planner 재호출 또는 유저 판단 |
-| `UX_REVIEW_PASS` | validator UX Validation (UX Flow Doc 검증 통과) | plan-reviewer 호출 (판단 게이트) |
+| `PLAN_REVIEW_PASS` | plan-reviewer (PRD 기반 8차원 판단 게이트 통과) | ux-architect 호출 |
+| `PLAN_REVIEW_CHANGES_REQUESTED` | plan-reviewer (PRD 단계 FAIL — 현실성/MVP/BM/기술 실현성 등) | 메인 Claude가 피드백 유저 전달 → 유저 결정(수정/override/취소). **UX Flow 생성 전이라 재작업 비용 최소** |
+| `UX_REVIEW_PASS` | validator UX Validation (UX Flow Doc 검증 통과) | 유저 승인 ① 게이트 |
 | `UX_REVIEW_FAIL` | validator UX Validation (UX Flow Doc 검증 실패) | ux-architect 재설계 (max 1회) |
 | `UX_REVIEW_ESCALATE` | validator UX Validation (재검 후 재FAIL) | 메인 Claude 보고 |
-| `PLAN_REVIEW_PASS` | plan-reviewer (현실성·MVP 균형·UX 저니 판단 게이트 통과) | 유저 승인 ① 게이트 |
-| `PLAN_REVIEW_CHANGES_REQUESTED` | plan-reviewer (판단 FAIL — 현실성/UX 어색함 등) | 메인 Claude가 피드백 유저 전달 → 유저 결정(진행/수정/취소) |
 | `VARIANTS_APPROVED` | design-critic THREE_WAY 모드 (1개 이상 PASS) | 유저 PICK 안내 |
 | `VARIANTS_ALL_REJECTED` | design-critic THREE_WAY 모드 (전체 REJECT) | designer 재시도 (max 3회) |
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
