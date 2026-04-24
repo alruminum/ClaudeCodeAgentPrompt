@@ -98,9 +98,11 @@
 | `UX_FLOW_READY` | ux-architect (UX Flow Doc 완성) | 기획-UX 루프에서 validator(UX) 호출 |
 | `UX_REFINE_READY` | ux-architect (UX_REFINE — 리디자인 와이어프레임 완성) | 유저 와이어프레임 승인 → designer SCREEN 모드 호출 |
 | `UX_FLOW_ESCALATE` | ux-architect (PRD 범위 초과/모순) | 메인 Claude 보고 — planner 재호출 또는 유저 판단 |
-| `UX_REVIEW_PASS` | validator UX Validation (UX Flow Doc 검증 통과) | 유저 승인 ① 게이트 |
+| `UX_REVIEW_PASS` | validator UX Validation (UX Flow Doc 검증 통과) | plan-reviewer 호출 (판단 게이트) |
 | `UX_REVIEW_FAIL` | validator UX Validation (UX Flow Doc 검증 실패) | ux-architect 재설계 (max 1회) |
 | `UX_REVIEW_ESCALATE` | validator UX Validation (재검 후 재FAIL) | 메인 Claude 보고 |
+| `PLAN_REVIEW_PASS` | plan-reviewer (현실성·MVP 균형·UX 저니 판단 게이트 통과) | 유저 승인 ① 게이트 |
+| `PLAN_REVIEW_CHANGES_REQUESTED` | plan-reviewer (판단 FAIL — 현실성/UX 어색함 등) | 메인 Claude가 피드백 유저 전달 → 유저 결정(진행/수정/취소) |
 | `VARIANTS_APPROVED` | design-critic THREE_WAY 모드 (1개 이상 PASS) | 유저 PICK 안내 |
 | `VARIANTS_ALL_REJECTED` | design-critic THREE_WAY 모드 (전체 REJECT) | designer 재시도 (max 3회) |
 | `DESIGN_REVIEW_ESCALATE` | validator Design Validation (재검 후 재FAIL) | 메인 Claude 보고 |
@@ -180,6 +182,7 @@ agent-boundary.py가 에이전트별 Read 접근을 제한한다. Write/Edit 허
 - product-planner: src/** 읽기 금지 (기획자가 코드 레벨 결정을 하는 것 방지)
 - designer: src/** 읽기 금지 (디자인은 Pencil 캔버스 + 스펙 문서 기반)
 - test-engineer: docs/ domain 문서 읽기 금지 (impl + src만 참조)
+- plan-reviewer: src/**, docs/impl/**, trd.md 읽기 금지. `docs/sdk.md`·`docs/reference.md`·`docs/architecture.md`는 **허용** (기술 실현성 판단용 외부 기술 사실). TRD 금지 사유는 planner와 동일 — architect 내부 결정이 역방향으로 기획을 오염시키는 것 방지.
 - 공통: .claude/harness* 인프라 파일 금지 (기존 HARNESS_INFRA_PATTERNS)
 
 ### ux-architect Pencil MCP 읽기 접근
@@ -206,6 +209,7 @@ UX_REFINE 모드에서 Stream idle timeout(~11분)을 방지하기 위해 아래
 | pr-reviewer | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 리뷰 |
 | design-critic | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 심사 |
 | security-reviewer | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 보안 |
+| plan-reviewer | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 판단 (기획팀장 포지션 — PRD+UX Flow 현실성/균형 심사) |
 | **qa** | Agent, Bash, Write, Edit, NotebookEdit | ReadOnly 분류 — 시스템 명령 금지 |
 | **ux-architect** | Agent, Bash, NotebookEdit, Pencil 쓰기 7종 (batch_design, set_variables, open_document, find_empty_space_on_canvas, snapshot_layout, export_nodes, replace_all_matching_properties, search_all_unique_properties, get_guidelines) | 캔버스 쓰기는 designer 전용. ux-architect는 Pencil 읽기 4종(get_editor_state, batch_get, get_screenshot, get_variables)만. |
 | **engineer** | Agent, NotebookEdit, Pencil 쓰기 7종 | 디자인 핸드오프 참조용 읽기만 허용. 캔버스 수정 금지. Bash는 빌드/테스트 필요해 유지. |

@@ -1290,20 +1290,21 @@ class TestHUDPlanAgents(unittest.TestCase):
 class TestMockRunPlan(unittest.TestCase):
     """plan_loop.run_plan을 mock agent_call로 검증."""
 
-    def _setup_project(self, td, prd_content="## 화면 인벤토리\n| 화면 | 역할 |\n|---|---|\n| 메인 | 진입점 |\n"):
+    def _setup_project(self, td, prd_content="## 화면 인벤토리\n| 화면 | 역할 |\n|---|---|\n| 메인 | 진입점 |\n", create_prd=True):
         proj = Path(td)
         (proj / ".claude").mkdir(parents=True)
         (proj / ".claude" / "harness-memory.md").write_text("# Harness Memory\n\n## impl 패턴\n\n## Auto-Promoted Rules\n")
-        (proj / "prd.md").write_text(f"# PRD\n\n{prd_content}")
+        if create_prd:
+            (proj / "prd.md").write_text(f"# PRD\n\n{prd_content}")
         os.chdir(td)
         return proj
 
     def test_happy_path_ux_review_pass(self):
-        """planner(READY) -> ux-architect(UX_FLOW_READY) -> validator(UX_REVIEW_PASS) -> UX_REVIEW_PASS."""
+        """신규 프로젝트 — planner(READY) -> ux-architect(UX_FLOW_READY) -> validator(UX_REVIEW_PASS) -> plan-reviewer(PASS) -> UX_REVIEW_PASS."""
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as td:
-            proj = self._setup_project(td)
+            proj = self._setup_project(td, create_prd=False)  # 신규 프로젝트 — planner가 prd.md 생성
             sd = StateDir(proj, "test")
             config = HarnessConfig(prefix="test")
 
@@ -1312,6 +1313,8 @@ class TestMockRunPlan(unittest.TestCase):
             def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
                 call_log.append(agent)
                 if agent == "product-planner":
+                    # planner가 prd.md 생성 (실제 에이전트 동작 시뮬레이션)
+                    (proj / "prd.md").write_text("# PRD\n## 화면 인벤토리\n| 화면 | 역할 |\n|---|---|\n| 메인 | 진입점 |\n")
                     Path(out_file).write_text("---MARKER:PRODUCT_PLAN_READY---\nplan_doc: prd.md")
                 elif agent == "ux-architect":
                     # ux-flow.md 생성
@@ -1320,6 +1323,8 @@ class TestMockRunPlan(unittest.TestCase):
                     Path(out_file).write_text("---MARKER:UX_FLOW_READY---\nux_flow_doc: docs/ux-flow.md")
                 elif agent == "validator":
                     Path(out_file).write_text("---MARKER:UX_REVIEW_PASS---\nall good")
+                elif agent == "plan-reviewer":
+                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---\nall dimensions PASS")
                 return 0
 
             with patch("harness.plan_loop.agent_call", side_effect=mock_agent_call), \
@@ -1332,9 +1337,10 @@ class TestMockRunPlan(unittest.TestCase):
             self.assertEqual(result, "UX_REVIEW_PASS")
             self.assertIn("product-planner", call_log)
             self.assertIn("ux-architect", call_log)
+            self.assertIn("plan-reviewer", call_log)
 
     def test_ui_less_skip(self):
-        """PRD 화면 인벤토리 비어있으면 UX_SKIP."""
+        """PRD 화면 인벤토리 비어있으면 plan-reviewer 거쳐 UX_SKIP."""
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as td:
@@ -1342,9 +1348,14 @@ class TestMockRunPlan(unittest.TestCase):
             sd = StateDir(proj, "test")
             config = HarnessConfig(prefix="test")
 
+            call_log = []
+
             def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
+                call_log.append(agent)
                 if agent == "product-planner":
                     Path(out_file).write_text("---MARKER:PRODUCT_PLAN_READY---\nplan_doc: prd.md")
+                elif agent == "plan-reviewer":
+                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---\nUI 없는 기능 판단 통과")
                 return 0
 
             with patch("harness.plan_loop.agent_call", side_effect=mock_agent_call), \
@@ -1354,9 +1365,42 @@ class TestMockRunPlan(unittest.TestCase):
                 result = run_plan("1", "test", config=config, state_dir=sd, run_logger=rl)
 
             self.assertEqual(result, "UX_SKIP")
+            self.assertIn("plan-reviewer", call_log)
+
+    def test_checkpoint_fallback_existing_project_reviewer_only(self):
+        """metadata.json 없이 루트 prd.md + docs/ux-flow.md만 있는 기존 프로젝트 → planner/ux-architect/validator 전부 스킵, plan-reviewer만 실행."""
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = self._setup_project(td)
+            (proj / "docs").mkdir(exist_ok=True)
+            (proj / "docs" / "ux-flow.md").write_text("# Existing UX Flow\n## 1. 화면 인벤토리\n| 화면 | 역할 |\n")
+            # metadata.json 의도적으로 생성하지 않음 — 기존 프로젝트 첫 리뷰 시나리오
+            sd = StateDir(proj, "test")
+            config = HarnessConfig(prefix="test")
+
+            call_log = []
+
+            def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
+                call_log.append(agent)
+                if agent == "plan-reviewer":
+                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---\n기존 기획 리뷰 통과")
+                return 0
+
+            with patch("harness.plan_loop.agent_call", side_effect=mock_agent_call), \
+                 patch("harness.plan_loop.run_ux_validation", return_value=True), \
+                 patch("harness.plan_loop.kill_check"):
+                from harness.plan_loop import run_plan
+                rl = RunLogger("test", "plan", "1")
+                result = run_plan("1", "test", config=config, state_dir=sd, run_logger=rl)
+
+            self.assertEqual(result, "UX_REVIEW_PASS")
+            self.assertNotIn("product-planner", call_log, "product-planner should skip via fallback (root prd.md)")
+            self.assertNotIn("ux-architect", call_log, "ux-architect should skip (docs/ux-flow.md exists)")
+            self.assertIn("plan-reviewer", call_log, "plan-reviewer is the only agent that runs on existing plans")
 
     def test_checkpoint_skip_ux_flow_exists(self):
-        """docs/ux-flow.md 이미 존재하면 ux-architect 스킵."""
+        """docs/ux-flow.md 이미 존재하면 ux-architect + validator(UX) 스킵하고 plan-reviewer만 실행."""
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as td:
@@ -1374,6 +1418,8 @@ class TestMockRunPlan(unittest.TestCase):
                     Path(out_file).write_text("---MARKER:PRODUCT_PLAN_READY---\nplan_doc: prd.md")
                 elif agent == "validator":
                     Path(out_file).write_text("---MARKER:UX_REVIEW_PASS---")
+                elif agent == "plan-reviewer":
+                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---")
                 return 0
 
             with patch("harness.plan_loop.agent_call", side_effect=mock_agent_call), \
@@ -1385,13 +1431,14 @@ class TestMockRunPlan(unittest.TestCase):
 
             self.assertEqual(result, "UX_REVIEW_PASS")
             self.assertNotIn("ux-architect", call_log, "ux-architect should be skipped when ux-flow.md exists")
+            self.assertIn("plan-reviewer", call_log, "plan-reviewer must still run on existing PRD+UX Flow")
 
     def test_clarity_insufficient(self):
-        """planner CLARITY_INSUFFICIENT -> 즉시 리턴."""
+        """신규 프로젝트 — planner CLARITY_INSUFFICIENT -> 즉시 리턴."""
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as td:
-            proj = self._setup_project(td)
+            proj = self._setup_project(td, create_prd=False)  # 신규 — planner 호출되어야 함
             sd = StateDir(proj, "test")
             config = HarnessConfig(prefix="test")
 
@@ -1412,12 +1459,13 @@ class TestMockRunPlan(unittest.TestCase):
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as td:
-            proj = self._setup_project(td)
+            proj = self._setup_project(td, create_prd=False)  # planner가 prd.md 생성
             sd = StateDir(proj, "test")
             config = HarnessConfig(prefix="test")
 
             def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
                 if agent == "product-planner":
+                    (proj / "prd.md").write_text("# PRD\n## 화면 인벤토리\n| 화면 | 역할 |\n|---|---|\n| 메인 | 진입점 |\n")
                     Path(out_file).write_text("---MARKER:PRODUCT_PLAN_READY---\nplan_doc: prd.md")
                 elif agent == "ux-architect":
                     Path(out_file).write_text("---MARKER:UX_FLOW_ESCALATE---\nreason: PRD conflict")
@@ -1436,7 +1484,7 @@ class TestMockRunPlan(unittest.TestCase):
         from unittest.mock import patch
 
         with tempfile.TemporaryDirectory() as td:
-            proj = self._setup_project(td)
+            proj = self._setup_project(td, create_prd=False)  # planner가 prd.md 생성
             (proj / "src").mkdir()
             (proj / "src" / "App.tsx").write_text("export default App")
             sd = StateDir(proj, "test")
@@ -1447,6 +1495,7 @@ class TestMockRunPlan(unittest.TestCase):
             def mock_agent_call(agent, timeout, prompt, out_file, *args, **kwargs):
                 prompts.append((agent, prompt))
                 if agent == "product-planner":
+                    (proj / "prd.md").write_text("# PRD\n## 화면 인벤토리\n| 화면 | 역할 |\n|---|---|\n| 메인 | 진입점 |\n")
                     Path(out_file).write_text("---MARKER:PRODUCT_PLAN_READY---\nplan_doc: prd.md")
                 elif agent == "ux-architect":
                     (proj / "docs").mkdir(exist_ok=True)
@@ -1454,6 +1503,8 @@ class TestMockRunPlan(unittest.TestCase):
                     Path(out_file).write_text("---MARKER:UX_FLOW_READY---\nux_flow_doc: docs/ux-flow.md")
                 elif agent == "validator":
                     Path(out_file).write_text("---MARKER:UX_REVIEW_PASS---")
+                elif agent == "plan-reviewer":
+                    Path(out_file).write_text("---MARKER:PLAN_REVIEW_PASS---")
                 return 0
 
             with patch("harness.plan_loop.agent_call", side_effect=mock_agent_call), \

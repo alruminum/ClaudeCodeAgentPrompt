@@ -96,6 +96,12 @@ READ_DENY_MATRIX = {
         r'(^|/)src/',                   # TDD: impl 기반 테스트 선작성 — 구현 코드 읽기 금지
         r'(^|/)docs/(architecture|game-logic|db-schema|sdk|domain-logic|reference)',  # domain 문서 금지
     ],
+    "plan-reviewer": [
+        r'(^|/)src/',                   # 소스 코드 읽기 금지 — 판단 게이트는 문서 레벨에서만
+        r'(^|/)docs/impl/',             # impl 계획 파일 — architect 소유 (세부 구현 스펙은 리뷰 범위 초과)
+        r'(^|/)trd\.md$',               # TRD 금지 — architect 내부 결정. reviewer가 TRD 기반으로 기획 쳐내면 역방향 오염.
+        # ✅ docs/architecture.md / docs/sdk.md / docs/reference.md 는 허용 — 외부 기술 사실 + 현행 아키 확인용
+    ],
 }
 
 def main():

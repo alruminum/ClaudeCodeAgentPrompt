@@ -792,6 +792,8 @@ def agent_call(
         "pr-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
         "design-critic": "Agent,Bash,Write,Edit,NotebookEdit",
         "security-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
+        # 기획 판단 리뷰어 — ReadOnly (PRD + UX Flow 현실성/MVP 균형 심사)
+        "plan-reviewer": "Agent,Bash,Write,Edit,NotebookEdit",
         # H3: qa = ReadOnly 분류, 시스템 명령 금지
         "qa": "Agent,Bash,Write,Edit,NotebookEdit",
         # H1: ux-architect = Pencil 읽기 4종만, 캔버스 쓰기 차단
