@@ -3,6 +3,27 @@
 모든 프로젝트에서 공통으로 적용되는 에이전트 워크플로우 규칙.
 **룰 변경 시 이 파일만 수정** → 스크립트·에이전트 업데이트의 단일 기준점.
 
+## 거버넌스 — Task-ID + WHAT/WHY 로그 + 경로 기반 drift-check
+
+판단이 섞인 변경은 **Task-ID**(`HARNESS-CHG-YYYYMMDD-NN`)를 부여하고 두 로그에 기록한다.
+
+| 로그 | 담는 내용 | 경로 |
+|------|-----------|------|
+| **WHAT** | Task-ID, 날짜, 변경 파일, Exception | [`orchestration/update-record.md`](orchestration/update-record.md) |
+| **WHY** | 배경·대안·결정·follow-up (판단이 섞인 변경만) | [`orchestration/rationale-history.md`](orchestration/rationale-history.md) |
+| **요약 인덱스** | 시간순 한 줄 요약 (검색용) | [`orchestration/changelog.md`](orchestration/changelog.md) |
+
+### drift-check (경로 기반 advisory 게이트)
+
+`hooks/harness-drift-check.py`가 `git commit` 시 staged 파일을 `PATH_RULES`로 카테고리 분류하고 각 카테고리의 필수 동반 파일을 검사한다. 미충족 시 1회 deny + 5분 bypass TTL (advisory 운영).
+
+- **의도적 예외**는 현재 커밋의 diff **추가 라인**에 다음 형식으로 명시:
+  ```
+  Document-Exception: HARNESS-CHG-YYYYMMDD-NN <사유>
+  ```
+- 과거 누적된 Exception 엔트리는 자동 무효 — 매 커밋마다 현재 diff만 파싱.
+- PATH_RULES 변경 시: `hooks/harness-drift-check.py` + `orchestration/update-record.md` Change-Type 토큰 표 동기화.
+
 ---
 
 ## 핵심 원칙
