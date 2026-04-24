@@ -144,6 +144,33 @@ def _prev_must_fix_hint(loop_out_dir: Path, attempt: int) -> str:
     )
 
 
+def _extract_generic_fail_hint(prev_dir: Path, limit: int = 2000) -> str:
+    """fail_type이 task_map에 없을 때 prev_dir의 최신 .log 마지막 N바이트를 인라인.
+
+    Why: explore_instruction만 주면 engineer가 Read를 생략하고 같은 실수를
+    반복하는 버그가 반복 관찰됨 (pr_fail은 이미 인라인 처리 — 같은 원리).
+    validator/test/autocheck 외 새로 생길 수 있는 fail_type 전반을 커버.
+    """
+    if not prev_dir.is_dir():
+        return ""
+    try:
+        logs = sorted(
+            prev_dir.glob("*.log"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return ""
+    for p in logs:
+        try:
+            txt = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if txt.strip():
+            return f"[이전 실패 로그: {p.name}]\n```\n{txt[-limit:]}\n```"
+    return ""
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # 1. AgentStep dataclass
 # ═══════════════════════════════════════════════════════════════════════
@@ -309,9 +336,11 @@ def run_simple(
                     "위 에러를 수정하라. 기능 변경 금지."
                 )
             else:
+                _fh = _extract_generic_fail_hint(prev_dir)
                 task = (
-                    f"[재시도] 시도 {attempt}회.\n"
-                    f"{explore_instruction(str(loop_out_dir))}"
+                    f"[재시도] 시도 {attempt}회. fail_type={fail_type}\n"
+                    + (f"{_fh}\n" if _fh else "")
+                    + f"{explore_instruction(str(loop_out_dir))}"
                 )
             task = wt_prefix + task
 
@@ -1003,10 +1032,13 @@ def _run_std_deep(
                     "MUST FIX 항목만 수정하라. 기능 변경 금지."
                 ),
             }
-            task = task_map.get(
-                fail_type,
-                f"[재시도] 시도 {attempt}회.\n{explore_instruction(str(loop_out_dir))}",
+            _fh_generic = _extract_generic_fail_hint(prev_dir)
+            _default_task = (
+                f"[재시도] 시도 {attempt}회. fail_type={fail_type}\n"
+                + (f"{_fh_generic}\n" if _fh_generic else "")
+                + f"{explore_instruction(str(loop_out_dir))}"
             )
+            task = task_map.get(fail_type, _default_task)
             task = wt_prefix + task
 
         run_logger.log_event({"event": "context", "chars": len(context), "attempt": attempt})
