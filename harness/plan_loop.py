@@ -39,12 +39,13 @@ def run_plan(
     state_dir: Optional[StateDir] = None,
     run_logger: Optional[RunLogger] = None,
 ) -> str:
-    """기획-UX 루프 실행. planner -> ux-architect -> validator(UX) -> 리턴.
+    """기획-UX 루프 실행. planner -> ux-architect -> validator(UX) -> plan-reviewer -> 리턴.
 
     Returns:
         결과 마커 문자열:
-        - "UX_REVIEW_PASS": 기획-UX 완료 (유저 승인 1 대기)
-        - "UX_SKIP": UI 없는 기능 (ux-architect 스킵, 설계 루프 직행)
+        - "UX_REVIEW_PASS": 기획-UX 완료 + plan-reviewer PASS (유저 승인 1 대기)
+        - "UX_SKIP": UI 없는 기능 + plan-reviewer PASS (설계 루프 직행)
+        - "PLAN_REVIEW_CHANGES_REQUESTED": plan-reviewer 판단 FAIL (유저 결정 대기)
         - "CLARITY_INSUFFICIENT": 유저 답변 필요
         - "UX_FLOW_ESCALATE": ux-architect 에스컬레이션
         - "UX_REVIEW_ESCALATE": UX 검증 에스컬레이션
@@ -91,8 +92,16 @@ def run_plan(
     # ================================================================
     # 1. product-planner
     # ================================================================
+    # 체크포인트 우선순위:
+    #   1) {prefix}_plan_metadata.json의 prd_path (직전 런의 정확한 경로)
+    #   2) 루트 prd.md — **metadata.json 자체가 없을 때만** 폴백 (기존 프로젝트 첫 리뷰 진입)
+    #      metadata.json이 존재하면서 prd_path 키가 비어있는 건 "reviewer 피드백 반영 위한
+    #      명시적 리셋"이므로 폴백 금지 — planner가 재실행되어야 함.
     _skip_pp = False
     _prev_prd = _prev_meta.get("prd_path", "")
+    if not (_prev_prd and Path(_prev_prd).exists()) and not _meta_file.exists() and Path("prd.md").exists():
+        _prev_prd = "prd.md"
+        print(f"[HARNESS] 체크포인트 폴백: 루트 prd.md 사용 (metadata.json 없음 — 기존 프로젝트 첫 리뷰)")
     if _prev_prd and Path(_prev_prd).exists():
         print(f"[HARNESS] 체크포인트: prd 파일 존재 ({_prev_prd}) -- product-planner 스킵")
         hud.agent_skip("product-planner", f"checkpoint: {_prev_prd}")
@@ -159,15 +168,18 @@ def run_plan(
     ux_flow_doc = ""
 
     # 체크포인트: ux-flow.md 이미 존재
+    # metadata.json의 ux_flow_doc 키가 우선. 파일 존재 기반 폴백은 metadata.json 자체가
+    # 없을 때(기존 프로젝트 첫 리뷰)만. metadata.json 있는데 ux_flow_doc 키가 비어있으면
+    # 명시적 리셋이므로 ux-architect 재실행 허용.
     _prev_ux = _prev_meta.get("ux_flow_doc", "")
     if _prev_ux and Path(_prev_ux).exists():
         print(f"[HARNESS] 체크포인트: ux-flow.md 존재 ({_prev_ux}) -- ux-architect 스킵")
         hud.agent_skip("ux-architect", f"checkpoint: {_prev_ux}")
         _skip_uxa = True
         ux_flow_doc = _prev_ux
-    elif Path("docs/ux-flow.md").exists():
-        print("[HARNESS] 체크포인트: docs/ux-flow.md 존재 -- ux-architect 스킵")
-        hud.agent_skip("ux-architect", "checkpoint: docs/ux-flow.md")
+    elif not _meta_file.exists() and Path("docs/ux-flow.md").exists():
+        print("[HARNESS] 체크포인트 폴백: docs/ux-flow.md 존재 -- ux-architect 스킵 (metadata.json 없음)")
+        hud.agent_skip("ux-architect", "checkpoint: docs/ux-flow.md (fallback)")
         _skip_uxa = True
         ux_flow_doc = "docs/ux-flow.md"
     else:
@@ -307,6 +319,81 @@ def run_plan(
             hud.agent_skip("ux-validation", "ux_flow_doc 미감지")
             print("[HARNESS] ux-validation 스킵 (ux_flow_doc 경로 미감지)")
         kill_check(state_dir)
+
+    # ================================================================
+    # 5. plan-reviewer (판단 게이트) -- 현실성·MVP 균형·UX 저니·숨은 가정
+    # ================================================================
+    # 유저가 이전 턴에 "override"를 선택했으면 리뷰어 스킵
+    _override_flag = state_dir.path / f"{prefix}_plan_review_override"
+    if _override_flag.exists():
+        hud.agent_skip("plan-reviewer", "user override 선택")
+        print("[HARNESS] plan-reviewer 스킵 (유저 override 플래그)")
+        try:
+            _override_flag.unlink()  # 1회성 — 다음 런에는 다시 리뷰
+        except OSError:
+            pass
+    else:
+        print("[HARNESS] plan-reviewer 판단 게이트")
+        _pr_t0 = time.time()
+        hud.agent_start("plan-reviewer")
+        pr_out_file = str(state_dir.path / f"{prefix}_plan_reviewer_out.txt")
+        _pr_params = f'prd_path: {prd_path}\nissue: #{issue_num}'
+        if ux_flow_doc:
+            _pr_params += f'\nux_flow_doc: {ux_flow_doc}'
+        agent_call(
+            "plan-reviewer", 600,
+            f"@MODE:REVIEWER:PLAN_REVIEW\n{_pr_params}",
+            pr_out_file, run_logger, config,
+        )
+        _pr_cost = 0.0
+        try:
+            _pr_cost_file = Path(str(pr_out_file).replace(".txt", "_cost.txt"))
+            _pr_cost = float(_pr_cost_file.read_text() or "0") if _pr_cost_file.exists() else 0.0
+        except (ValueError, OSError):
+            pass
+        kill_check(state_dir)
+
+        pr_marker = parse_marker(pr_out_file, "PLAN_REVIEW_PASS|PLAN_REVIEW_CHANGES_REQUESTED")
+
+        if pr_marker == "PLAN_REVIEW_CHANGES_REQUESTED":
+            hud.agent_done("plan-reviewer", int(time.time() - _pr_t0), _pr_cost, "fail")
+            os.environ["HARNESS_RESULT"] = "PLAN_REVIEW_CHANGES_REQUESTED"
+            pr_content = Path(pr_out_file).read_text(encoding="utf-8", errors="replace") if Path(pr_out_file).exists() else ""
+            print("[HARNESS] plan-reviewer -> PLAN_REVIEW_CHANGES_REQUESTED")
+            print(f"  prd_path: {prd_path or 'N/A'}")
+            print(f"  ux_flow_doc: {ux_flow_doc or 'N/A'}")
+            print("  -> 메인 Claude: 아래 리포트 전문을 유저에게 전달 후 결정 수집")
+            print("=" * 60)
+            print(pr_content)
+            print("=" * 60)
+            run_logger.write_run_end("PLAN_REVIEW_CHANGES_REQUESTED", "", issue_num)
+            # 메타데이터 저장 — 재호출 시 체크포인트 재사용
+            import json as _json
+            _plan_meta = {
+                "prd_path": prd_path,
+                "ux_flow_doc": ux_flow_doc,
+                "issue_num": issue_num,
+            }
+            try:
+                (state_dir.path / f"{prefix}_plan_metadata.json").write_text(
+                    _json.dumps(_plan_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            except OSError:
+                pass
+            return "PLAN_REVIEW_CHANGES_REQUESTED"
+
+        if pr_marker != "PLAN_REVIEW_PASS":
+            # 마커 미감지 — fail-safe: CHANGES_REQUESTED 처리
+            hud.agent_done("plan-reviewer", int(time.time() - _pr_t0), _pr_cost, "fail")
+            os.environ["HARNESS_RESULT"] = "PLAN_REVIEW_CHANGES_REQUESTED"
+            print(f"[HARNESS] plan-reviewer -> 마커 감지 실패 ({pr_marker}) -- CHANGES_REQUESTED 처리")
+            pr_content = Path(pr_out_file).read_text(encoding="utf-8", errors="replace") if Path(pr_out_file).exists() else ""
+            print(pr_content[-1000:] if len(pr_content) > 1000 else pr_content)
+            run_logger.write_run_end("PLAN_REVIEW_CHANGES_REQUESTED", "", issue_num)
+            return "PLAN_REVIEW_CHANGES_REQUESTED"
+
+        hud.agent_done("plan-reviewer", int(time.time() - _pr_t0), _pr_cost)
+        hud.log("plan-reviewer -> PLAN_REVIEW_PASS")
+        print("[HARNESS] plan-reviewer -> PLAN_REVIEW_PASS")
 
     # ================================================================
     # 완료 -- 메타데이터 저장
