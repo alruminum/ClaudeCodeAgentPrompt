@@ -31,6 +31,27 @@
 - 파일 1~3개 생성/수정 범위
 - 명확한 PASS/FAIL 판단이 가능해야 함
 
+### 듀얼 모드 가드레일 — 디자인 토큰 우선 (필수 검사)
+
+UI 컴포넌트가 포함된 epic을 분해할 때, **`docs/ux-flow.md`에 §0 디자인 가이드(컬러·타이포·UI 패턴)가 있고 `docs/design-handoff.md`(Pencil 시안)는 아직 없으면** = **듀얼 모드**. 디자인 시안 도착 후 컴포넌트를 갈아엎지 않으려면 **첫 번째 impl을 디자인 토큰 시스템으로 강제**한다.
+
+검사 절차:
+1. `docs/ux-flow.md` 존재 확인 + `## 0. 디자인 가이드` 섹션 존재 확인
+2. `docs/design-handoff.md` 존재 여부 확인
+3. **있고 + 없음 = 듀얼 모드** → 아래 가드레일 적용
+
+가드레일:
+- **impl `01-theme-tokens.md` 강제 신설** (다른 UI impl보다 앞 순번)
+  - 생성 파일: `src/theme/colors.ts`, `src/theme/typography.ts`, `src/theme/spacing.ts`, `src/theme/index.ts`
+  - 내용: ux-flow §0 디자인 가이드의 모든 토큰을 추상 키로 노출 (예: `colors.background.primary`, `colors.accent.gold`, `typography.heading`, `spacing.lg`)
+  - 직접 hex/rem/font-name 박는 것 금지 — 모든 컴포넌트는 `theme.*` 경유
+- **이후 모든 UI impl 파일에 의존성 명시**: `## 의존성` 섹션에 `src/theme/` 참조 1줄 추가
+- **수용 기준 추가**: "직접 색상값/폰트명/픽셀값 사용 금지 — 모두 theme.* 경유"
+
+근거: 디자인 시안 도착 후 토큰값만 patch 하면 컴포넌트 갈아엎기 0. 시안 늦어져도 구현 wall-clock 단축. 핸드오프 받으면 토큰 diff만 추출 → 1차 머지 → 화면별 미세 조정.
+
+이 가드레일은 듀얼 모드에서만 적용. design-handoff.md 있는 경우(B 모드 = 디자인 후 구현)는 스킵.
+
 ### 출력 형식
 
 ```
