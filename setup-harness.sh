@@ -352,16 +352,17 @@ wl.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 print(f"✅ 하네스 화이트리스트 등록: {here}")
 PY
 
-# ── GitHub MCP 서버 등록 안내 ───────────────────────────
-# qa/designer/architect/product-planner 에이전트가 GitHub 이슈를 만들고 수정하려면
-# `mcp__github__*` 도구가 실제로 동작해야 한다. 도구 선언(agents/*.md frontmatter)과
-# 권한(settings.json allowedTools)은 이미 있지만, **MCP 서버 자체가 미등록이면**
-# 호출이 실패하고 메인 Claude는 issue-gate.py에 의해 `gh issue create` 차단되어
-# 데드락이 발생한다 (mb #106·jajang 사례).
+# ── MCP 서버 등록 안내 (GitHub + Pencil) ───────────────────────────
+# 에이전트들이 사용하는 MCP 도구는 서버 등록 없으면 silently 실패한다.
+# 도구 선언(agents/*.md frontmatter)과 권한(settings.json allowedTools)이 있어도
+# 서버 자체가 없으면 호출 무효 — 데드락 발생 위험.
 #
-# 자동 등록은 토큰을 다루므로 보안상 하지 않는다. 안내만 출력 + 유저가 직접 실행.
+# 자동 등록은 토큰/경로를 다루므로 보안상 하지 않는다. 안내만 출력.
 if command -v claude >/dev/null 2>&1; then
-  if ! claude mcp list 2>/dev/null | grep -qE '^github:'; then
+  MCP_LIST=$(claude mcp list 2>/dev/null)
+
+  # GitHub MCP — qa/designer/architect/product-planner 이슈 생성·수정용
+  if ! echo "$MCP_LIST" | grep -qE '^github:'; then
     echo ""
     echo "⚠️  GitHub MCP 서버 미등록 — 에이전트가 이슈를 만들지 못합니다."
     if command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
@@ -377,6 +378,27 @@ if command -v claude >/dev/null 2>&1; then
     fi
   else
     echo "ℹ️  GitHub MCP 서버 등록 확인됨"
+  fi
+
+  # Pencil MCP — designer/ux-architect 디자인 시안 생성·읽기용 (UI 프로젝트만)
+  if ! echo "$MCP_LIST" | grep -qE '^pencil:'; then
+    echo ""
+    echo "ℹ️  Pencil MCP 서버 미등록 — UI 프로젝트면 designer 에이전트 작동 안 함."
+    PENCIL_BIN="/Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64"
+    if [ -f "$PENCIL_BIN" ]; then
+      echo "    Pencil 앱은 설치됨 — 아래 명령으로 등록:"
+      echo ""
+      echo "      claude mcp add pencil -s user -- $PENCIL_BIN --app desktop"
+      echo ""
+      echo "    등록 후 Claude Code 세션을 재시작해야 도구가 로드됩니다."
+    else
+      echo "    UI 없는 프로젝트면 무시. UI 프로젝트라면:"
+      echo "      1) Pencil 앱 설치 (https://pencil.do)"
+      echo "      2) claude mcp add pencil -s user -- $PENCIL_BIN --app desktop"
+      echo "      3) Claude Code 세션 재시작"
+    fi
+  else
+    echo "ℹ️  Pencil MCP 서버 등록 확인됨"
   fi
 fi
 

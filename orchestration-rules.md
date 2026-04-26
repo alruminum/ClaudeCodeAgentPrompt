@@ -84,6 +84,7 @@
 - ISSUE_CREATORS에 product-planner 포함 (`harness_common.py`).
 - 마커: `ISSUES_SYNCED` (이슈 번호 목록 포함).
 - **사전 요건 — GitHub MCP 서버 등록 필수**: ISSUE_CREATORS 에이전트(qa, designer, architect, product-planner)가 사용하는 `mcp__github__*` 도구는 MCP 서버가 실제로 등록돼있어야 동작한다. 미등록 시 호출은 silently 실패하고 메인 Claude의 `gh issue create` fallback도 `issue-gate.py`가 차단해 데드락(jajang 사례). `claude mcp list` 로 확인하고, 없으면 `setup-harness.sh` 안내대로 user scope 등록 (`claude mcp add github -s user -e GITHUB_PERSONAL_ACCESS_TOKEN=$(gh auth token) -- npx -y @modelcontextprotocol/server-github`). 등록 후 세션 재시작 필요.
+- **사전 요건 — Pencil MCP 서버 등록 (UI 프로젝트만)**: designer / ux-architect 에이전트가 사용하는 `mcp__pencil__*` 도구는 Pencil 앱 + MCP 서버 등록이 필요하다. UI 없는 프로젝트(순수 백엔드/CLI/라이브러리)는 불필요. `init-project` 스킬 Step 0-3에서 사용 여부를 묻고, `setup-harness.sh`가 자동 체크 후 미등록 시 등록 명령 안내. 등록: `claude mcp add pencil -s user -- /Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop`.
 
 ### agent-gate architect 프롬프트 검증 정책
 - **Mode 명시**: 의미적 키워드(`SYSTEM_DESIGN` / `MODULE_PLAN` / `SPEC_GAP` / `TASK_DECOMPOSE` / `TECH_EPIC` / `LIGHT_PLAN` / `DOCS_SYNC`)를 **권장**한다. 알파벳 표기(Mode A-G)는 deprecate — 의미 전달이 약하고 추가될 때마다 재할당 필요하므로 사용 금지. 누락 시 훅은 `stderr` 경고만 남기고 통과 — 에이전트 본문의 "모드 미지정 시 입력 내용으로 판단" 규칙에 위임한다.
