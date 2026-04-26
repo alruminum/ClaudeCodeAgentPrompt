@@ -20,6 +20,8 @@ try:
         agent_call, parse_marker, detect_depth,
         run_plan_validation,
         generate_handoff, write_handoff,
+        ESCALATE_AUTO_SPEC_GAP_THRESHOLD,
+        get_escalate_count, get_escalate_fail_types, clear_escalate_count,
     )
     from .impl_loop import run_simple, run_std, run_deep
 except ImportError:
@@ -29,8 +31,74 @@ except ImportError:
         agent_call, parse_marker, detect_depth,
         run_plan_validation,
         generate_handoff, write_handoff,
+        ESCALATE_AUTO_SPEC_GAP_THRESHOLD,
+        get_escalate_count, get_escalate_fail_types, clear_escalate_count,
     )
     from impl_loop import run_simple, run_std, run_deep
+
+
+def _maybe_auto_spec_gap(
+    impl_file: str,
+    issue_num: str,
+    prefix: str,
+    state_dir: StateDir,
+    run_logger: Optional[RunLogger],
+    config: Optional[HarnessConfig],
+) -> Optional[str]:
+    """동일 impl이 ESCALATE_AUTO_SPEC_GAP_THRESHOLD 이상 ESCALATE됐으면
+    architect SPEC_GAP을 자동 호출해 impl 파일 보강을 시도.
+
+    반환:
+      None — 임계 미만이거나 SPEC_GAP_RESOLVED (정상 진행 가능)
+      "PRODUCT_PLANNER_ESCALATION_NEEDED" / "TECH_CONSTRAINT_CONFLICT" — 호출자가 즉시 그 마커로 종료
+    """
+    count = get_escalate_count(state_dir, impl_file)
+    if count < ESCALATE_AUTO_SPEC_GAP_THRESHOLD:
+        return None
+    fail_types = get_escalate_fail_types(state_dir, impl_file)
+    print(f"[HARNESS] 동일 impl ESCALATE {count}회 누적 — architect SPEC_GAP 자동 호출")
+    print(f"[HARNESS] 누적 fail_types: {fail_types}")
+    if run_logger:
+        run_logger.log_event({
+            "event": "auto_spec_gap_trigger",
+            "impl": impl_file,
+            "escalate_count": count,
+            "fail_types": fail_types,
+        })
+    sg_out = str(state_dir.path / f"{prefix}_auto_spec_gap_out.txt")
+    agent_call(
+        "architect", 600,
+        f"@MODE:ARCHITECT:SPEC_GAP\n"
+        f"이 impl 파일이 직전 run들에서 {count}회 IMPLEMENTATION_ESCALATE됐다.\n"
+        f"impl: {impl_file}\n"
+        f"issue: #{issue_num}\n"
+        f"누적 fail_types: {fail_types}\n\n"
+        f"같은 fail_type이 반복되는 원인은 impl 스펙 자체에 갭이 있다는 신호다. "
+        f"impl 파일을 읽고 다음 중 하나로 대응하라:\n"
+        f"1) 갭이 식별되면 impl 파일을 보강(수용 기준·인터페이스·자동 체크 명세 보강) 후 SPEC_GAP_RESOLVED.\n"
+        f"2) 기획 갭이면 PRODUCT_PLANNER_ESCALATION_NEEDED.\n"
+        f"3) 기술적 제약 충돌이면 TECH_CONSTRAINT_CONFLICT.\n"
+        f"impl 파일 외 다른 파일은 만지지 마라.",
+        sg_out, run_logger, config,
+    )
+    marker = parse_marker(
+        sg_out,
+        "SPEC_GAP_RESOLVED|PRODUCT_PLANNER_ESCALATION_NEEDED|TECH_CONSTRAINT_CONFLICT",
+    )
+    if marker == "SPEC_GAP_RESOLVED":
+        clear_escalate_count(state_dir, impl_file)
+        print("[HARNESS] auto_spec_gap → SPEC_GAP_RESOLVED — ESCALATE 카운트 리셋, 정상 진행")
+        if run_logger:
+            run_logger.log_event({"event": "auto_spec_gap_resolved", "impl": impl_file})
+        return None
+    if marker in ("PRODUCT_PLANNER_ESCALATION_NEEDED", "TECH_CONSTRAINT_CONFLICT"):
+        print(f"[HARNESS] auto_spec_gap → {marker}")
+        if run_logger:
+            run_logger.log_event({"event": "auto_spec_gap_escalate", "marker": marker, "impl": impl_file})
+        return marker
+    # 마커 없음 — 보강 효과 없으니 정상 진행하되 카운트는 유지
+    print("[HARNESS] ⚠️ auto_spec_gap → 마커 미감지. 보강 효과 불확실, 일반 진행")
+    return None
 
 
 def ensure_depth_frontmatter(
@@ -386,6 +454,22 @@ def run_impl(
 
     # ── depth frontmatter 강제 검증 ──
     ensure_depth_frontmatter(impl_file, issue_num, prefix, state_dir, run_logger, config)
+
+    # ── 동일 impl 누적 ESCALATE 검사 → architect SPEC_GAP 자동 호출 ──
+    # jajang 통계: 동일 impl 2회 ESCALATE 사례 다수 (06-app-record-guide-screen,
+    # 02-server-rewarded-counter). 임계 누적 시 새 attempt 시작 전 impl 보강을 강제.
+    _auto_sg_marker = _maybe_auto_spec_gap(
+        impl_file, str(issue_num), prefix, state_dir, run_logger, config
+    )
+    if _auto_sg_marker:
+        os.environ["HARNESS_RESULT"] = _auto_sg_marker
+        print(_auto_sg_marker)
+        if run_logger is not None:
+            try:
+                run_logger.write_run_end(_auto_sg_marker, "", str(issue_num))
+            except Exception:
+                pass
+        return _auto_sg_marker
 
     # ── Plan Validation ──
     print("[HARNESS] Plan Validation")
