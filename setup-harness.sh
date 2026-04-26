@@ -352,6 +352,34 @@ wl.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 print(f"✅ 하네스 화이트리스트 등록: {here}")
 PY
 
+# ── GitHub MCP 서버 등록 안내 ───────────────────────────
+# qa/designer/architect/product-planner 에이전트가 GitHub 이슈를 만들고 수정하려면
+# `mcp__github__*` 도구가 실제로 동작해야 한다. 도구 선언(agents/*.md frontmatter)과
+# 권한(settings.json allowedTools)은 이미 있지만, **MCP 서버 자체가 미등록이면**
+# 호출이 실패하고 메인 Claude는 issue-gate.py에 의해 `gh issue create` 차단되어
+# 데드락이 발생한다 (mb #106·jajang 사례).
+#
+# 자동 등록은 토큰을 다루므로 보안상 하지 않는다. 안내만 출력 + 유저가 직접 실행.
+if command -v claude >/dev/null 2>&1; then
+  if ! claude mcp list 2>/dev/null | grep -qE '^github:'; then
+    echo ""
+    echo "⚠️  GitHub MCP 서버 미등록 — 에이전트가 이슈를 만들지 못합니다."
+    if command -v gh >/dev/null 2>&1 && gh auth token >/dev/null 2>&1; then
+      echo "    아래 명령으로 등록 (gh 로그인 토큰 자동 사용):"
+      echo ""
+      echo "      TOKEN=\$(gh auth token) && claude mcp add github -s user \\"
+      echo "        -e GITHUB_PERSONAL_ACCESS_TOKEN=\"\$TOKEN\" \\"
+      echo "        -- npx -y @modelcontextprotocol/server-github"
+      echo ""
+      echo "    등록 후 Claude Code 세션을 재시작해야 도구가 로드됩니다."
+    else
+      echo "    먼저 \`gh auth login\` 으로 GitHub 로그인 후 위 명령 실행 필요."
+    fi
+  else
+    echo "ℹ️  GitHub MCP 서버 등록 확인됨"
+  fi
+fi
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ Harness 프로젝트 설정 완료"
