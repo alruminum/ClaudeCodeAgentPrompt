@@ -173,6 +173,7 @@ def main():
     #   _ux_sync_in_progress: /ux-sync 실행 중 센티널 (중복 실행 안내용)
     #   _plan_metadata.json: plan 루프 세션 간 체크포인트 (prd_path·ux_flow_doc 기억 — 여러 세션에서 같은 기획 이어서 작업)
     #   _plan_review_override: plan-reviewer CHANGES_REQUESTED 시 유저가 "그대로 진행" 선택한 1회성 플래그 (재시작 후에도 유효해야 다음 루프에서 스킵 가능)
+    #   _escalate_history.json: 동일 impl 누적 ESCALATE 추적 (auto SPEC_GAP 트리거 — 세션 간 누적되어야 의미 있음)
     PRESERVE_SUFFIXES = (
         '_last_issue',
         '_harness_active',
@@ -180,6 +181,7 @@ def main():
         '_ux_sync_in_progress',
         '_plan_metadata.json',
         '_plan_review_override',
+        '_escalate_history.json',
     )
     for f in glob.glob(os.path.join(get_state_dir(), f'{prefix}_*')):
         if any(f.endswith(s) for s in PRESERVE_SUFFIXES):
