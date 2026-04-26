@@ -161,7 +161,7 @@ def main():
 
         # src/** 소스 코드 직접 수정 차단 (src/__tests__/ 포함)
         if re.search(r'(^|/)src/', fp):
-            deny(f"❌ [file-ownership] src/** 는 engineer 에이전트 소유.{skill_ctx} "
+            deny(f"❌ [hooks/agent-boundary.py file-ownership] src/** 는 engineer 에이전트 소유.{skill_ctx} "
                  "직접 수정 금지 → harness/executor.py를 통해 루프 C 진입.")
 
         # 설계 문서 직접 수정 차단
@@ -171,7 +171,7 @@ def main():
             r"|(^|/)trd[.]md)"
         )
         if DOCS_PATTERN.search(fp):
-            deny(f"❌ [file-ownership] 설계 문서는 에이전트 소유.{skill_ctx} "
+            deny(f"❌ [hooks/agent-boundary.py file-ownership] 설계 문서는 에이전트 소유.{skill_ctx} "
                  "직접 수정 금지 → architect/designer/product-planner 에이전트 호출.")
 
         # 그 외 파일은 메인 Claude 수정 허용
@@ -180,15 +180,16 @@ def main():
     # ── 하네스 인프라 파일 Read/Write/Edit 차단 (모든 에이전트 공통) ──
     for pattern in HARNESS_INFRA_PATTERNS:
         if re.search(pattern, fp):
-            deny(f"❌ [agent-boundary] {active_agent}는 하네스 인프라 파일 접근 금지: "
-                 f"{os.path.basename(fp)}. 프로젝트 소스(src/, docs/)만 분석 대상.")
+            deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 하네스 인프라 파일 접근 금지: "
+                 f"{os.path.basename(fp)} (matched={pattern!r}). "
+                 "프로젝트 소스(src/, docs/)만 분석 대상.")
 
     # Read 도구: 하네스 인프라 차단 + 에이전트별 READ_DENY_MATRIX 적용
     if tool_name in ("Read", "Glob", "Grep"):
         deny_patterns = READ_DENY_MATRIX.get(active_agent, [])
         for pattern in deny_patterns:
             if re.search(pattern, fp):
-                deny(f"❌ [agent-boundary] {active_agent}는 {os.path.basename(fp)} 읽기 금지. "
+                deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 {os.path.basename(fp)} 읽기 금지. "
                      f"이 에이전트의 역할 범위 밖 파일입니다.")
         sys.exit(0)
 
@@ -197,7 +198,7 @@ def main():
 
     # ReadOnly 에이전트 (빈 리스트) → 모든 Write/Edit deny
     if not allowed_patterns:
-        deny(f"❌ [agent-boundary] {active_agent}는 ReadOnly 에이전트. "
+        deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 ReadOnly 에이전트. "
              f"파일 수정 금지: {os.path.basename(fp)}")
 
     # 허용 경로 매치 확인
@@ -221,7 +222,7 @@ def main():
     except Exception:
         pass
     allowed_desc = ", ".join(allowed_patterns)
-    deny(f"❌ [agent-boundary] {active_agent}는 {os.path.basename(fp)} 수정 불가. "
+    deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 {os.path.basename(fp)} 수정 불가. "
          f"허용 경로: {allowed_desc}")
 
 if __name__ == "__main__":

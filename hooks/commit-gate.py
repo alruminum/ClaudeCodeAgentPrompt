@@ -50,7 +50,7 @@ def main():
     )
     if _IS_GH_ISSUE_MUTATE and os.environ.get("HARNESS_INTERNAL") != "1" and not _is_issue_creator_active(d):
         deny(
-            "❌ gh issue create/edit 직접 호출 금지.\n"
+            "❌ [hooks/commit-gate.py] gh issue create/edit 직접 호출 금지.\n"
             "이슈 생성/수정은 QA 에이전트가, 디자인 이슈는 designer 에이전트가 처리한다.\n"
             f"올바른 흐름: /qa 스킬 → QA 에이전트 분석·이슈 생성/수정 → python3 executor.py impl --issue <N> --prefix {PREFIX}"
         )
@@ -64,7 +64,7 @@ def main():
     _IS_EXECUTOR_ANY = re.search(r"executor\.(sh|py)\s+(impl|bugfix|design|plan)\b", cmd)
     if _IS_EXECUTOR_ANY and os.path.exists(_interview_path) and os.environ.get("HARNESS_INTERNAL") != "1":
         deny(
-            "❌ 인터뷰 진행 중 — executor.py 호출 불가.\n"
+            "❌ [hooks/commit-gate.py] 인터뷰 진행 중 — executor.py 호출 불가.\n"
             "요구사항 명확화 인터뷰를 먼저 완료하세요.\n"
             "현재 질문에 답변하면 다음 단계로 진행됩니다."
         )
@@ -102,7 +102,7 @@ def main():
 
     # src 변경이 있으면 LGTM 필요
     if not os.path.exists(f"{get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM}"):
-        deny(f"❌ git commit 전 pr-reviewer LGTM 필요. {get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.")
+        deny(f"❌ [hooks/commit-gate.py] git commit 전 pr-reviewer LGTM 필요. {get_flags_dir()}/{PREFIX}_{FLAGS.PR_REVIEWER_LGTM} 없음.")
 
     sys.exit(0)
 

@@ -168,6 +168,24 @@ impl 파일에 `## Design Ref` 섹션이 있으면 (설계 루프에서 designer
 - 같은 방식으로 같은 FAIL이 반복되면 → architect에게 SPEC_GAP 보고 후 중단
 - **SPEC_GAP는 attempt를 소비하지 않음 (동결)**: SPEC_GAP_FOUND → architect → SPEC_GAP_RESOLVED 사이클은 attempt 카운터를 동결한다. 별도 `spec_gap_count` (max 2) 관리. 2회 초과 시 `IMPLEMENTATION_ESCALATE`로 에스컬레이션. 최대 라운드: attempt 3 + spec_gap 2 = 5회.
 
+### 재시도 출력 규칙 (attempt 1+)
+
+attempt 0은 풀 컨텍스트로 진행. **attempt 1 이상에서는 출력 토큰을 최소화**한다 — 같은 작업의 풀 패키지를 매번 다시 출력하지 마라. (jajang 로그 분석: engineer out_tok 20K~37K 폭주가 ESCALATE 비용의 80%를 차지.)
+
+- ❌ 금지: 직전 attempt와 동일한 파일 내용을 처음부터 끝까지 다시 출력
+- ❌ 금지: 직전 attempt의 의사결정/탐색 과정을 새 단어로 재서술
+- ✅ 필수: 헤더 한 줄로 attempt 번호 + fail_type + 재시도 의도 명시
+- ✅ 필수: 변경된 파일만 Edit. 변경 없는 파일은 언급도 금지
+- ✅ 필수: 완료 보고에 **diff 요약만** — 추가/삭제 라인 N개, 핵심 변경점 1~3줄
+
+attempt 1+ 완료 보고 형식 (간결):
+```
+attempt {N} fix: {fail_type} 대응
+변경 파일:
+- {path}: {한 줄 변경 요약}
+근본 원인: {1~2줄}
+```
+
 ---
 
 ## 커밋 단위 규칙
