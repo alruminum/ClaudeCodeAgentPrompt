@@ -96,6 +96,16 @@
 | `(BROWSER:DOM)` | Playwright DOM 쿼리 | UI 렌더링·DOM 상태를 직접 확인해야 하는 경우 |
 | `(MANUAL)` | curl/bash 수동 절차 | 자동화가 불가능한 경우에만 (이유를 통과 조건 셀에 명시 필수) |
 
+### 듀얼 모드 가드레일 — 디자인 토큰 의존성 (UI 컴포넌트 impl만)
+
+UI 컴포넌트(*.tsx 화면·뷰)를 만드는 impl 파일이고 **`docs/ux-flow.md` §0 디자인 가이드 존재 + `docs/design-handoff.md` 미존재**(=듀얼 모드)인 경우, 아래를 impl에 강제:
+
+- `## 의존성` 섹션에 `src/theme/` 명시 (없으면 `01-theme-tokens.md` 선행 impl 필요)
+- `## 인터페이스 정의`에서 색·폰트·간격은 `theme.colors.*`, `theme.typography.*`, `theme.spacing.*` 형식만 사용 — hex 리터럴(`#FFD700`)·폰트명 직접 박기·rem/px 직접값 금지
+- `## 수용 기준`에 1행 추가: `| REQ-NNN | 직접 색·폰트·간격 리터럴 사용 금지 — theme.* 경유 | (TEST) | grep으로 hex/px 리터럴 0건 확인 |`
+
+근거: 디자인 시안 도착 후 토큰값만 patch 하면 컴포넌트 갈아엎기 0. 자세한 정책은 `task-decompose.md` §듀얼 모드 가드레일 참조.
+
 ### READY_FOR_IMPL 게이트
 
 계획 파일 작성 후 자가 체크. 하나라도 미충족 시 보강 후 완료 보고:

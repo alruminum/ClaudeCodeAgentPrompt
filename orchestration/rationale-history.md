@@ -28,6 +28,26 @@
 
 ## 엔트리
 
+### HARNESS-CHG-20260426-02 — 듀얼 모드 디자인 토큰 우선 가드레일
+
+**Rationale**: jajang에서 ux-flow.md만 작성된 상태(Pencil 시안 미도착)로 구현이 시작됨. 유저 질문: "구현+디자인 듀얼이 빠를까, 디자인 다 받고 한번에가 빠를까?" 단순 듀얼은 시안 도착 시 화면 단위 컴포넌트 갈아엎기 비용이 폭발 — 색·폰트·간격·레이아웃 직접 박혀있으면 시안 적용 = 사실상 재작업.
+
+**Alternatives**:
+- A) 듀얼 그대로 (가드레일 없음) — wall-clock 짧지만 시안 도착 시 재작업 폭발
+- B) 디자인 도착 후 구현 (B 모드) — 재작업 0이나 디자인이 critical path가 됨, 1인 개발 정체
+- C) 듀얼 + **디자인 토큰 우선** 가드레일 — 시안 도착 시 토큰값만 patch, 컴포넌트 갈아엎기 0
+
+**Decision**: C. ux-flow.md §0 디자인 가이드가 토큰 수준(컬러·타이포·UI 패턴)까지 내려와있으면 토큰 시스템 미리 깔 수 있음. jajang 가이드는 "딥 미드나잇 네이비 + 골드 엑센트, Playfair Display, breathing room" 등 충분히 구체적. 가드레일 3개 레이어로 강제: (1) architect TASK_DECOMPOSE 1번 impl을 `01-theme-tokens.md`로 박음 (2) MODULE_PLAN UI impl에 theme 의존성 + 리터럴 금지 수용 기준 (3) engineer가 hex/rem/font-name 직접 박기 금지.
+
+**Follow-Up**:
+- jajang에서 적용 결과 관찰 — 시안 도착 시 토큰 patch 비용 실측
+- 가드레일 판정 자동화 검토 (현재는 architect/engineer 본문에 명시한 자가 검사)
+- React Native에서 토큰 시스템 표준 패턴(StyleSheet.create + theme provider) 권고 사항 추가 여부
+
+**Related**: 유저 발언 "지금 자장프로젝트에 ux flow만 하고 실제 디자인은 없이 그냥 구현시작했던데 너생각에는 구현 + 디자인 듀얼로 돌리고 나중에 디자인만 바꾸는게 빠를까?" (2026-04-26 세션)
+
+---
+
 ### HARNESS-CHG-20260425-02 — 거버넌스 프레임워크 도입 (Task-ID + WHAT/WHY 로그 + 경로 기반 drift-check)
 
 **Rationale**: changelog.md 하나에 WHAT과 WHY가 섞여서 장기적으로 "왜 이 코드가 이렇게 됐냐"를 추적하기 어렵다. 이번 세션에서만도 plan-reviewer 위치 이동·세션 훅 버그·fallback 제거 같은 결정들이 changelog 한 줄로 압축돼 맥락이 유실됨. 친구 프로젝트(TDM)의 거버넌스 시스템을 벤치마크해서 3개 개선점 도입.

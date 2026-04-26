@@ -113,6 +113,22 @@ SPEC_GAP_FOUND
 
 ---
 
+## 듀얼 모드 — 디자인 토큰 강제 사용 (UI 컴포넌트 작업 시)
+
+`src/theme/` 디렉토리가 존재하면 듀얼 모드 가드레일이 active. 색·폰트·간격은 **반드시 `theme.*` 경유**.
+
+| 금지 | 허용 |
+|---|---|
+| `color: '#FFD700'` | `color: theme.colors.accent.gold` |
+| `fontFamily: 'Playfair Display'` | `fontFamily: theme.typography.heading.family` |
+| `padding: 16` | `padding: theme.spacing.md` |
+
+근거: 디자인 시안(Pencil) 도착 후 토큰값만 patch하면 컴포넌트 갈아엎기 0. 직접 리터럴이 박혀있으면 시안 적용 시 화면 단위로 다 갈아엎어야 함. 자가 검증: `grep -rE "#[0-9a-fA-F]{6}|fontFamily.*'[A-Z]" src/` 결과 0건.
+
+새 토큰 키가 필요하면 임의 추가 금지 — architect에게 SPEC_GAP 보고.
+
+---
+
 ## Design Ref / Designer Handoff 수신
 
 impl 파일에 `## Design Ref` 섹션이 있으면 (설계 루프에서 designer 시안이 생성된 경우):

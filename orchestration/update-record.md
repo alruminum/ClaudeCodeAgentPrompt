@@ -42,6 +42,7 @@ Document-Exception: <Task-ID> <사유>
 
 | Task-ID | Date | Change-Type | Files | Exception |
 |---|---|---|---|---|
+| HARNESS-CHG-20260426-02 | 2026-04-26 | agents+orchestration | agents/architect/task-decompose.md, agents/architect/module-plan.md, agents/engineer.md, orchestration-rules.md, orchestration/update-record.md, orchestration/rationale-history.md, orchestration/changelog.md | - |
 | HARNESS-CHG-20260426-01 | 2026-04-26 | docs+orchestration | setup-harness.sh, orchestration-rules.md, orchestration/update-record.md | - |
 | HARNESS-CHG-20260425-02 | 2026-04-25 | hooks+orchestration+docs | hooks/harness-drift-check.py, orchestration/update-record.md (신규), orchestration/rationale-history.md (신규), orchestration-rules.md, orchestration/changelog.md | - |
 | HARNESS-CHG-20260425-01 | 2026-04-25 | plan-loop+agents+commands+orchestration | harness/plan_loop.py, agents/plan-reviewer.md, commands/product-plan.md, orchestration/plan.md, orchestration-rules.md, orchestration/changelog.md, harness/tests/test_parity.py | - |
