@@ -71,6 +71,78 @@ class StateDir:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# 1.5. ESCALATE history — 동일 impl이 여러 run에 걸쳐 ESCALATE될 때
+#      architect SPEC_GAP을 자동 호출해 impl 보강을 유도.
+# ═══════════════════════════════════════════════════════════════════════
+
+ESCALATE_AUTO_SPEC_GAP_THRESHOLD = 2  # 누적 N회 ESCALATE면 다음 run 진입 시 SPEC_GAP
+
+
+def _escalate_history_path(state_dir: "StateDir") -> Path:
+    return state_dir.path / f"{state_dir.prefix}_escalate_history.json"
+
+
+def _read_escalate_history(state_dir: "StateDir") -> Dict[str, Any]:
+    p = _escalate_history_path(state_dir)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_escalate_history(state_dir: "StateDir", data: Dict[str, Any]) -> None:
+    p = _escalate_history_path(state_dir)
+    try:
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def record_escalate(state_dir: "StateDir", impl_path: str, fail_type: str) -> int:
+    """impl_path가 ESCALATE된 사실을 기록. 반환: 누적 ESCALATE 카운트."""
+    if not impl_path:
+        return 0
+    data = _read_escalate_history(state_dir)
+    entry = data.get(impl_path) or {"count": 0, "last_ts": 0, "fail_types": []}
+    entry["count"] = int(entry.get("count", 0)) + 1
+    entry["last_ts"] = int(time.time())
+    fts = list(entry.get("fail_types") or [])
+    if fail_type:
+        fts.append(fail_type)
+    entry["fail_types"] = fts[-5:]  # 최근 5개만
+    data[impl_path] = entry
+    _write_escalate_history(state_dir, data)
+    return entry["count"]
+
+
+def get_escalate_count(state_dir: "StateDir", impl_path: str) -> int:
+    if not impl_path:
+        return 0
+    data = _read_escalate_history(state_dir)
+    entry = data.get(impl_path) or {}
+    return int(entry.get("count", 0))
+
+
+def get_escalate_fail_types(state_dir: "StateDir", impl_path: str) -> List[str]:
+    if not impl_path:
+        return []
+    data = _read_escalate_history(state_dir)
+    entry = data.get(impl_path) or {}
+    return list(entry.get("fail_types") or [])
+
+
+def clear_escalate_count(state_dir: "StateDir", impl_path: str) -> None:
+    if not impl_path:
+        return
+    data = _read_escalate_history(state_dir)
+    if impl_path in data:
+        del data[impl_path]
+        _write_escalate_history(state_dir, data)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 2. Flag enum — flags.sh 상수 1:1 매핑
 # ═══════════════════════════════════════════════════════════════════════
 

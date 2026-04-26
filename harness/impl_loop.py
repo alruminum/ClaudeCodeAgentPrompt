@@ -25,6 +25,7 @@ try:
         build_smart_context, build_validator_context, explore_instruction,
         generate_handoff, write_handoff,
         prune_history, kill_check, detect_depth,
+        record_escalate,
     )
     from .helpers import (
         load_constraints, append_failure, append_success,
@@ -44,6 +45,7 @@ except ImportError:
         build_smart_context, build_validator_context, explore_instruction,
         generate_handoff, write_handoff,
         prune_history, kill_check, detect_depth,
+        record_escalate,
     )
     from helpers import (
         load_constraints, append_failure, append_success,
@@ -295,6 +297,7 @@ def run_simple(
             hlog_fn("=== circuit breaker → IMPLEMENTATION_ESCALATE ===")
             print("IMPLEMENTATION_ESCALATE (circuit_breaker)")
             print(f"branch: {feature_branch}")
+            record_escalate(state_dir, impl_file, fail_type)
             run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
             return "IMPLEMENTATION_ESCALATE"
 
@@ -406,6 +409,7 @@ def run_simple(
                 os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
                 print(f"IMPLEMENTATION_ESCALATE (spec_gap_count {spec_gap_count} > {MAX_SPEC_GAP})")
                 print(f"branch: {feature_branch}")
+                record_escalate(state_dir, impl_file, fail_type or "spec_gap_exceeded")
                 run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
                 return "IMPLEMENTATION_ESCALATE"
 
@@ -812,6 +816,7 @@ def run_simple(
         for line in error_trace.splitlines()[:20]:
             print(line)
 
+    record_escalate(state_dir, impl_file, fail_type or "max_attempts")
     run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
     return "IMPLEMENTATION_ESCALATE"
 
@@ -908,6 +913,7 @@ def _run_std_deep(
             hlog_fn("=== circuit breaker → IMPLEMENTATION_ESCALATE ===")
             print("IMPLEMENTATION_ESCALATE (circuit_breaker)")
             print(f"branch: {feature_branch}")
+            record_escalate(state_dir, impl_file, fail_type)
             run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
             return "IMPLEMENTATION_ESCALATE"
 
@@ -1090,6 +1096,7 @@ def _run_std_deep(
                 os.environ["HARNESS_RESULT"] = "IMPLEMENTATION_ESCALATE"
                 print(f"IMPLEMENTATION_ESCALATE (spec_gap_count {spec_gap_count} > {MAX_SPEC_GAP})")
                 print(f"branch: {feature_branch}")
+                record_escalate(state_dir, impl_file, fail_type or "spec_gap_exceeded")
                 run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
                 return "IMPLEMENTATION_ESCALATE"
 
@@ -1683,6 +1690,7 @@ def _run_std_deep(
     if error_trace:
         for line in error_trace.splitlines()[:20]:
             print(line)
+    record_escalate(state_dir, impl_file, fail_type or "max_attempts")
     run_logger.write_run_end("IMPLEMENTATION_ESCALATE", feature_branch, issue_num)
     return "IMPLEMENTATION_ESCALATE"
 
