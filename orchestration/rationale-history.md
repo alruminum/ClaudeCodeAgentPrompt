@@ -28,6 +28,27 @@
 
 ## 엔트리
 
+### HARNESS-CHG-20260427-01 — 워크트리 격리 setup 시 기본 활성화
+
+**Rationale**: 이슈별 git worktree 격리(`config.isolation = "worktree"`)는 동시 작업·실패 격리·rollback 안전성에 핵심인데 default가 `""`(비활성)이라 매번 수동 추가 누락됨. 기본 활성으로 바꿔야 새 프로젝트가 안전한 디폴트로 시작.
+
+**Alternatives**:
+- A) 현상 유지 (기본 비활성, 수동 추가) — 매번 누락, 사고 기회
+- B) `config.py` default를 `"worktree"`로 변경 — 기존 모든 프로젝트에 즉시 영향, 마이그레이션 리스크
+- C) `setup-harness.sh`에서 신규 생성 시만 기본 활성, 기존 파일은 안내만 — 신규 안전 + 기존 의도 존중
+- D) 설치 시 유저에게 묻기 — 매번 의사결정 비용, 디폴트가 모호해짐
+
+**Decision**: C. config.py default 건드리지 않고 setup 시점만 자동 활성. 기존 프로젝트는 isolation 키 부재 감지 시 안내만 출력 (의도적 비활성 케이스 존중). `.gitignore`에 `.worktrees/` 자동 등록도 같이 — git 추적 사고 방지.
+
+**Follow-Up**:
+- 신규 프로젝트 setup 시 첫 impl 실행에서 worktree 생성 시간(initial git fetch) 관찰 — 너무 느리면 안내 메시지 추가 검토
+- 기존 프로젝트 마이그레이션은 `/harness` 서브커맨드에 `migrate-isolation` 옵션 추가 검토
+- worktree 정리 실패 사례(merge conflict 후 stale .worktrees/) 모니터링
+
+**Related**: 유저 발언 "워크트리도 프로젝트 셋업하면 기본적용되게 해줘" (2026-04-27 세션). 거버넌스 세션 시리즈의 일부 — 새 프로젝트가 안전한 디폴트로 시작하도록 일관 정책.
+
+---
+
 ### HARNESS-CHG-20260426-05 — Anti-AI-Smell 강화 (구조 패턴 + 자기 정당화 + 라이트 우선 사고)
 
 **Rationale**: HARNESS-CHG-20260426-04에서 "다크 네이비+골드 단톤" 명시 금지 + 라이트/다크 둘 다 강제 박았는데, jajang ux-architect 재실행 산출물이 **골드만 민트로 swap**하고 동일 구조 그대로 반환 (dark navy + 단일 채도 엑센트 + outline 카드 + 플랫 글리프). 라이트 모드는 여전히 미정의. 유저 reject "이건 좀 너무하지 않냐". 룰이 "특정 색"을 막으니 색만 바꿔서 우회됨이 명확.

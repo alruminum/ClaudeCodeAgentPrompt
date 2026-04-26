@@ -57,11 +57,37 @@ echo "📄 설정 파일: $SETTINGS_FILE"
 echo "📋 핵심 설계 문서: docs/${DOC_NAME}.md"
 
 # harness.config.json 생성 (없으면)
+# isolation="worktree" 기본 활성: 이슈별 git worktree로 동시 작업 격리.
+# 기존 파일이 있고 isolation 필드가 없으면 자동 추가하지 않고 안내만
+# (유저가 의도적으로 비활성한 경우 존중).
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "{\"prefix\": \"${PREFIX}\", \"test_command\": \"\", \"lint_command\": \"\", \"build_command\": \"\"}" > "$CONFIG_FILE"
-  echo "📄 $CONFIG_FILE 생성 완료"
+  echo "{\"prefix\": \"${PREFIX}\", \"test_command\": \"\", \"lint_command\": \"\", \"build_command\": \"\", \"isolation\": \"worktree\"}" > "$CONFIG_FILE"
+  echo "📄 $CONFIG_FILE 생성 완료 (worktree 격리 기본 활성)"
 else
-  echo "ℹ️  $CONFIG_FILE 이미 존재 — 유지"
+  HAS_ISOLATION=$(python3 -c "
+import json
+try:
+  d = json.load(open('$CONFIG_FILE'))
+  print('1' if 'isolation' in d else '0')
+except Exception:
+  print('0')
+" 2>/dev/null || echo "0")
+  if [ "$HAS_ISOLATION" = "0" ]; then
+    echo "ℹ️  $CONFIG_FILE 이미 존재 — 유지"
+    echo "    💡 워크트리 격리를 켜려면 추가: \"isolation\": \"worktree\""
+  else
+    echo "ℹ️  $CONFIG_FILE 이미 존재 — 유지 (isolation 필드 감지됨)"
+  fi
+fi
+
+# .gitignore에 .worktrees/ 자동 등록 (git repo이고 미등록일 때만)
+if [ -d .git ] && [ ! -f .gitignore ]; then
+  echo ".worktrees/" > .gitignore
+  echo "📄 .gitignore 생성 (.worktrees/ 등록)"
+elif [ -d .git ] && [ -f .gitignore ] && ! grep -qE "^\.worktrees/?$" .gitignore; then
+  echo "" >> .gitignore
+  echo ".worktrees/" >> .gitignore
+  echo "📄 .gitignore에 .worktrees/ 추가"
 fi
 
 # 기존 settings.json 에서 allowedTools 보존
