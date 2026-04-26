@@ -559,14 +559,39 @@ class RunLogger:
         print(f'[HARNESS] 실시간 확인: tail -f "{self.log_file}"')
 
     def _rotate(self) -> None:
-        """10번째 이후(오래된 것) 삭제."""
-        logs = sorted(
+        """FIFO 회전 — 단 .reviewed 마커가 없는 로그는 보존.
+
+        reviewed 된 것 중 최신 9개만 유지(곧 추가될 새 로그 + reviewed 9 = 10).
+        unreviewed 로그는 회전 대상에서 제외 — 유저가 분석할 때까지 보존.
+        안전망으로 unreviewed가 30일 이상 묵으면 삭제(무한 누적 방지).
+        """
+        all_logs = sorted(
             [f for f in self.log_dir.iterdir() if f.name.startswith("run_") and f.suffix == ".jsonl"],
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
-        for old in logs[9:]:  # 새 파일 추가 후 최대 10개
+
+        def _is_reviewed(p: Path) -> bool:
+            return p.with_suffix(".reviewed").exists()
+
+        reviewed = [p for p in all_logs if _is_reviewed(p)]
+        for old in reviewed[9:]:  # 새 파일 추가 후 reviewed 최대 10개
             old.unlink(missing_ok=True)
+            old.with_suffix(".reviewed").unlink(missing_ok=True)
+            # _review.txt 는 통계 분석용으로 보존 (3KB~10KB로 가벼움)
+
+        # unreviewed 안전망: 30일 초과 로그는 정리 (회전 후 남은 파일만 재스캔)
+        cutoff = time.time() - 30 * 86400
+        for p in self.log_dir.iterdir():
+            if not (p.name.startswith("run_") and p.suffix == ".jsonl"):
+                continue
+            if _is_reviewed(p):
+                continue
+            try:
+                if p.stat().st_mtime < cutoff:
+                    p.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _append(self, event: Dict[str, Any]) -> None:
         with open(self.log_file, "a", encoding="utf-8") as f:
