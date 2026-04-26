@@ -59,7 +59,7 @@ except ImportError:
 # 0. Circuit Breaker — 시간 윈도우 기반 동일 실패 감지
 # ═══════════════════════════════════════════════════════════════════════
 
-CIRCUIT_BREAKER_WINDOW = 120   # 초
+CIRCUIT_BREAKER_WINDOW = 1800  # 초 (120→1800: jajang attempt 평균 436s × 3 = 1308s 커버)
 CIRCUIT_BREAKER_THRESHOLD = 2  # 동일 타입 N회
 
 

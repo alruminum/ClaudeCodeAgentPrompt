@@ -46,7 +46,7 @@ def main():
 
     # 그 외 — 메인 Claude 직접 호출 차단 (harness_active 여부 무관)
     deny(
-        "❌ 메인 Claude의 이슈 생성/수정 직접 호출 금지 (orchestration/policies.md 정책 3).\n"
+        "❌ [hooks/issue-gate.py] 메인 Claude의 이슈 생성/수정 직접 호출 금지 (orchestration/policies.md 정책 3).\n"
         "이슈 생성/수정은 QA/designer 에이전트가 처리합니다.\n"
         "버그: /qa 스킬 → QA 에이전트가 분석·이슈 생성/수정 → python3 executor.py impl --issue <N>\n"
         "구현: python3 executor.py impl --impl <path> 으로 진입하면 architect가 이슈를 생성합니다."
