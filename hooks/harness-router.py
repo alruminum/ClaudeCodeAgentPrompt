@@ -75,6 +75,14 @@ def fast_classify(prompt):
         return "IMPLEMENTATION"
     if re.search(r'(띄워|올려|내려|꺼줘|죽여|kill|start|stop).*(줘|봐|라|해)?\s*$', p) and re.search(r'(서버|포트|\d{4}|dev|build)', p, re.I):
         return "IMPLEMENTATION"
+    # 짧은 시작 명령 — classify-miss-report 결과 기반 (Haiku 폴백 줄이기)
+    # "재실행 해", "재실행해", "고", "시작해", "진행해" 등 단일 동사
+    if re.fullmatch(r'(재실행|재시도|시작|진행|실행|배포|커밋|푸시)\s*(해|해줘|해봐|하자)?\s*\.?', p):
+        return "IMPLEMENTATION"
+    # "응 시작해", "오케이 진행", "네 해주세요" 등 동의 + 동사
+    if re.match(r'^(응|네|오케이|좋아|ok|yes)\s+', p, re.I) and re.search(
+            r'(시작|진행|실행|구현|돌려|해봐|해줘|만들|배포|커밋|푸시|확인)', p):
+        return "IMPLEMENTATION"
 
     return None  # 나머지 → 통과
 

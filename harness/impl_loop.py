@@ -932,7 +932,7 @@ def _run_std_deep(
                 f"issue: #{issue_num}"
             )
             _te_tdd_t0 = time.time()
-            te_tdd_exit = agent_call("test-engineer", 600, te_tdd_prompt, te_tdd_out, run_logger, config, str(attempt_dir))
+            te_tdd_exit = agent_call("test-engineer", 900, te_tdd_prompt, te_tdd_out, run_logger, config, str(attempt_dir))
             _te_tdd_cost = 0.0
             try:
                 _te_cost_file = Path(str(te_tdd_out).replace(".txt", "_cost.txt"))
