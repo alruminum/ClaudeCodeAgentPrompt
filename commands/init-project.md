@@ -9,7 +9,7 @@ argument-hint: ""
 
 ---
 
-## Step 0 — 실행 전 유저에게 2가지 질문
+## Step 0 — 실행 전 유저에게 3가지 질문
 
 스크립트를 실행하기 전에 아래를 유저에게 먼저 물어본다. 모두 선택 사항이므로 "나중에" 답변도 허용한다.
 
@@ -21,7 +21,28 @@ argument-hint: ""
 2. 핵심 설계 문서 이름은 무엇인가요? (예: game-logic, domain-logic, api-spec)
    → architect SPEC_GAP 신선도 체크에 사용됩니다.
    → 없으면 엔터 (기본값: domain-logic)
+
+3. UI 있는 프로젝트인가요? (Pencil MCP 사용 여부)
+   → 사용한다 (yes): designer 에이전트가 Pencil로 시안 생성. Pencil 앱 + MCP 등록 필요.
+   → 사용 안 함 (no/엔터): 순수 백엔드/CLI/라이브러리 프로젝트. designer/ux-architect 비활성.
 ```
+
+### Step 0-3 후속 처리 (Pencil 응답에 따라)
+
+- **yes**: `claude mcp list | grep -qE '^pencil:'`로 등록 여부 확인.
+  - 등록됨 → 그대로 진행 + 안내: "Pencil MCP 사용 가능. designer 에이전트 작동 OK."
+  - 미등록 → 안내 출력 후 진행:
+    ```
+    ⚠️ Pencil MCP 미등록. designer/ux-architect의 Pencil 도구가 작동하지 않습니다.
+       1) Pencil 앱 설치: https://pencil.do (또는 brew cask)
+       2) 설치 후 등록: claude mcp add pencil -s user -- /Applications/Pencil.app/Contents/Resources/app.asar.unpacked/out/mcp-server-darwin-arm64 --app desktop
+       3) Claude Code 세션 재시작
+    ```
+- **no**: 안내만 출력하고 진행:
+  ```
+  ℹ️ UI 없는 프로젝트로 설정. designer/ux-architect 에이전트는 호출하지 않는 것을 권장.
+     plan 루프에서 PRD 화면 인벤토리 비어있으면 ux-architect 자동 스킵 (UX_SKIP).
+  ```
 
 ---
 
