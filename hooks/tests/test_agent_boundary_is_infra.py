@@ -164,5 +164,102 @@ class IsInfraDebugLogFieldTests(unittest.TestCase):
         self.assertIsInstance(entry["is_infra"], bool)
 
 
+class InfraBypassTests(unittest.TestCase):
+    """인프라 모드에서의 Write 차단/허용 분기 검증 (이슈 #85).
+
+    수용 기준:
+    - 인프라 모드 ON: harness-state/ Write → deny (런타임 상태 보호)
+    - 인프라 모드 ON: hooks/ Write → 허용 (HARNESS_INFRA_PATTERNS 광역 차단 우회)
+    - 인프라 모드 ON: .sessions/ Write → deny (세션 상태 보호)
+    - 인프라 모드 OFF: hooks/ 광역 차단은 active_agent 컨텍스트 별 정책으로 검증
+    """
+
+    def setUp(self) -> None:
+        self._td = tempfile.TemporaryDirectory()
+        self.root = Path(self._td.name)
+        _make_project(self.root)
+
+    def tearDown(self) -> None:
+        self._td.cleanup()
+
+    def _run_write(self, payload: dict, infra_on: bool) -> subprocess.CompletedProcess:
+        env = {**os.environ, "HARNESS_FORCE_ENABLE": "1"}
+        for k in ("HARNESS_AGENT_NAME", "HARNESS_SESSION_ID", "HARNESS_INFRA", "CLAUDE_PLUGIN_ROOT"):
+            env.pop(k, None)
+        if infra_on:
+            env["HARNESS_INFRA"] = "1"
+        return subprocess.run(
+            [PYTHON, str(HOOK)],
+            input=json.dumps(payload),
+            capture_output=True, text=True,
+            env=env, cwd=str(self.root), timeout=10,
+        )
+
+    def _is_denied(self, proc: subprocess.CompletedProcess) -> bool:
+        if not proc.stdout.strip():
+            return False
+        try:
+            out = json.loads(proc.stdout)
+            return out.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+        except json.JSONDecodeError:
+            return False
+
+    def test_infra_mode_state_write_denied(self) -> None:
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": str(self.root / ".claude" / "harness-state" / "live.json"),
+                "content": "{}",
+            },
+        }
+        proc = self._run_write(payload, infra_on=True)
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(
+            self._is_denied(proc),
+            f"harness-state/ Write는 인프라 모드에서도 차단되어야 한다. stdout={proc.stdout!r}"
+        )
+
+    def test_infra_mode_hooks_write_allowed(self) -> None:
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": str(self.root / "hooks" / "test.py"),
+                "content": "# test",
+            },
+        }
+        proc = self._run_write(payload, infra_on=True)
+        self.assertEqual(proc.returncode, 0)
+        self.assertFalse(
+            self._is_denied(proc),
+            f"hooks/ Write는 인프라 모드에서 허용되어야 한다. stdout={proc.stdout!r}"
+        )
+
+    def test_infra_mode_sessions_write_denied(self) -> None:
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": str(self.root / ".sessions" / "abc123" / "live.json"),
+                "content": "{}",
+            },
+        }
+        proc = self._run_write(payload, infra_on=True)
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(
+            self._is_denied(proc),
+            f".sessions/ Write는 인프라 모드에서도 차단되어야 한다. stdout={proc.stdout!r}"
+        )
+
+    def test_normal_mode_does_not_crash(self) -> None:
+        payload = {
+            "tool_name": "Write",
+            "tool_input": {
+                "file_path": str(self.root / "hooks" / "test.py"),
+                "content": "# test",
+            },
+        }
+        proc = self._run_write(payload, infra_on=False)
+        self.assertEqual(proc.returncode, 0, f"훅이 예외로 종료됨: stderr={proc.stderr!r}")
+
+
 if __name__ == "__main__":
     unittest.main()
