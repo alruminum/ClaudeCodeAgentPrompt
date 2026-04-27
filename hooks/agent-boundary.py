@@ -26,36 +26,6 @@ from harness_common import get_prefix, get_state_dir, deny, CUSTOM_AGENTS, is_ha
 import session_state as ss
 
 
-def is_infra_project() -> bool:
-    """현재 실행 컨텍스트가 인프라 프로젝트(~/.claude)인지 판단.
-
-    4신호 OR — 하나라도 True이면 즉시 True 반환.
-      신호 1: 환경변수 HARNESS_INFRA=1
-      신호 2: 마커 파일 ~/.claude/.harness-infra 존재
-      신호 3: 환경변수 CLAUDE_PLUGIN_ROOT 설정됨 (non-empty)
-      신호 4: cwd가 ~/.claude 와 resolve() 기준으로 일치
-    """
-    from pathlib import Path
-
-    if os.environ.get("HARNESS_INFRA") == "1":
-        return True
-
-    if Path.home().joinpath(".claude", ".harness-infra").exists():
-        return True
-
-    if os.environ.get("CLAUDE_PLUGIN_ROOT"):
-        return True
-
-    try:
-        infra_root = Path.home().joinpath(".claude").resolve()
-        if Path(os.getcwd()).resolve() == infra_root:
-            return True
-    except Exception:
-        pass
-
-    return False
-
-
 def _resolve_active_agent(stdin_data):
     """Phase 3: live.json 단일 소스로 활성 에이전트 판정.
     훅 stdin의 session_id → live.json.agent 경로.
@@ -73,15 +43,6 @@ HARNESS_INFRA_PATTERNS = [
     r'harness-(executor|loop|utils)\.sh',
     r'orchestration-rules\.md',
     r'setup-(harness|agents)\.sh',
-]
-
-# 하네스 런타임 상태 파일 패턴 — 인프라 모드에서도 Write/Edit 차단 대상.
-# (소스 파일과 달리 런타임 자동 생성·갱신되는 상태 데이터. 직접 편집 시 상태 오염.)
-# 신규 상태 디렉토리 추가 시 이 상수도 함께 갱신할 것.
-HARNESS_STATE_WRITE_PATTERNS = [
-    r'harness-state[/\\]',    # .claude/harness-state/** (live.json, debug log, 플래그)
-    r'\.sessions[/\\]',       # .sessions/{sid}/** (Phase 3 세션 스코프)
-    r'\.flags[/\\]',          # .flags/** (레거시 전역 플래그)
 ]
 
 # 에이전트별 허용 경로 패턴 (regex) — Write/Edit용
@@ -184,24 +145,11 @@ def main():
             "HARNESS_INTERNAL": os.environ.get("HARNESS_INTERNAL", ""),
             "tool": tool_name,
             "fp": fp,
-            "is_infra": is_infra_project(),
         }
         with open(os.path.join(get_state_dir(), "agent_boundary_debug.log"), "a") as _f:
             _f.write(json.dumps(_dbg, ensure_ascii=False) + "\n")
     except Exception:
         pass
-
-    # ── 인프라 모드 universal 가드: harness 런타임 상태 파일 Write/Edit 차단 ──
-    # active_agent 컨텍스트와 무관하게(main Claude 포함) 적용. 상태 파일은 harness
-    # 런타임 전용이며 직접 수정 시 상태 오염을 일으킨다.
-    if is_infra_project() and tool_name in ("Write", "Edit"):
-        for pattern in HARNESS_STATE_WRITE_PATTERNS:
-            if re.search(pattern, fp):
-                deny(
-                    f"❌ [hooks/agent-boundary.py] 인프라 모드 harness 런타임 상태 파일 "
-                    f"직접 수정 금지: {os.path.basename(fp)} (matched={pattern!r}). "
-                    "harness-state/**는 harness 런타임 전용 — 직접 편집 시 상태 오염."
-                )
 
     # Phase 3: 활성 에이전트 판별 — live.json 단일 소스
     active_agent = _resolve_active_agent(d)
@@ -253,32 +201,7 @@ def main():
             sys.exit(0)
         # Write/Edit는 ALLOW_MATRIX 평가로 위임 — 일반 에이전트는 어차피 차단됨
 
-    # ── 인프라 모드 분기: is_infra_project() True 시 광역 차단 우회 ──
-    # 인프라 프로젝트(~/.claude)에서는 hooks/·agents/·harness/ 등 소스 파일을
-    # 에이전트가 직접 편집해야 한다. 단, 런타임 상태 파일(harness-state/ 등)은
-    # 어떤 모드에서도 직접 수정 금지.
-    if is_infra_project():
-        if tool_name in ("Write", "Edit"):
-            for pattern in HARNESS_STATE_WRITE_PATTERNS:
-                if re.search(pattern, fp):
-                    deny(
-                        f"❌ [hooks/agent-boundary.py] 인프라 모드에서도 harness 런타임 상태 파일 "
-                        f"직접 수정 금지: {os.path.basename(fp)} (matched={pattern!r}). "
-                        "harness-state/**는 harness 런타임 전용 — 직접 편집 시 상태 오염."
-                    )
-            # 상태 파일이 아닌 모든 Write/Edit 허용 (ALLOW_MATRIX 우회)
-            sys.exit(0)
-        # Read/Glob/Grep: READ_DENY_MATRIX만 적용 (HARNESS_INFRA_PATTERNS 우회)
-        deny_patterns = READ_DENY_MATRIX.get(active_agent, [])
-        for pattern in deny_patterns:
-            if re.search(pattern, fp):
-                deny(
-                    f"❌ [hooks/agent-boundary.py] {active_agent}는 "
-                    f"{os.path.basename(fp)} 읽기 금지. 이 에이전트의 역할 범위 밖 파일입니다."
-                )
-        sys.exit(0)
-
-    # ── 하네스 인프라 파일 Read/Write/Edit 차단 (일반 프로젝트 — 기존 동작 유지) ──
+    # ── 하네스 인프라 파일 Read/Write/Edit 차단 (모든 에이전트 공통) ──
     for pattern in HARNESS_INFRA_PATTERNS:
         if re.search(pattern, fp):
             deny(f"❌ [hooks/agent-boundary.py] {active_agent}는 하네스 인프라 파일 접근 금지: "
