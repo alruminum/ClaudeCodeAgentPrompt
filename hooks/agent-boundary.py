@@ -26,6 +26,36 @@ from harness_common import get_prefix, get_state_dir, deny, CUSTOM_AGENTS, is_ha
 import session_state as ss
 
 
+def is_infra_project() -> bool:
+    """현재 실행 컨텍스트가 인프라 프로젝트(~/.claude)인지 판단.
+
+    4신호 OR — 하나라도 True이면 즉시 True 반환.
+      신호 1: 환경변수 HARNESS_INFRA=1
+      신호 2: 마커 파일 ~/.claude/.harness-infra 존재
+      신호 3: 환경변수 CLAUDE_PLUGIN_ROOT 설정됨 (non-empty)
+      신호 4: cwd가 ~/.claude 와 resolve() 기준으로 일치
+    """
+    from pathlib import Path
+
+    if os.environ.get("HARNESS_INFRA") == "1":
+        return True
+
+    if Path.home().joinpath(".claude", ".harness-infra").exists():
+        return True
+
+    if os.environ.get("CLAUDE_PLUGIN_ROOT"):
+        return True
+
+    try:
+        infra_root = Path.home().joinpath(".claude").resolve()
+        if Path(os.getcwd()).resolve() == infra_root:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
 def _resolve_active_agent(stdin_data):
     """Phase 3: live.json 단일 소스로 활성 에이전트 판정.
     훅 stdin의 session_id → live.json.agent 경로.
@@ -134,6 +164,7 @@ def main():
             "HARNESS_INTERNAL": os.environ.get("HARNESS_INTERNAL", ""),
             "tool": tool_name,
             "fp": fp,
+            "is_infra": is_infra_project(),
         }
         with open(os.path.join(get_state_dir(), "agent_boundary_debug.log"), "a") as _f:
             _f.write(json.dumps(_dbg, ensure_ascii=False) + "\n")
