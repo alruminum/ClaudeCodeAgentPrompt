@@ -88,7 +88,13 @@ HARNESS_STATE_WRITE_PATTERNS = [
 # 매치되면 허용, 매치 안 되면 deny
 ALLOW_MATRIX = {
     "engineer": [
-        r'(^|/)src/',                   # src/** 전체 (테스트 포함)
+        r'(^|/)src/',                   # src/** 전체 (단일 레포 기존)
+        r'(^|/)apps/[^/]+/src/',        # apps/<name>/src/** (모노레포 frontend/mobile)
+        r'(^|/)apps/[^/]+/app/',        # apps/<name>/app/** (FastAPI 등 백엔드 앱 코드)
+        r'(^|/)apps/[^/]+/alembic/',    # apps/<name>/alembic/** (DB 마이그레이션)
+        r'(^|/)packages/[^/]+/src/',    # packages/<name>/src/** (npm 워크스페이스)
+        r'(^|/)apps/[^/]+/[^/]+\.toml$',  # apps/<name>/*.toml (pyproject.toml 등)
+        r'(^|/)apps/[^/]+/[^/]+\.cfg$',   # apps/<name>/*.cfg (setup.cfg 등)
     ],
     "architect": [
         r'(^|/)docs/',                  # docs/** 전체 (impl 포함)
@@ -100,9 +106,14 @@ ALLOW_MATRIX = {
         r'(^|/)docs/ui-spec',           # docs/ui-spec*
     ],
     "test-engineer": [
-        r'(^|/)src/__tests__/',             # src/__tests__/** (dedicated test dir)
+        r'(^|/)src/__tests__/',             # src/__tests__/** (단일 레포 기존)
         r'(^|/)src/.*\.test\.[jt]sx?$',     # co-located *.test.{js,jsx,ts,tsx}
         r'(^|/)src/.*\.spec\.[jt]sx?$',     # co-located *.spec.{js,jsx,ts,tsx}
+        r'(^|/)apps/[^/]+/tests/',          # apps/<name>/tests/** (pytest 등 백엔드 테스트)
+        r'(^|/)apps/[^/]+/src/__tests__/',  # apps/<name>/src/__tests__/** (모노레포 JS 테스트)
+        r'(^|/)apps/[^/]+/src/.*\.test\.[jt]sx?$',  # apps/<name>/src/*.test.*
+        r'(^|/)apps/[^/]+/src/.*\.spec\.[jt]sx?$',  # apps/<name>/src/*.spec.*
+        r'(^|/)packages/[^/]+/src/__tests__/',       # packages/<name>/src/__tests__/**
     ],
     "product-planner": [
         r'(^|/)prd\.md$',              # prd.md — product-planner 소유
