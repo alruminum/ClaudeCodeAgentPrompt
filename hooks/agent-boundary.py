@@ -177,6 +177,19 @@ def main():
         # 그 외 파일은 메인 Claude 수정 허용
         sys.exit(0)
 
+    # ── 핸드오프 화이트리스트 ──
+    # 에이전트 간 인수인계 문서(`{prefix}_handoffs/attempt-N/{from}-to-{to}.md`)는
+    # 정당한 통로다. 위 HARNESS_INFRA_PATTERNS의 `[./]claude/`가 이걸 차단해 버려
+    # engineer가 validator 피드백을 못 읽고 빈 출력으로 timeout 반복하는 사례 발생
+    # (jajang #99 dual-theme 32파일 마이그레이션, $8.45 손실).
+    # 핸드오프 디렉토리는 모든 에이전트가 Read 가능. Write는 generate_handoff()
+    # 헬퍼 경로 (engineer/architect 등 ALLOW_MATRIX 매칭) 또는 harness 내부에서만.
+    HANDOFF_PATH_RE = re.compile(r'(^|/)[A-Za-z0-9_-]+_handoffs/')
+    if HANDOFF_PATH_RE.search(fp):
+        if tool_name in ("Read", "Glob", "Grep"):
+            sys.exit(0)
+        # Write/Edit는 ALLOW_MATRIX 평가로 위임 — 일반 에이전트는 어차피 차단됨
+
     # ── 하네스 인프라 파일 Read/Write/Edit 차단 (모든 에이전트 공통) ──
     for pattern in HARNESS_INFRA_PATTERNS:
         if re.search(pattern, fp):

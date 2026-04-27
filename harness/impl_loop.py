@@ -1233,7 +1233,7 @@ def _run_std_deep(
                 changed_files_str = " ".join(r_changed.stdout.strip().splitlines())
 
             log_phase("test-engineer", run_logger, attempt)
-            hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=600s)")
+            hlog_fn(f"test-engineer 시작 (depth={depth}, timeout=900s)")
             kill_check(state_dir)
             hud.agent_start("test-engineer")
 
@@ -1250,7 +1250,7 @@ def _run_std_deep(
 
             # fallback: test-engineer 호출 (test_command 없을 때)
             te_out = str(state_dir.path / f"{prefix}_te_out.txt")
-            agent_exit = agent_call("test-engineer", 600, te_prompt, te_out, run_logger, config, str(attempt_dir))
+            agent_exit = agent_call("test-engineer", 900, te_prompt, te_out, run_logger, config, str(attempt_dir))
             hlog_fn(f"test-engineer 종료 (exit={agent_exit})")
             total_cost = budget_check("test-engineer", te_out, total_cost, config.max_total_cost, state_dir, prefix, config=config)
 

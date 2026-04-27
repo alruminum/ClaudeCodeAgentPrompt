@@ -115,15 +115,19 @@ def find_unreviewed_logs(prefix):
 
 def extract_run_info(events):
     info = {"prefix": "?", "mode": "?", "t_start": 0, "t_end": 0, "elapsed": 0}
+    harness_event_count = 0  # run_start 이후 다른 하네스 이벤트 수
     for e in events:
-        if e.get("event") == "run_start":
+        ev = e.get("event")
+        if ev == "run_start":
             info["prefix"] = e.get("prefix", "?")
             info["mode"] = e.get("mode", "?")
             info["t_start"] = e.get("t", 0)
-        elif e.get("event") == "run_end":
+        elif ev == "run_end":
             info["t_end"] = e.get("t", 0)
             info["elapsed"] = e.get("elapsed", 0)
             info["run_end_result"] = e.get("result", "")
+        elif ev:  # 하네스 이벤트 (event 키가 있는 것)
+            harness_event_count += 1
     if info["t_end"] == 0 and info["t_start"] > 0:
         # 비정상 종료 — 마지막 하네스 이벤트 시각 사용 (stream_event 제외)
         for e in reversed(events):
@@ -138,6 +142,10 @@ def extract_run_info(events):
             if last_ts > 0:
                 info["t_end"] = last_ts
                 info["elapsed"] = last_ts - info["t_start"]
+        # run_start만 있고 후속 하네스 이벤트가 없으면 USER_ABORTED 분류 —
+        # SIGKILL/Ctrl+C 등으로 atexit cleanup이 못 돈 케이스. 통계에서 ?로 묻히지 않게.
+        if harness_event_count == 0 and not info.get("run_end_result"):
+            info["run_end_result"] = "USER_ABORTED"
     return info
 
 
